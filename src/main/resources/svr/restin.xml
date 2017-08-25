@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd">
+    
+    <bean id="httpfeatures" class="java.util.concurrent.CopyOnWriteArrayList" />
+
+    <!-- bean id="inboundIndicator" class="org.jocean.restful.mbean.RestfulInboundIndicator">
+        <property name="mbeanName" value="${inbound.mbeanname:inbound}"/>
+        <property name="category" value="${inbound.category}"/>
+        <property name="priority" value="${inbound.priority:100}"/>
+        <property name="pathPattern" value="${inbound.pathpattern}"/>
+    </bean -->
+    
+    <bean id="agentServer" 
+        factory-bean="httpServerBuilder" 
+        factory-method="defineServer">
+        <constructor-arg>
+            <bean class="java.net.InetSocketAddress">
+                <constructor-arg value="${http.address:0.0.0.0}"/>
+                <constructor-arg value="${http.port:0}"/>
+            </bean>
+        </constructor-arg>
+        <constructor-arg>
+            <bean class="org.jocean.http.util.FeaturesBuilder">
+                <constructor-arg ref="httpfeatures"/>
+            </bean>
+        </constructor-arg>
+        <!-- constructor-arg>
+            <array value-type="org.jocean.http.Feature">
+                <ref bean="inboundIndicator"/>
+            </array>
+        </constructor-arg -->
+    </bean>
+    
+    <bean id="registrar" class="org.jocean.svr.Registrar"
+        init-method="start"
+        destroy-method="stop">
+        <property name="beanHolder" ref="${beanHolder.name:unitAgent}"/>
+        <property name="pathPattern" value="${inbound.pathpattern}"/>
+    </bean>
+    
+    <!-- bean id="jsonProvider" class="org.jocean.json.FastJSONProvider" / -->
+   
+    <bean id="extraHeaders" class="java.util.concurrent.ConcurrentHashMap"/>
+    
+    <bean factory-bean="agentServer" 
+        factory-method="subscribe"
+        destroy-method="unsubscribe">
+        <constructor-arg>
+            <bean class="org.jocean.svr.TradeProcessor">
+		        <constructor-arg ref="registrar" />
+		        <!-- constructor-arg ref="jsonProvider" /-->
+		        <property name="defaultContentType" value="${restful.default.contenttype:application/json; charset=UTF-8}"/>
+                <property name="extraHeaders" ref="extraHeaders"/>
+		    </bean>
+        </constructor-arg>
+    </bean>
+</beans>
