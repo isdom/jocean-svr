@@ -226,7 +226,7 @@ public class TradeProcessor extends Subscriber<HttpTrade>
 
     @Override
     public void setMBeanRegister(final MBeanRegister register) {
-        register.registerMBean("name=tradeProcessor", this);
+//        register.registerMBean("name=tradeProcessor", this);
     }
 
 //    @Override
