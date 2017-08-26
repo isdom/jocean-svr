@@ -41,19 +41,12 @@
         <property name="pathPattern" value="${inbound.pathpattern}"/>
     </bean>
     
-    <!-- bean id="jsonProvider" class="org.jocean.json.FastJSONProvider" / -->
-   
-    <bean id="extraHeaders" class="java.util.concurrent.ConcurrentHashMap"/>
-    
     <bean factory-bean="agentServer" 
         factory-method="subscribe"
         destroy-method="unsubscribe">
         <constructor-arg>
             <bean class="org.jocean.svr.TradeProcessor">
 		        <constructor-arg ref="registrar" />
-		        <!-- constructor-arg ref="jsonProvider" /-->
-		        <property name="defaultContentType" value="${restful.default.contenttype:application/json; charset=UTF-8}"/>
-                <property name="extraHeaders" ref="extraHeaders"/>
 		    </bean>
         </constructor-arg>
     </bean>
