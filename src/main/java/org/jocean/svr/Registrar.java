@@ -268,12 +268,11 @@ public class Registrar implements MBeanRegisterAware {
         final ResContext ctx = this._resCtxs.get(rawPath);
         if (null != ctx) {
             final Object resource = this._beanHolder.getBean(ctx._cls);
-            final Class<?> returnType = ctx._processor.getReturnType();
+            final Type returnType = ctx._processor.getGenericReturnType();
             
-            final Type genericSuperclass = returnType.getGenericSuperclass();  
-            if (genericSuperclass instanceof ParameterizedType){  
+            if (returnType instanceof ParameterizedType){  
                 //参数化类型  
-                final ParameterizedType parameterizedType= (ParameterizedType) genericSuperclass;  
+                final ParameterizedType parameterizedType= (ParameterizedType) returnType;  
                 //返回表示此类型实际类型参数的 Type 对象的数组  
                 final Type[] actualTypeArguments = parameterizedType.getActualTypeArguments();  
                 final Class<?> genericType = (Class<?>)actualTypeArguments[0];
