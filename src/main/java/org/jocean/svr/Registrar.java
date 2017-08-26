@@ -279,7 +279,7 @@ public class Registrar implements MBeanRegisterAware {
                 if (genericType.equals(HttpObject.class)) {
                     return (Observable<HttpObject>)ctx._processor.invoke(resource, req);
                 } else if (genericType.equals(String.class)) {
-                    ((Observable<String>)ctx._processor.invoke(resource, req)).last()
+                    return ((Observable<String>)ctx._processor.invoke(resource, req)).last()
                     .flatMap(new Func1<String, Observable<HttpObject>>() {
                         @Override
                         public Observable<HttpObject> call(final String content) {
