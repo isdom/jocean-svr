@@ -4,6 +4,8 @@
 package org.jocean.svr;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
+import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 
 import java.beans.PropertyEditor;
 import java.beans.PropertyEditorManager;
@@ -12,6 +14,8 @@ import java.io.UnsupportedEncodingException;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
@@ -62,13 +66,20 @@ import com.google.common.io.ByteStreams;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.EmptyByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.cookie.Cookie;
 import io.netty.handler.codec.http.cookie.ServerCookieDecoder;
+import io.netty.util.CharsetUtil;
 import rx.Observable;
+import rx.functions.Func1;
 
 /**
  * @author isdom
@@ -257,7 +268,38 @@ public class Registrar implements MBeanRegisterAware {
         final ResContext ctx = this._resCtxs.get(rawPath);
         if (null != ctx) {
             final Object resource = this._beanHolder.getBean(ctx._cls);
-            return (Observable<HttpObject>)ctx._processor.invoke(resource, req);
+            final Class<?> returnType = ctx._processor.getReturnType();
+            
+            final Type genericSuperclass = returnType.getGenericSuperclass();  
+            if (genericSuperclass instanceof ParameterizedType){  
+                //参数化类型  
+                final ParameterizedType parameterizedType= (ParameterizedType) genericSuperclass;  
+                //返回表示此类型实际类型参数的 Type 对象的数组  
+                final Type[] actualTypeArguments = parameterizedType.getActualTypeArguments();  
+                final Class<?> genericType = (Class<?>)actualTypeArguments[0];
+                if (genericType.equals(HttpObject.class)) {
+                    return (Observable<HttpObject>)ctx._processor.invoke(resource, req);
+                } else if (genericType.equals(String.class)) {
+                    ((Observable<String>)ctx._processor.invoke(resource, req)).last()
+                    .flatMap(new Func1<String, Observable<HttpObject>>() {
+                        @Override
+                        public Observable<HttpObject> call(final String content) {
+                            final FullHttpResponse response = new DefaultFullHttpResponse(
+                                    request.protocolVersion(), 
+                                    HttpResponseStatus.OK,
+                                    (null != content ? Unpooled.copiedBuffer(content, CharsetUtil.UTF_8) : Unpooled.buffer(0)));
+                            
+                            response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain");
+                            
+                            // Add 'Content-Length' header only for a keep-alive connection.
+                            response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
+                            
+                            response.headers().set(HttpHeaderNames.CACHE_CONTROL, HttpHeaderValues.NO_STORE);
+                            response.headers().set(HttpHeaderNames.PRAGMA, HttpHeaderValues.NO_CACHE);
+                            return Observable.just(response);
+                        }});
+                }
+            } 
         }
         return RxNettys.response404NOTFOUND(request.protocolVersion());
     }
