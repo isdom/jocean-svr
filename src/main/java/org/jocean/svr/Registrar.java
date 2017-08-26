@@ -296,7 +296,7 @@ public class Registrar implements MBeanRegisterAware {
                             
                             response.headers().set(HttpHeaderNames.CACHE_CONTROL, HttpHeaderValues.NO_STORE);
                             response.headers().set(HttpHeaderNames.PRAGMA, HttpHeaderValues.NO_CACHE);
-                            return Observable.just(response);
+                            return Observable.<HttpObject>just(response);
                         }});
                 }
             } 
