@@ -30,6 +30,7 @@ import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.QueryParam;
 
+import org.jocean.http.util.RxNettys;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Pair;
 import org.jocean.idiom.ReflectUtils;
@@ -258,7 +259,7 @@ public class Registrar implements MBeanRegisterAware {
             final Object resource = this._beanHolder.getBean(ctx._cls);
             return (Observable<HttpObject>)ctx._processor.invoke(resource, req);
         }
-        return null;
+        return RxNettys.response404NOTFOUND(request.protocolVersion());
     }
 
     private String getRawPath(final String path) {
