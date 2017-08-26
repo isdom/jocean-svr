@@ -65,7 +65,8 @@ public class TradeProcessor extends Subscriber<HttpTrade>
                 if (msg instanceof HttpRequest) {
                     try {
                         trade.outbound(
-                            _registrar.buildResource((HttpRequest)msg, trade.inbound()));
+                            _registrar.buildResource((HttpRequest)msg, trade.inbound())
+                            .delaySubscription(trade.inbound().last()));
                     } catch (Exception e) {
                         LOG.warn("exception when buildResource, detail:{}",
                                 ExceptionUtils.exception2detail(e));
