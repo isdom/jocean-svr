@@ -268,37 +268,45 @@ public class Registrar implements MBeanRegisterAware {
         final ResContext ctx = this._resCtxs.get(rawPath);
         if (null != ctx) {
             final Object resource = this._beanHolder.getBean(ctx._cls);
-            final Type returnType = ctx._processor.getGenericReturnType();
-            
-            if (returnType instanceof ParameterizedType){  
-                //参数化类型  
-                final ParameterizedType parameterizedType= (ParameterizedType) returnType;  
-                //返回表示此类型实际类型参数的 Type 对象的数组  
-                final Type[] actualTypeArguments = parameterizedType.getActualTypeArguments();  
-                final Class<?> genericType = (Class<?>)actualTypeArguments[0];
-                if (genericType.equals(HttpObject.class)) {
-                    return (Observable<HttpObject>)ctx._processor.invoke(resource, req);
-                } else if (genericType.equals(String.class)) {
-                    return ((Observable<String>)ctx._processor.invoke(resource, req)).last()
-                    .flatMap(new Func1<String, Observable<HttpObject>>() {
-                        @Override
-                        public Observable<HttpObject> call(final String content) {
-                            final FullHttpResponse response = new DefaultFullHttpResponse(
-                                    request.protocolVersion(), 
-                                    HttpResponseStatus.OK,
-                                    (null != content ? Unpooled.copiedBuffer(content, CharsetUtil.UTF_8) : Unpooled.buffer(0)));
-                            
-                            response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain");
-                            
-                            // Add 'Content-Length' header only for a keep-alive connection.
-                            response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
-                            
-                            response.headers().set(HttpHeaderNames.CACHE_CONTROL, HttpHeaderValues.NO_STORE);
-                            response.headers().set(HttpHeaderNames.PRAGMA, HttpHeaderValues.NO_CACHE);
-                            return Observable.<HttpObject>just(response);
-                        }});
+            if (null!=resource) {
+                final Type returnType = ctx._processor.getGenericReturnType();
+                
+                if (returnType instanceof ParameterizedType){  
+                    //参数化类型  
+                    final ParameterizedType parameterizedType= (ParameterizedType) returnType;  
+                    //返回表示此类型实际类型参数的 Type 对象的数组  
+                    final Type[] actualTypeArguments = parameterizedType.getActualTypeArguments();  
+                    final Class<?> genericType = (Class<?>)actualTypeArguments[0];
+                    if (genericType.equals(HttpObject.class)) {
+                        return (Observable<HttpObject>)ctx._processor.invoke(resource, req);
+                    } else if (genericType.equals(String.class)) {
+                        return ((Observable<String>)ctx._processor.invoke(resource, req))
+                        .toList()
+                        .last()
+                        .flatMap(new Func1<List<String>, Observable<HttpObject>>() {
+                            @Override
+                            public Observable<HttpObject> call(final List<String> contents) {
+                                final StringBuilder sb = new StringBuilder();
+                                for (String s : contents) {
+                                    sb.append(s);
+                                }
+                                final FullHttpResponse response = new DefaultFullHttpResponse(
+                                        request.protocolVersion(), 
+                                        HttpResponseStatus.OK,
+                                        (sb.length() > 0 ? Unpooled.copiedBuffer(sb.toString(), CharsetUtil.UTF_8) : Unpooled.buffer(0)));
+                                
+                                response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain");
+                                
+                                // Add 'Content-Length' header only for a keep-alive connection.
+                                response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
+                                
+                                response.headers().set(HttpHeaderNames.CACHE_CONTROL, HttpHeaderValues.NO_STORE);
+                                response.headers().set(HttpHeaderNames.PRAGMA, HttpHeaderValues.NO_CACHE);
+                                return Observable.<HttpObject>just(response);
+                            }});
+                    }
                 }
-            } 
+            }
         }
         return RxNettys.response404NOTFOUND(request.protocolVersion());
     }
