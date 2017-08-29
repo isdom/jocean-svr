@@ -20,7 +20,7 @@
                 <constructor-arg ref="httpfeatures"/>
             </bean>
         </constructor-arg>
-        <constructor-arg>
+        <!-- constructor-arg>
             <array value-type="org.jocean.http.Feature">
                 <bean class="org.jocean.svr.mbean.RestinIndicator">
                     <property name="mbeanName" value="${restin.mbeanname:restin}"/>
@@ -29,7 +29,7 @@
                     <property name="pathPattern" value="${restin.pathpattern}"/>
                 </bean>
             </array>
-        </constructor-arg>
+        </constructor-arg -->
     </bean>
     
     <bean id="registrar" class="org.jocean.svr.Registrar"

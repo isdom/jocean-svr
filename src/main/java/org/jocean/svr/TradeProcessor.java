@@ -37,8 +37,7 @@ public class TradeProcessor extends Subscriber<HttpTrade>
 
     @Override
     public void onError(final Throwable e) {
-        // TODO Auto-generated method stub
-        
+        LOG.warn("fatal error with {} restin.", ExceptionUtils.exception2detail(e));
     }
 
     @Override
