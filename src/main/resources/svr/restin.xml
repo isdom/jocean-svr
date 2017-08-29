@@ -6,13 +6,6 @@
     
     <bean id="httpfeatures" class="java.util.concurrent.CopyOnWriteArrayList" />
 
-    <!-- bean id="inboundIndicator" class="org.jocean.restful.mbean.RestfulInboundIndicator">
-        <property name="mbeanName" value="${inbound.mbeanname:inbound}"/>
-        <property name="category" value="${inbound.category}"/>
-        <property name="priority" value="${inbound.priority:100}"/>
-        <property name="pathPattern" value="${inbound.pathpattern}"/>
-    </bean -->
-    
     <bean id="agentServer" 
         factory-bean="httpServerBuilder" 
         factory-method="defineServer">
@@ -27,11 +20,16 @@
                 <constructor-arg ref="httpfeatures"/>
             </bean>
         </constructor-arg>
-        <!-- constructor-arg>
+        <constructor-arg>
             <array value-type="org.jocean.http.Feature">
-                <ref bean="inboundIndicator"/>
+                <bean class="org.jocean.svr.mbean.RestinIndicator">
+                    <property name="mbeanName" value="${restin.mbeanname:restin}"/>
+                    <property name="category" value="${restin.category}"/>
+                    <property name="priority" value="${restin.priority:100}"/>
+                    <property name="pathPattern" value="${restin.pathpattern}"/>
+                </bean>
             </array>
-        </constructor-arg -->
+        </constructor-arg>
     </bean>
     
     <bean id="registrar" class="org.jocean.svr.Registrar"
