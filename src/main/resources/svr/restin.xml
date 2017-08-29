@@ -36,7 +36,7 @@
         init-method="start"
         destroy-method="stop">
         <property name="beanHolder" ref="${beanHolder.name:unitAgent}"/>
-        <property name="pathPattern" value="${inbound.pathpattern}"/>
+        <property name="pathPattern" value="${restin.pathpattern}"/>
     </bean>
     
     <bean factory-bean="agentServer" 
