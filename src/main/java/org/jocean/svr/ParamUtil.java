@@ -12,7 +12,11 @@ import org.jocean.idiom.ReflectUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpRequest;
+import rx.Observable;
+import rx.Observable.Transformer;
+import rx.functions.Action1;
 
 public class ParamUtil {
     
@@ -23,6 +27,20 @@ public class ParamUtil {
         throw new IllegalStateException("No instances!");
     }
     
+    public static Transformer<HttpObject, HttpObject> assignHeaderParams(final Object bean) {
+        return new Transformer<HttpObject, HttpObject>() {
+            @Override
+            public Observable<HttpObject> call(final Observable<HttpObject> req) {
+                return req.doOnNext(new Action1<HttpObject>() {
+                    @Override
+                    public void call(final HttpObject hobj) {
+                        if (hobj instanceof HttpRequest) {
+                            assignHeaderParams(bean, ((HttpRequest)hobj));
+                        }
+                    }});
+            }};
+    }
+                
     public static void assignHeaderParams(final Object bean, final HttpRequest req) {
         final Field[] fields = ReflectUtils.getAnnotationFieldsOf(bean.getClass(), HeaderParam.class);
         if (null != fields) {
