@@ -6,6 +6,7 @@ import java.lang.reflect.Field;
 import java.util.List;
 
 import javax.ws.rs.HeaderParam;
+import javax.ws.rs.QueryParam;
 
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.ReflectUtils;
@@ -13,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.QueryStringDecoder;
 import rx.functions.Action1;
 
 public class ParamUtil {
@@ -24,6 +26,42 @@ public class ParamUtil {
         throw new IllegalStateException("No instances!");
     }
     
+    public static Action1<HttpRequest> injectQueryParams(final Object bean) {
+        return new Action1<HttpRequest>() {
+            @Override
+            public void call(final HttpRequest request) {
+                request2QueryParams(request, bean);
+            }};
+    }
+    
+    public static void request2QueryParams(final HttpRequest request, final Object bean) {
+        final Field[] fields = ReflectUtils.getAnnotationFieldsOf(bean.getClass(), QueryParam.class);
+        if (null != fields) {
+            final QueryStringDecoder decoder = new QueryStringDecoder(request.uri());
+
+            for (Field field : fields) {
+                final String key = field.getAnnotation(QueryParam.class).value();
+                if (!"".equals(key) && null != decoder.parameters()) {
+                    // for case: QueryParam("demo")
+                    injectParamValue(decoder.parameters().get(key), bean, field);
+                }
+                if ("".equals(key)) {
+                    // for case: QueryParam(""), means fill with entire query string
+                    injectValueToField(rawQuery(request.uri()), bean, field);
+                }
+            }
+        }
+    }
+    
+    private static String rawQuery(final String uri) {
+        final int pos = uri.indexOf('?');
+        if (-1 != pos) {
+            return uri.substring(pos+1);
+        } else {
+            return null;
+        }
+    }
+    
     public static Action1<HttpRequest> injectHeaderParams(final Object bean) {
         return new Action1<HttpRequest>() {
             @Override
@@ -32,11 +70,11 @@ public class ParamUtil {
             }};
     }
     
-    public static void request2HeaderParams(final HttpRequest req, final Object bean) {
+    public static void request2HeaderParams(final HttpRequest request, final Object bean) {
         final Field[] fields = ReflectUtils.getAnnotationFieldsOf(bean.getClass(), HeaderParam.class);
         if (null != fields) {
             for (Field field : fields) {
-                injectParamValue(req.headers().getAll(field.getAnnotation(HeaderParam.class).value()), 
+                injectParamValue(request.headers().getAll(field.getAnnotation(HeaderParam.class).value()), 
                     bean,
                     field
                 );
