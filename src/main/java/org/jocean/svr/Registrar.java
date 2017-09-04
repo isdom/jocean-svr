@@ -4,8 +4,6 @@
 package org.jocean.svr;
 
 import static com.google.common.base.Preconditions.checkNotNull;
-import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
-import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 
 import java.beans.PropertyEditor;
 import java.beans.PropertyEditorManager;
@@ -16,6 +14,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
@@ -34,6 +33,7 @@ import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.QueryParam;
 
+import org.jocean.http.server.HttpServerBuilder.HttpTrade;
 import org.jocean.http.util.RxNettys;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Pair;
@@ -68,6 +68,7 @@ import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.EmptyByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
@@ -79,6 +80,7 @@ import io.netty.handler.codec.http.cookie.Cookie;
 import io.netty.handler.codec.http.cookie.ServerCookieDecoder;
 import io.netty.util.CharsetUtil;
 import rx.Observable;
+import rx.functions.Func0;
 import rx.functions.Func1;
 
 /**
@@ -257,9 +259,10 @@ public class Registrar implements MBeanRegisterAware {
         return this;
     }
     
+    @SuppressWarnings("unchecked")
     public Observable<HttpObject> buildResource(
             final HttpRequest request,
-            final Observable<? extends HttpObject> req) throws Exception {
+            final HttpTrade trade) throws Exception {
         final QueryStringDecoder decoder = new QueryStringDecoder(request.uri());
 
         final String rawPath = getRawPath(decoder.path());
@@ -270,8 +273,9 @@ public class Registrar implements MBeanRegisterAware {
             final Object resource = this._beanHolder.getBean(ctx._cls);
             
             if (null!=resource) {
-                final Object returnObject = ctx._processor.invoke(resource, req);
-                if (null!=returnObject) {
+                final Object returnValue = ctx._processor.invoke(resource, 
+                        buildArgs(ctx._processor.getGenericParameterTypes(), trade));
+                if (null!=returnValue) {
                     final Type returnType = ctx._processor.getGenericReturnType();
                     
                     if (returnType instanceof ParameterizedType){  
@@ -281,38 +285,72 @@ public class Registrar implements MBeanRegisterAware {
                         final Type[] actualTypeArguments = parameterizedType.getActualTypeArguments();  
                         final Class<?> genericType = (Class<?>)actualTypeArguments[0];
                         if (genericType.equals(HttpObject.class)) {
-                            return (Observable<HttpObject>)ctx._processor.invoke(resource, req);
+                            return (Observable<HttpObject>)returnValue;
                         } else if (genericType.equals(String.class)) {
-                            return ((Observable<String>)ctx._processor.invoke(resource, req))
-                            .toList()
-                            .last()
-                            .flatMap(new Func1<List<String>, Observable<HttpObject>>() {
-                                @Override
-                                public Observable<HttpObject> call(final List<String> contents) {
-                                    final StringBuilder sb = new StringBuilder();
-                                    for (String s : contents) {
-                                        sb.append(s);
-                                    }
-                                    final FullHttpResponse response = new DefaultFullHttpResponse(
-                                            request.protocolVersion(), 
-                                            HttpResponseStatus.OK,
-                                            (sb.length() > 0 ? Unpooled.copiedBuffer(sb.toString(), CharsetUtil.UTF_8) : Unpooled.buffer(0)));
-                                    
-                                    response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain");
-                                    
-                                    // Add 'Content-Length' header only for a keep-alive connection.
-                                    response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
-                                    
-                                    response.headers().set(HttpHeaderNames.CACHE_CONTROL, HttpHeaderValues.NO_STORE);
-                                    response.headers().set(HttpHeaderNames.PRAGMA, HttpHeaderValues.NO_CACHE);
-                                    return Observable.<HttpObject>just(response);
-                                }});
+                            return strings2Response((Observable<String>)returnValue, request);
                         }
                     }
                 }
             }
         }
         return RxNettys.response404NOTFOUND(request.protocolVersion());
+    }
+
+    private Observable<HttpObject> strings2Response(final Observable<String> strings, final HttpRequest request) {
+        return strings.toList()
+        .flatMap(new Func1<List<String>, Observable<HttpObject>>() {
+            @Override
+            public Observable<HttpObject> call(final List<String> contents) {
+                final StringBuilder sb = new StringBuilder();
+                for (String s : contents) {
+                    sb.append(s);
+                }
+                final FullHttpResponse response = new DefaultFullHttpResponse(
+                        request.protocolVersion(), 
+                        HttpResponseStatus.OK,
+                        (sb.length() > 0 ? Unpooled.copiedBuffer(sb.toString(), CharsetUtil.UTF_8) : Unpooled.buffer(0)));
+                
+                response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain");
+                
+                // Add 'Content-Length' header only for a keep-alive connection.
+                response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
+                
+                response.headers().set(HttpHeaderNames.CACHE_CONTROL, HttpHeaderValues.NO_STORE);
+                response.headers().set(HttpHeaderNames.PRAGMA, HttpHeaderValues.NO_CACHE);
+                return Observable.<HttpObject>just(response);
+            }});
+    }
+
+    private Object[] buildArgs(final Type[] genericParameterTypes, final HttpTrade trade) {
+        final List<Object> args = new ArrayList<>();
+        for (Type argType : genericParameterTypes) {
+            args.add(buildArgByType(argType, trade));
+        }
+        return args.toArray();
+    }
+
+    private Object buildArgByType(final Type argType, final HttpTrade trade) {
+        if (argType instanceof ParameterizedType){  
+            //参数化类型  
+            final ParameterizedType parameterizedType = (ParameterizedType) argType;
+            if ( parameterizedType.getRawType().equals(Observable.class)
+                && parameterizedType.getActualTypeArguments()[0].equals(HttpObject.class)) {
+                return trade.inbound();
+            }
+        } else if (argType.equals(ToFullHttpRequest.class) ) {
+            return new ToFullHttpRequest() {
+                @Override
+                public Observable<Func0<FullHttpRequest>> call(Observable<Object> any) {
+                    return any.last().flatMap(new Func1<Object, Observable<Func0<FullHttpRequest>>>() {
+                        @Override
+                        public Observable<Func0<FullHttpRequest>> call(Object anyobj) {
+                            return Observable.just(trade.inboundHolder().fullOf(RxNettys.BUILD_FULL_REQUEST))
+                                    .delaySubscription(trade.inbound().last());
+                        }});
+                }};
+        }
+        
+        return null;
     }
 
     private String getRawPath(final String path) {
