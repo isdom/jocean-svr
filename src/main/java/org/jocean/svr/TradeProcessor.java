@@ -3,6 +3,7 @@
  */
 package org.jocean.svr;
 
+import org.jocean.http.WritePolicy;
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.j2se.jmx.MBeanRegister;
@@ -64,7 +65,12 @@ public class TradeProcessor extends Subscriber<HttpTrade>
                 if (msg instanceof HttpRequest) {
                     try {
                         trade.outbound(
-                            _registrar.buildResource((HttpRequest)msg, trade)
+                            _registrar.buildResource((HttpRequest)msg, trade),
+                            new WritePolicy() {
+                                @Override
+                                public void applyTo(final Outboundable outboundable) {
+                                    outboundable.setFlushPerWrite(true);
+                                }}
 //                            .delaySubscription(trade.inbound().last())
                             );
                     } catch (Exception e) {
