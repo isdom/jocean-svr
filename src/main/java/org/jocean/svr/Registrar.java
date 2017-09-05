@@ -273,23 +273,29 @@ public class Registrar implements MBeanRegisterAware {
             final Object resource = this._beanHolder.getBean(ctx._cls);
             
             if (null!=resource) {
-                final Object returnValue = ctx._processor.invoke(resource, 
-                        buildArgs(ctx._processor.getGenericParameterTypes(), trade));
-                if (null!=returnValue) {
-                    final Type returnType = ctx._processor.getGenericReturnType();
-                    
-                    if (returnType instanceof ParameterizedType){  
-                        //参数化类型  
-                        final ParameterizedType parameterizedType= (ParameterizedType) returnType;  
-                        //返回表示此类型实际类型参数的 Type 对象的数组  
-                        final Type[] actualTypeArguments = parameterizedType.getActualTypeArguments();  
-                        final Class<?> genericType = (Class<?>)actualTypeArguments[0];
-                        if (genericType.equals(HttpObject.class)) {
-                            return (Observable<HttpObject>)returnValue;
-                        } else if (genericType.equals(String.class)) {
-                            return strings2Response((Observable<String>)returnValue, request);
+                try {
+                    final Object returnValue = ctx._processor.invoke(resource, 
+                                buildArgs(ctx._processor.getGenericParameterTypes(), trade));
+                    if (null!=returnValue) {
+                        final Type returnType = ctx._processor.getGenericReturnType();
+                        
+                        if (returnType instanceof ParameterizedType){  
+                            //参数化类型  
+                            final ParameterizedType parameterizedType= (ParameterizedType) returnType;  
+                            //返回表示此类型实际类型参数的 Type 对象的数组  
+                            final Type[] actualTypeArguments = parameterizedType.getActualTypeArguments();  
+                            final Class<?> genericType = (Class<?>)actualTypeArguments[0];
+                            if (genericType.equals(HttpObject.class)) {
+                                return (Observable<HttpObject>)returnValue;
+                            } else if (genericType.equals(String.class)) {
+                                return strings2Response((Observable<String>)returnValue, request);
+                            }
                         }
                     }
+                } catch (Exception e) {
+                    LOG.warn("exception when invoke process {}, detail{}", 
+                            ctx._processor,
+                            ExceptionUtils.exception2detail(e));
                 }
             }
         }
