@@ -342,6 +342,12 @@ public class Registrar implements MBeanRegisterAware {
             if ( parameterizedType.getRawType().equals(Observable.class)
                 && parameterizedType.getActualTypeArguments()[0].equals(HttpObject.class)) {
                 return trade.inbound();
+            } else if (parameterizedType.getRawType().equals(UntilRequestCompleted.class)) {
+                return new UntilRequestCompleted<Object>() {
+                    @Override
+                    public Observable<Object> call(Observable<Object> any) {
+                        return any.delaySubscription(trade.inbound().last());
+                    }};
             }
         } else if (argType.equals(ToFullHttpRequest.class)) {
             return new ToFullHttpRequest() {
@@ -353,12 +359,6 @@ public class Registrar implements MBeanRegisterAware {
                             return Observable.just(trade.inboundHolder().fullOf(RxNettys.BUILD_FULL_REQUEST))
                                     .delaySubscription(trade.inbound().last());
                         }});
-                }};
-        } else if (argType.equals(UntilRequestCompleted.class)) {
-            return new UntilRequestCompleted() {
-                @Override
-                public Observable<Object> call(Observable<Object> any) {
-                    return any.delaySubscription(trade.inbound().last());
                 }};
         }
         
