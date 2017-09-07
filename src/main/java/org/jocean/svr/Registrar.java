@@ -335,6 +335,7 @@ public class Registrar implements MBeanRegisterAware {
         return args.toArray();
     }
 
+    //  TBD: 查表实现
     private Object buildArgByType(final Type argType, final HttpTrade trade) {
         if (argType instanceof ParameterizedType){  
             //参数化类型  
@@ -343,26 +344,34 @@ public class Registrar implements MBeanRegisterAware {
                 && parameterizedType.getActualTypeArguments()[0].equals(HttpObject.class)) {
                 return trade.inbound();
             } else if (parameterizedType.getRawType().equals(UntilRequestCompleted.class)) {
-                return new UntilRequestCompleted<Object>() {
-                    @Override
-                    public Observable<Object> call(Observable<Object> any) {
-                        return any.delaySubscription(trade.inbound().last());
-                    }};
+                return buildURC(trade);
             }
         } else if (argType.equals(ToFullHttpRequest.class)) {
-            return new ToFullHttpRequest() {
-                @Override
-                public Observable<Func0<FullHttpRequest>> call(Observable<Object> any) {
-                    return any.last().flatMap(new Func1<Object, Observable<Func0<FullHttpRequest>>>() {
-                        @Override
-                        public Observable<Func0<FullHttpRequest>> call(Object anyobj) {
-                            return Observable.just(trade.inboundHolder().fullOf(RxNettys.BUILD_FULL_REQUEST))
-                                    .delaySubscription(trade.inbound().last());
-                        }});
-                }};
+            return buildTFR(trade);
         }
         
         return null;
+    }
+
+    private ToFullHttpRequest buildTFR(final HttpTrade trade) {
+        return new ToFullHttpRequest() {
+            @Override
+            public Observable<Func0<FullHttpRequest>> call(Observable<Object> any) {
+                return any.last().flatMap(new Func1<Object, Observable<Func0<FullHttpRequest>>>() {
+                    @Override
+                    public Observable<Func0<FullHttpRequest>> call(Object anyobj) {
+                        return Observable.just(trade.inboundHolder().fullOf(RxNettys.BUILD_FULL_REQUEST))
+                                .delaySubscription(trade.inbound().last());
+                    }});
+            }};
+    }
+
+    private UntilRequestCompleted<Object> buildURC(final HttpTrade trade) {
+        return new UntilRequestCompleted<Object>() {
+            @Override
+            public Observable<Object> call(Observable<Object> any) {
+                return any.delaySubscription(trade.inbound().last());
+            }};
     }
 
     private String getRawPath(final String path) {
