@@ -2,6 +2,7 @@ package org.jocean.svr;
 
 import java.beans.PropertyEditor;
 import java.beans.PropertyEditorManager;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.List;
 
@@ -13,9 +14,19 @@ import org.jocean.idiom.ReflectUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.alibaba.fastjson.JSON;
+import com.google.common.io.ByteStreams;
+
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufInputStream;
+import io.netty.buffer.EmptyByteBuf;
+import io.netty.handler.codec.http.FullHttpRequest;
+import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import rx.functions.Action1;
+import rx.functions.Func0;
+import rx.functions.Func1;
 
 public class ParamUtil {
     
@@ -119,6 +130,39 @@ public class ParamUtil {
                 LOG.warn("exception when set obj({}).{} with value({}), detail:{} ",
                         obj, field.getName(), value, ExceptionUtils.exception2detail(e));
             }
+        }
+    }
+
+    public static <T> Func1<Func0<FullHttpRequest>, T> decodeContentAs(final Class<?> type) {
+        return new Func1<Func0<FullHttpRequest>, T>() {
+            @Override
+            public T call(final Func0<FullHttpRequest> getfhr) {
+                final FullHttpRequest fhr = getfhr.call();
+                if (null != fhr) {
+                    try {
+                        return parseContentAsJson(fhr, type);
+                    } finally {
+                        fhr.release();
+                    }
+                }
+                return null;
+            }};
+    }
+    
+    public static <T> T parseContentAsJson(final HttpContent content, final Class<?> type) {
+        return JSON.parseObject(contentAsBytes(content.content()),type);
+    }
+    
+    private static byte[] contentAsBytes(final ByteBuf buf) {
+        if (buf instanceof EmptyByteBuf) {
+            return null;
+        }
+        try {
+            return ByteStreams.toByteArray(new ByteBufInputStream(buf.slice()));
+        } catch (IOException e) {
+            LOG.warn("exception when decodeContent, detail:{}", 
+                    ExceptionUtils.exception2detail(e));
+            return null;
         }
     }
 }
