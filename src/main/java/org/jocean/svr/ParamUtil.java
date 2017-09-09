@@ -3,6 +3,7 @@ package org.jocean.svr;
 import java.beans.PropertyEditor;
 import java.beans.PropertyEditorManager;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.util.List;
 
@@ -15,11 +16,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.alibaba.fastjson.JSON;
-import com.google.common.io.ByteStreams;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.deser.DeserializationProblemHandler;
+import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
-import io.netty.buffer.EmptyByteBuf;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpRequest;
@@ -133,7 +137,43 @@ public class ParamUtil {
         }
     }
 
-    public static <T> Func1<Func0<FullHttpRequest>, T> decodeContentAs(final Class<?> type) {
+    public static <T> Func1<Func0<FullHttpRequest>, T> decodeXmlContentAs(final Class<T> type) {
+        return new Func1<Func0<FullHttpRequest>, T>() {
+            @Override
+            public T call(final Func0<FullHttpRequest> getfhr) {
+                final FullHttpRequest fhr = getfhr.call();
+                if (null != fhr) {
+                    try {
+                        return parseContentAsXml(fhr, type);
+                    } finally {
+                        fhr.release();
+                    }
+                }
+                return null;
+            }};
+    }
+    
+    public static <T> T parseContentAsXml(final HttpContent content, final Class<T> type) {
+        final XmlMapper mapper = new XmlMapper();
+        mapper.addHandler(new DeserializationProblemHandler() {
+            @Override
+            public boolean handleUnknownProperty(final DeserializationContext ctxt, final JsonParser p,
+                    final JsonDeserializer<?> deserializer, final Object beanOrClass, final String propertyName)
+                    throws IOException {
+                LOG.warn("UnknownProperty [{}], just skip", propertyName);
+                p.skipChildren();
+                return true;
+            }});
+        try {
+            return mapper.readValue(contentAsInputStream(content.content()), type);
+        } catch (Exception e) {
+            LOG.warn("exception when parse xml, detail: {}",
+                    ExceptionUtils.exception2detail(e));
+            return null;
+        }
+    }
+    
+    public static <T> Func1<Func0<FullHttpRequest>, T> decodeJsonContentAs(final Class<T> type) {
         return new Func1<Func0<FullHttpRequest>, T>() {
             @Override
             public T call(final Func0<FullHttpRequest> getfhr) {
@@ -149,20 +189,30 @@ public class ParamUtil {
             }};
     }
     
-    public static <T> T parseContentAsJson(final HttpContent content, final Class<?> type) {
-        return JSON.parseObject(contentAsBytes(content.content()),type);
+    public static <T> T parseContentAsJson(final HttpContent content, final Class<T> type) {
+        try {
+            return JSON.parseObject(contentAsInputStream(content.content()), type);
+        } catch (IOException e) {
+            LOG.warn("exception when parse {} as json, detail: {}",
+                    content, ExceptionUtils.exception2detail(e));
+            return null;
+        }
     }
     
-    private static byte[] contentAsBytes(final ByteBuf buf) {
-        if (buf instanceof EmptyByteBuf) {
-            return null;
-        }
-        try {
-            return ByteStreams.toByteArray(new ByteBufInputStream(buf.slice()));
-        } catch (IOException e) {
-            LOG.warn("exception when decodeContent, detail:{}", 
-                    ExceptionUtils.exception2detail(e));
-            return null;
-        }
+    private static InputStream contentAsInputStream(final ByteBuf buf) {
+        return new ByteBufInputStream(buf.slice());
     }
+    
+//    private static byte[] contentAsBytes(final ByteBuf buf) {
+//        if (buf instanceof EmptyByteBuf) {
+//            return null;
+//        }
+//        try {
+//            return ByteStreams.toByteArray(new ByteBufInputStream(buf.slice()));
+//        } catch (IOException e) {
+//            LOG.warn("exception when decodeContent, detail:{}", 
+//                    ExceptionUtils.exception2detail(e));
+//            return null;
+//        }
+//    }
 }
