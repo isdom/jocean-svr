@@ -337,9 +337,13 @@ public class Registrar implements MBeanRegisterAware {
 
     //  TBD: 查表实现
     private Object buildArgByType(final Type argType, final HttpTrade trade, final HttpRequest request) {
-//        if (argType instanceof Class<?>) {
-//            ((Class<?>)argType).getAnnotation(annotationClass)
-//        }
+        if (argType instanceof Class<?>) {
+            final Class<?> argClass = (Class<?>)argType;
+            final HeaderParam headerParam = argClass.getAnnotation(HeaderParam.class);
+            if (null != headerParam) {
+                return buildHeaderParam(request, headerParam.value(), argClass);
+            }
+        }
         if (argType instanceof ParameterizedType){  
             //参数化类型  
             final ParameterizedType parameterizedType = (ParameterizedType) argType;
@@ -356,6 +360,10 @@ public class Registrar implements MBeanRegisterAware {
         }
         
         return null;
+    }
+
+    private Object buildHeaderParam(final HttpRequest request, final String name, final Class<?> argType) {
+        return ParamUtil.getAsType(request.headers().get(name), argType);
     }
 
     private ToFullHttpRequest buildTFR(final HttpTrade trade) {

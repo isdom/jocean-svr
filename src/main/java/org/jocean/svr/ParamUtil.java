@@ -105,6 +105,24 @@ public class ParamUtil {
             injectValueToField(values.get(0), obj, field);
         }
     }
+    
+    @SuppressWarnings("unchecked")
+    public static <T> T getAsType(final String value, final Class<T> type) {
+        if (type.equals(String.class)) {
+            return (T)value;
+        } else {
+            final PropertyEditor editor = PropertyEditorManager.findEditor(type);
+            if (null != editor) {
+                editor.setAsText(value);
+                return (T)editor.getValue();
+            } else {
+                LOG.warn("can't found PropertyEditor for type{}, skip get value {}.",
+                        type, value);
+                throw new RuntimeException(
+                    "can't found PropertyEditor for type ("+ type +")");
+            }
+        }
+    }
 
     /**
      * @param value
@@ -117,19 +135,7 @@ public class ParamUtil {
             final Field field) {
         if (null != value) {
             try {
-                // just check String field
-                if (field.getType().equals(String.class)) {
-                    field.set(obj, value);
-                } else {
-                    final PropertyEditor editor = PropertyEditorManager.findEditor(field.getType());
-                    if (null != editor) {
-                        editor.setAsText(value);
-                        field.set(obj, editor.getValue());
-                    } else {
-                        LOG.warn("can't found PropertyEditor for field{}, skip inject value {}.",
-                                field.getName(), value);
-                    }
-                }
+                field.set(obj, getAsType(value, field.getType()));
             } catch (Exception e) {
                 LOG.warn("exception when set obj({}).{} with value({}), detail:{} ",
                         obj, field.getName(), value, ExceptionUtils.exception2detail(e));
@@ -202,17 +208,4 @@ public class ParamUtil {
     private static InputStream contentAsInputStream(final ByteBuf buf) {
         return new ByteBufInputStream(buf.slice());
     }
-    
-//    private static byte[] contentAsBytes(final ByteBuf buf) {
-//        if (buf instanceof EmptyByteBuf) {
-//            return null;
-//        }
-//        try {
-//            return ByteStreams.toByteArray(new ByteBufInputStream(buf.slice()));
-//        } catch (IOException e) {
-//            LOG.warn("exception when decodeContent, detail:{}", 
-//                    ExceptionUtils.exception2detail(e));
-//            return null;
-//        }
-//    }
 }
