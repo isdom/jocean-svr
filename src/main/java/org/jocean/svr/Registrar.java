@@ -275,7 +275,9 @@ public class Registrar implements MBeanRegisterAware {
             if (null!=resource) {
                 try {
                     final Object returnValue = ctx._processor.invoke(resource, 
-                                buildArgs(ctx._processor.getGenericParameterTypes(), trade, request));
+                                buildArgs(ctx._processor.getGenericParameterTypes(), 
+                                        ctx._processor.getParameterAnnotations(),
+                                        trade, request));
                     if (null!=returnValue) {
                         final Type returnType = ctx._processor.getGenericReturnType();
                         
@@ -327,21 +329,25 @@ public class Registrar implements MBeanRegisterAware {
             }});
     }
 
-    private Object[] buildArgs(final Type[] genericParameterTypes, final HttpTrade trade, final HttpRequest request) {
+    private Object[] buildArgs(final Type[] genericParameterTypes, 
+            final Annotation[][] parameterAnnotations, 
+            final HttpTrade trade, final HttpRequest request) {
         final List<Object> args = new ArrayList<>();
+        int idx = 0;
         for (Type argType : genericParameterTypes) {
-            args.add(buildArgByType(argType, trade, request));
+            args.add(buildArgByType(argType, parameterAnnotations[idx], trade, request));
+            idx++;
         }
         return args.toArray();
     }
 
     //  TBD: 查表实现
-    private Object buildArgByType(final Type argType, final HttpTrade trade, final HttpRequest request) {
+    private Object buildArgByType(final Type argType, final Annotation[] argAnnotations, 
+            final HttpTrade trade, final HttpRequest request) {
         if (argType instanceof Class<?>) {
-            final Class<?> argClass = (Class<?>)argType;
-            final HeaderParam headerParam = argClass.getAnnotation(HeaderParam.class);
+            final HeaderParam headerParam = getAnnotation(argAnnotations, HeaderParam.class);
             if (null != headerParam) {
-                return buildHeaderParam(request, headerParam.value(), argClass);
+                return buildHeaderParam(request, headerParam.value(), (Class<?>)argType);
             }
         }
         if (argType instanceof ParameterizedType){  
@@ -359,6 +365,16 @@ public class Registrar implements MBeanRegisterAware {
             return request.method();
         }
         
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T extends Annotation> T getAnnotation(final Annotation[] annotations, final Class<T> type) {
+        for (Annotation annotation : annotations) {
+            if (annotations.getClass().equals(type)) {
+                return (T)annotation;
+            }
+        }
         return null;
     }
 
