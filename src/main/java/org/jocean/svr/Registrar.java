@@ -371,7 +371,7 @@ public class Registrar implements MBeanRegisterAware {
     @SuppressWarnings("unchecked")
     private static <T extends Annotation> T getAnnotation(final Annotation[] annotations, final Class<T> type) {
         for (Annotation annotation : annotations) {
-            if (annotations.getClass().equals(type)) {
+            if (annotation.annotationType().equals(type)) {
                 return (T)annotation;
             }
         }
