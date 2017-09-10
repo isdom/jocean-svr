@@ -275,7 +275,7 @@ public class Registrar implements MBeanRegisterAware {
             if (null!=resource) {
                 try {
                     final Object returnValue = ctx._processor.invoke(resource, 
-                                buildArgs(ctx._processor.getGenericParameterTypes(), trade));
+                                buildArgs(ctx._processor.getGenericParameterTypes(), trade, request));
                     if (null!=returnValue) {
                         final Type returnType = ctx._processor.getGenericReturnType();
                         
@@ -327,16 +327,19 @@ public class Registrar implements MBeanRegisterAware {
             }});
     }
 
-    private Object[] buildArgs(final Type[] genericParameterTypes, final HttpTrade trade) {
+    private Object[] buildArgs(final Type[] genericParameterTypes, final HttpTrade trade, final HttpRequest request) {
         final List<Object> args = new ArrayList<>();
         for (Type argType : genericParameterTypes) {
-            args.add(buildArgByType(argType, trade));
+            args.add(buildArgByType(argType, trade, request));
         }
         return args.toArray();
     }
 
     //  TBD: 查表实现
-    private Object buildArgByType(final Type argType, final HttpTrade trade) {
+    private Object buildArgByType(final Type argType, final HttpTrade trade, final HttpRequest request) {
+//        if (argType instanceof Class<?>) {
+//            ((Class<?>)argType).getAnnotation(annotationClass)
+//        }
         if (argType instanceof ParameterizedType){  
             //参数化类型  
             final ParameterizedType parameterizedType = (ParameterizedType) argType;
@@ -348,6 +351,8 @@ public class Registrar implements MBeanRegisterAware {
             }
         } else if (argType.equals(ToFullHttpRequest.class)) {
             return buildTFR(trade);
+        } else if (argType.equals(io.netty.handler.codec.http.HttpMethod.class)) {
+            return request.method();
         }
         
         return null;
