@@ -71,7 +71,6 @@ public class TradeProcessor extends Subscriber<HttpTrade>
                                 public void applyTo(final Outboundable outboundable) {
                                     outboundable.setFlushPerWrite(true);
                                 }}
-//                            .delaySubscription(trade.inbound().last())
                             );
                     } catch (Exception e) {
                         LOG.warn("exception when buildResource, detail:{}",
