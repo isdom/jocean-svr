@@ -68,7 +68,7 @@ public class ParamUtil {
         }
     }
     
-    private static String rawQuery(final String uri) {
+    public static String rawQuery(final String uri) {
         final int pos = uri.indexOf('?');
         if (-1 != pos) {
             return uri.substring(pos+1);
@@ -103,6 +103,14 @@ public class ParamUtil {
             final Field field) {
         if (null != values && values.size() > 0) {
             injectValueToField(values.get(0), obj, field);
+        }
+    }
+    
+    public static <T> T getAsType(final List<String> list, final Class<T> type) {
+        if (null != list && list.size() > 0) {
+            return getAsType(list.get(0), type);
+        } else {
+            return null;
         }
     }
     

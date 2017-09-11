@@ -349,6 +349,10 @@ public class Registrar implements MBeanRegisterAware {
             if (null != headerParam) {
                 return buildHeaderParam(request, headerParam.value(), (Class<?>)argType);
             }
+            final QueryParam queryParam = getAnnotation(argAnnotations, QueryParam.class);
+            if (null != queryParam) {
+                return buildQueryParam(request, queryParam.value(), (Class<?>)argType);
+            }
         }
         if (argType instanceof ParameterizedType){  
             //参数化类型  
@@ -380,6 +384,22 @@ public class Registrar implements MBeanRegisterAware {
 
     private Object buildHeaderParam(final HttpRequest request, final String name, final Class<?> argType) {
         return ParamUtil.getAsType(request.headers().get(name), argType);
+    }
+
+    private Object buildQueryParam(final HttpRequest request, final String key, final Class<?> argType) {
+        final QueryStringDecoder decoder = new QueryStringDecoder(request.uri());
+
+        if (!"".equals(key) && null != decoder.parameters()) {
+            // for case: QueryParam("demo")
+            return ParamUtil.getAsType(decoder.parameters().get(key), argType);
+        }
+        
+        if ("".equals(key)) {
+            // for case: QueryParam(""), means fill with entire query string
+            return ParamUtil.getAsType(ParamUtil.rawQuery(request.uri()), argType);
+        }
+        
+        return null;
     }
 
     private ToFullHttpRequest buildTFR(final HttpTrade trade) {
