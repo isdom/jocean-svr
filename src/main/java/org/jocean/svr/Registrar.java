@@ -68,13 +68,19 @@ import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.EmptyByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.handler.codec.http.DefaultHttpContent;
+import io.netty.handler.codec.http.DefaultHttpResponse;
+import io.netty.handler.codec.http.DefaultLastHttpContent;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.HttpUtil;
+import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.cookie.Cookie;
 import io.netty.handler.codec.http.cookie.ServerCookieDecoder;
@@ -283,13 +289,13 @@ public class Registrar implements MBeanRegisterAware {
                         
                         if (isObservableType(returnType)) {
                             //  return type is Observable<XXX>
-                            final Class<?> genericType = getGenericTypeOf(returnType, 0);
-                            if (genericType.equals(HttpObject.class)) {
+                            final Class<?> gt1st = getGenericTypeOf(returnType, 0);
+                            if (gt1st.equals(HttpObject.class)) {
                                 return (Observable<HttpObject>)returnValue;
-                            } else if (genericType.equals(String.class)) {
+                            } else if (gt1st.equals(String.class)) {
                                 return strings2Response((Observable<String>)returnValue, request);
-                            } else {
-                                // other generic type, HttpObject nor String
+                            } else if (gt1st.equals(Object.class)) {
+                                return objs2Response((Observable<Object>)returnValue, request);
                             }
                         } else {
                             // return is NOT Observable<?>
@@ -314,6 +320,51 @@ public class Registrar implements MBeanRegisterAware {
     private static boolean isObservableType(final Type type) {
         return (type instanceof ParameterizedType)
             && ((ParameterizedType)type).getRawType().equals(Observable.class);
+    }
+
+    private Observable<HttpObject> objs2Response(final Observable<Object> objs, final HttpRequest request) {
+        return objs.map(new Func1<Object, HttpObject>() {
+            @Override
+            public HttpObject call(final Object obj) {
+                if (obj instanceof MessageResponse) {
+                    return buildResponse((MessageResponse)obj, request.protocolVersion());
+                } else if (obj instanceof MessageBody) {
+                    return new DefaultLastHttpContent(((MessageBody)obj).content());
+                } else {
+                    return new DefaultHttpContent(Unpooled.copiedBuffer(obj.toString(), CharsetUtil.UTF_8));
+                }
+            }});
+    }
+
+    private HttpResponse buildResponse(final MessageResponse msgresp, final HttpVersion version) {
+        HttpResponse resp = null;
+        if (msgresp instanceof MessageBody) {
+            resp = new DefaultFullHttpResponse(version, HttpResponseStatus.valueOf(msgresp.status()), 
+                    ((MessageBody)msgresp).content());
+        } else {
+            resp = new DefaultHttpResponse(version, HttpResponseStatus.valueOf(msgresp.status()));
+            HttpUtil.setTransferEncodingChunked(resp, true);
+        }
+        fillParams(msgresp, resp);
+        return resp;
+    }
+
+    private void fillParams(final Object obj, final HttpResponse resp) {
+        final Field[] headerFields = 
+            ReflectUtils.getAnnotationFieldsOf(obj.getClass(), HeaderParam.class);
+        for ( Field field : headerFields ) {
+            try {
+                final Object value = field.get(obj);
+                if ( null != value ) {
+                    final String headername = 
+                        field.getAnnotation(HeaderParam.class).value();
+                    resp.headers().set(headername, value);
+                }
+            } catch (Exception e) {
+                LOG.warn("exception when get value from headerparam field:[{}], detail:{}",
+                        field, ExceptionUtils.exception2detail(e));
+            }
+        }
     }
 
     private Observable<HttpObject> strings2Response(final Observable<String> strings, final HttpRequest request) {
