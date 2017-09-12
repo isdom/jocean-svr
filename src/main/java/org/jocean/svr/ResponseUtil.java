@@ -20,6 +20,14 @@ public class ResponseUtil {
         return Observable.<Object>just(new StatusOnly(status));
     }
     
+    public static MessageResponse respWithStatus(final int status) {
+        return new MessageResponse() {
+            @Override
+            public int status() {
+                return status;
+            }};
+    }
+    
     public static MessageBody emptyBody() {
         return EMPTY_BODY;
     }
