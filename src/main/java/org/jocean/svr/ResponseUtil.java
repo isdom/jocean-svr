@@ -20,6 +20,16 @@ public class ResponseUtil {
         return Observable.<Object>just(new StatusOnly(status));
     }
     
+    public static MessageBody emptyBody() {
+        return EMPTY_BODY;
+    }
+    
+    private static final MessageBody EMPTY_BODY = new MessageBody() {
+        @Override
+        public ByteBuf content() {
+            return null;
+        }};
+    
     private static final class StatusOnly implements MessageResponse, MessageBody {
         StatusOnly(final int status) {
             this._status = status;
