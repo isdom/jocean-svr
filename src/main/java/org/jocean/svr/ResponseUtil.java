@@ -1,10 +1,16 @@
 package org.jocean.svr;
 
+import org.jocean.http.util.RxNettys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.handler.codec.http.HttpObject;
+import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpUtil;
 import rx.Observable;
+import rx.Observable.Transformer;
+import rx.functions.Func1;
 
 public class ResponseUtil {
     
@@ -25,6 +31,30 @@ public class ResponseUtil {
             @Override
             public int status() {
                 return status;
+            }};
+    }
+    
+    public static Transformer<Object, Object> handleExpect100(
+            final Observable<HttpObject> request,
+            final Func1<HttpRequest, Integer> continueHandler) {
+        return new Transformer<Object, Object>() {
+            @Override
+            public Observable<Object> call(final Observable<Object> response) {
+                return request.compose(RxNettys.asHttpRequest())
+                .flatMap(new Func1<HttpRequest, Observable<Object>>() {
+                    @Override
+                    public Observable<Object> call(final HttpRequest req) {
+                        if (!HttpUtil.is100ContinueExpected(req)) {
+                            return response;
+                        } else {
+                            final int status = continueHandler.call(req);
+                            if (status == 100) {
+                                return Observable.concat(ResponseUtil.statusOnly(status), response);
+                            } else {
+                                return ResponseUtil.statusOnly(status);
+                            }
+                        }
+                    }});
             }};
     }
     

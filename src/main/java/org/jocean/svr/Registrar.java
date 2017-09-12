@@ -81,7 +81,6 @@ import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
-import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.cookie.Cookie;
 import io.netty.handler.codec.http.cookie.ServerCookieDecoder;
@@ -327,7 +326,9 @@ public class Registrar implements MBeanRegisterAware {
         return objs.map(new Func1<Object, HttpObject>() {
             @Override
             public HttpObject call(final Object obj) {
-                if (obj instanceof MessageResponse) {
+                if (obj instanceof HttpObject) {
+                    return (HttpObject)obj;
+                } else if (obj instanceof MessageResponse) {
                     return buildResponse((MessageResponse)obj, request.protocolVersion());
                 } else if (obj instanceof MessageBody) {
                     return new DefaultLastHttpContent(body2content((MessageBody)obj));
