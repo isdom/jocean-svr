@@ -17,7 +17,7 @@ public class ResponseUtil {
     }
     
     public static Observable<Object> statusOnly(final int status) {
-        return Observable.just(new StatusOnly(status));
+        return Observable.<Object>just(new StatusOnly(status));
     }
     
     private static final class StatusOnly implements MessageResponse, MessageBody {
