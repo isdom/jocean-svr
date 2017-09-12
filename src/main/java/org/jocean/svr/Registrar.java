@@ -81,6 +81,7 @@ import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.cookie.Cookie;
 import io.netty.handler.codec.http.cookie.ServerCookieDecoder;
@@ -329,7 +330,7 @@ public class Registrar implements MBeanRegisterAware {
                 if (obj instanceof MessageResponse) {
                     return buildResponse((MessageResponse)obj, request.protocolVersion());
                 } else if (obj instanceof MessageBody) {
-                    return new DefaultLastHttpContent(((MessageBody)obj).content());
+                    return new DefaultLastHttpContent(body2content((MessageBody)obj));
                 } else {
                     return new DefaultHttpContent(Unpooled.copiedBuffer(obj.toString(), CharsetUtil.UTF_8));
                 }
@@ -340,7 +341,7 @@ public class Registrar implements MBeanRegisterAware {
         HttpResponse resp = null;
         if (msgresp instanceof MessageBody) {
             resp = new DefaultFullHttpResponse(version, HttpResponseStatus.valueOf(msgresp.status()), 
-                    ((MessageBody)msgresp).content());
+                    body2content((MessageBody)msgresp));
         } else {
             resp = new DefaultHttpResponse(version, HttpResponseStatus.valueOf(msgresp.status()));
             HttpUtil.setTransferEncodingChunked(resp, true);
@@ -951,6 +952,10 @@ public class Registrar implements MBeanRegisterAware {
 //        this._register = register;
     }
     
+    private ByteBuf body2content(final MessageBody body) {
+        return null != body.content() ? body.content() : Unpooled.EMPTY_BUFFER;
+    }
+
     private final Map<String, ResContext> _resCtxs =
             new HashMap<String, ResContext>();
 
