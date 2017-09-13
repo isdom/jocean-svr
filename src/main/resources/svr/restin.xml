@@ -45,6 +45,7 @@
         <constructor-arg>
             <bean class="org.jocean.svr.TradeProcessor">
 		        <constructor-arg ref="registrar" />
+                <property name="autoCORS" value="${autocors:true}"/>
 		    </bean>
         </constructor-arg>
     </bean>

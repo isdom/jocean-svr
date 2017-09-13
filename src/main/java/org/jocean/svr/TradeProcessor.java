@@ -11,9 +11,13 @@ import org.jocean.j2se.jmx.MBeanRegisterAware;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpResponse;
+import rx.Observable;
 import rx.Subscriber;
+import rx.functions.Action1;
 
 /**
  * @author isdom
@@ -30,6 +34,10 @@ public class TradeProcessor extends Subscriber<HttpTrade>
         this._registrar = registrar;
     }
     
+    public void setAutoCORS(final boolean autoCORS) {
+        this._autoCORS = autoCORS;
+    }
+
     @Override
     public void onCompleted() {
         // TODO Auto-generated method stub
@@ -64,8 +72,25 @@ public class TradeProcessor extends Subscriber<HttpTrade>
             public void onNext(final HttpObject msg) {
                 if (msg instanceof HttpRequest) {
                     try {
+                        final HttpRequest request = (HttpRequest)msg;
+                        Observable<HttpObject> response = _registrar.buildResource(request, trade);
+                        if (_autoCORS) {
+                            final String origin = request.headers().get(HttpHeaderNames.ORIGIN);
+                            if (null != origin) {
+                                response = response.doOnNext(new Action1<HttpObject>() {
+                                    @Override
+                                    public void call(final HttpObject hobj) {
+                                        if (hobj instanceof HttpResponse) {
+                                            ((HttpResponse)hobj).headers().set(
+                                                HttpHeaderNames.ACCESS_CONTROL_ALLOW_ORIGIN, origin); 
+                                            ((HttpResponse)hobj).headers().set(
+                                                HttpHeaderNames.ACCESS_CONTROL_ALLOW_CREDENTIALS, true);
+                                        }
+                                    }});
+                            }
+                        }
                         trade.outbound(
-                            _registrar.buildResource((HttpRequest)msg, trade),
+                            response,
                             new WritePolicy() {
                                 @Override
                                 public void applyTo(final Outboundable outboundable) {
@@ -82,6 +107,8 @@ public class TradeProcessor extends Subscriber<HttpTrade>
     }
 
     private final Registrar _registrar;
+    
+    private boolean _autoCORS = false;
     
     @Override
     public void setMBeanRegister(final MBeanRegister register) {
