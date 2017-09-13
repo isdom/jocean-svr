@@ -289,7 +289,7 @@ public class Registrar implements MBeanRegisterAware {
                         
                         if (isObservableType(returnType)) {
                             //  return type is Observable<XXX>
-                            final Class<?> gt1st = getGenericTypeOf(returnType, 0);
+                            final Type gt1st = getGenericTypeOf(returnType, 0);
                             if (gt1st.equals(HttpObject.class)) {
                                 return (Observable<HttpObject>)returnValue;
                             } else if (gt1st.equals(String.class)) {
@@ -311,15 +311,18 @@ public class Registrar implements MBeanRegisterAware {
         return RxNettys.response404NOTFOUND(request.protocolVersion());
     }
 
-    private static Class<?> getGenericTypeOf(final Type type, final int idx) {
+    private static Type getGenericTypeOf(final Type type, final int idx) {
         return type instanceof ParameterizedType 
-                ? (Class<?>)((ParameterizedType)type).getActualTypeArguments()[idx]
+                ? ((ParameterizedType)type).getActualTypeArguments()[idx]
                 : null;
     }
 
     private static boolean isObservableType(final Type type) {
-        return (type instanceof ParameterizedType)
-            && ((ParameterizedType)type).getRawType().equals(Observable.class);
+        return Observable.class.equals(getParameterizedRawType(type));
+    }
+
+    private static Type getParameterizedRawType(final Type type) {
+        return (type instanceof ParameterizedType) ? ((ParameterizedType)type).getRawType() : null;
     }
 
     private Observable<HttpObject> objs2Response(final Observable<Object> objs, final HttpRequest request) {
@@ -420,12 +423,15 @@ public class Registrar implements MBeanRegisterAware {
             }
         }
         if (argType instanceof ParameterizedType){  
-            //参数化类型  
-            final ParameterizedType parameterizedType = (ParameterizedType) argType;
-            if ( isObservableType(parameterizedType)
-                && parameterizedType.getActualTypeArguments()[0].equals(HttpObject.class)) {
-                return trade.inbound();
-            } else if (parameterizedType.getRawType().equals(UntilRequestCompleted.class)) {
+            //参数化类型
+            if (isObservableType(argType)) {
+                final Type gt1st = getGenericTypeOf(argType, 0);
+                if (HttpObject.class.equals(gt1st)) {
+                    return trade.inbound();
+                } else if (MessageDecoder.class.equals(gt1st)) {
+                    return buildOMD(trade);
+                }
+            } else if (UntilRequestCompleted.class.equals(getParameterizedRawType(argType))) {
                 return buildURC(trade);
             }
         } else if (argType.equals(ToFullHttpRequest.class)) {
@@ -435,6 +441,45 @@ public class Registrar implements MBeanRegisterAware {
         }
         
         return null;
+    }
+
+    private Observable<MessageDecoder> buildOMD(final HttpTrade trade) {
+        return trade.inbound().last().map(new Func1<Object, MessageDecoder>() {
+            @Override
+            public MessageDecoder call(final Object last) {
+                final Func0<FullHttpRequest> getfhr = trade.inboundHolder().fullOf(RxNettys.BUILD_FULL_REQUEST);
+                return new MessageDecoder() {
+                    @Override
+                    public <T> T decodeAsJson(final Class<T> type) {
+                        final FullHttpRequest fhr = getfhr.call();
+                        if (null != fhr) {
+                            try {
+                                return ParamUtil.parseContentAsJson(fhr, type);
+                            } finally {
+                                fhr.release();
+                            }
+                        }
+                        return null;
+                    }
+
+                    @Override
+                    public <T> T decodeAsXml(final Class<T> type) {
+                        final FullHttpRequest fhr = getfhr.call();
+                        if (null != fhr) {
+                            try {
+                                return ParamUtil.parseContentAsXml(fhr, type);
+                            } finally {
+                                fhr.release();
+                            }
+                        }
+                        return null;
+                    }
+
+                    @Override
+                    public <T> T decodeAsForm(final Class<T> type) {
+                        return null;
+                    }};
+            }});
     }
 
     @SuppressWarnings("unchecked")
