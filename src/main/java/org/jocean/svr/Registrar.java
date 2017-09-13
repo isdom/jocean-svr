@@ -344,8 +344,10 @@ public class Registrar implements MBeanRegisterAware {
     private HttpResponse buildResponse(final MessageResponse msgresp, final HttpVersion version) {
         HttpResponse resp = null;
         if (msgresp instanceof MessageBody) {
+            final ByteBuf content = body2content((MessageBody)msgresp);
             resp = new DefaultFullHttpResponse(version, HttpResponseStatus.valueOf(msgresp.status()), 
-                    body2content((MessageBody)msgresp));
+                    content);
+            HttpUtil.setContentLength(resp, content.readableBytes());
         } else {
             resp = new DefaultHttpResponse(version, HttpResponseStatus.valueOf(msgresp.status()));
             HttpUtil.setTransferEncodingChunked(resp, true);
