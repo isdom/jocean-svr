@@ -1,10 +1,12 @@
 package org.jocean.svr;
 
+import org.jocean.http.DoFlush;
 import org.jocean.http.util.RxNettys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.handler.codec.DecoderResult;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpUtil;
@@ -20,6 +22,26 @@ public class ResponseUtil {
     
     private ResponseUtil() {
         throw new IllegalStateException("No instances!");
+    }
+    
+    private static class FlushOnly implements HttpObject, DoFlush {
+        @Override
+        public DecoderResult decoderResult() {
+            return null;
+        }
+
+        @Override
+        public void setDecoderResult(DecoderResult result) {
+        }
+
+        @Override
+        public DecoderResult getDecoderResult() {
+            return null;
+        }
+    }
+    
+    public static Observable<Object> flushOnly() {
+        return Observable.<Object>just(new FlushOnly());
     }
     
     public static Observable<Object> statusOnly(final int status) {
@@ -49,7 +71,9 @@ public class ResponseUtil {
                         } else {
                             final int status = continueHandler.call(req);
                             if (status == 100) {
-                                return Observable.concat(ResponseUtil.statusOnly(status), response);
+                                return Observable.concat(
+                                    Observable.<Object>just(new StatusOnly(100), new FlushOnly()), 
+                                    response);
                             } else {
                                 return ResponseUtil.statusOnly(status);
                             }
