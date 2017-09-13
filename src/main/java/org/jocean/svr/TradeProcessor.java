@@ -69,7 +69,7 @@ public class TradeProcessor extends Subscriber<HttpTrade>
                             new WritePolicy() {
                                 @Override
                                 public void applyTo(final Outboundable outboundable) {
-                                    outboundable.setFlushPerWrite(false);
+                                    outboundable.setFlushPerWrite(true);
                                 }}
                             );
                     } catch (Exception e) {
