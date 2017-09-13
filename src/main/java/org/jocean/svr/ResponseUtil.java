@@ -67,22 +67,20 @@ public class ResponseUtil {
         }
     }
     
-    public static Transformer<HttpRequest, Object> acceptCORS() {
-        return new Transformer<HttpRequest, Object>() {
-            @Override
-            public Observable<Object> call(final Observable<HttpRequest> ohr) {
-                final ACRHeader hdr = new ACRHeader();
-                return ohr.doOnNext(ParamUtil.injectHeaderParams(hdr))
-                        .map(new Func1<HttpRequest, Object>() {
-                            @Override
-                            public Object call(final HttpRequest req) {
-                                final ACAOnly aca = new ACAOnly();
-                                aca._headers = hdr._headers;
-                                aca._method = hdr._method;
-                                aca._origin = hdr._origin;
-                                return aca;
-                            }});
-            }};
+    public static Observable<Object> acceptCORS(final Observable<HttpObject> request) {
+        final ACRHeader hdr = new ACRHeader();
+        return request.compose(RxNettys.asHttpRequest())
+                .doOnNext(ParamUtil.injectHeaderParams(hdr))
+                .map(new Func1<HttpRequest, Object>() {
+                    @Override
+                    public Object call(final HttpRequest req) {
+                        final ACAOnly aca = new ACAOnly();
+                        aca._headers = hdr._headers;
+                        aca._method = hdr._method;
+                        aca._origin = hdr._origin;
+                        return aca;
+                    }})
+                .delaySubscription(request.last());
     }
     
     public static Observable<Object> flushOnly() {
