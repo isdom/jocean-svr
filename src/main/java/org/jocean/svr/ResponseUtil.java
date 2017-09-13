@@ -44,7 +44,7 @@ public class ResponseUtil {
     }
     
     static private class ACAOnly implements MessageResponse, MessageBody {
-        @HeaderParam("access-control-allow-methods")
+        @HeaderParam("access-control-allow-headers")
         private String _headers;
         
         @HeaderParam("access-control-allow-methods")
