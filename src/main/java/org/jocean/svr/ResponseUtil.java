@@ -1,11 +1,20 @@
 package org.jocean.svr;
 
+import javax.ws.rs.HeaderParam;
+import javax.ws.rs.core.MediaType;
+
 import org.jocean.http.DoFlush;
 import org.jocean.http.util.RxNettys;
+import org.jocean.idiom.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.alibaba.fastjson.JSON;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.dataformat.xml.XmlMapper;
+
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.DecoderResult;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpRequest;
@@ -16,28 +25,11 @@ import rx.functions.Func1;
 
 public class ResponseUtil {
     
-    @SuppressWarnings("unused")
     private static final Logger LOG
         = LoggerFactory.getLogger(ResponseUtil.class);
     
     private ResponseUtil() {
         throw new IllegalStateException("No instances!");
-    }
-    
-    private static class FlushOnly implements HttpObject, DoFlush {
-        @Override
-        public DecoderResult decoderResult() {
-            return null;
-        }
-
-        @Override
-        public void setDecoderResult(DecoderResult result) {
-        }
-
-        @Override
-        public DecoderResult getDecoderResult() {
-            return null;
-        }
     }
     
     public static Observable<Object> flushOnly() {
@@ -46,6 +38,25 @@ public class ResponseUtil {
     
     public static Observable<Object> statusOnly(final int status) {
         return Observable.<Object>just(new StatusOnly(status));
+    }
+    
+    public static Observable<Object> responseAsJson(final int status, final Object pojo) {
+        
+        final ByteBuf content = Unpooled.wrappedBuffer(JSON.toJSONBytes(pojo));
+        return Observable.<Object>just(new FullResponse(status, MediaType.APPLICATION_JSON, content));
+    }
+    
+    public static Observable<Object> responseAsXml(final int status, final Object pojo) {
+        try {
+            final XmlMapper mapper = new XmlMapper();
+            
+            final ByteBuf content = Unpooled.wrappedBuffer(mapper.writeValueAsBytes(pojo));
+            return Observable.<Object>just(new FullResponse(status, MediaType.APPLICATION_XML, content));
+        } catch (JsonProcessingException e) {
+            LOG.warn("exception when convert {} to xml, detail: {}", pojo,
+                    ExceptionUtils.exception2detail(e));
+            return statusOnly(500);
+        }
     }
     
     public static MessageResponse respWithStatus(final int status) {
@@ -92,6 +103,30 @@ public class ResponseUtil {
             return null;
         }};
     
+    private static final class FullResponse implements MessageResponse, MessageBody {
+        FullResponse(final int status, final String contentType, final ByteBuf content) {
+            this._status = status;
+            this._contentType = contentType;
+            this._content = content;
+        }
+        
+        @Override
+        public int status() {
+            return this._status;
+        }
+
+        @Override
+        public ByteBuf content() {
+            return this._content;
+        }
+        
+        private final int _status;
+        private final ByteBuf _content;
+        
+        @HeaderParam("content-type")
+        private final String _contentType;
+    }
+        
     private static final class StatusOnly implements MessageResponse, MessageBody {
         StatusOnly(final int status) {
             this._status = status;
@@ -109,4 +144,21 @@ public class ResponseUtil {
         
         private final int _status;
     }
+    
+    private static class FlushOnly implements HttpObject, DoFlush {
+        @Override
+        public DecoderResult decoderResult() {
+            return null;
+        }
+
+        @Override
+        public void setDecoderResult(DecoderResult result) {
+        }
+
+        @Override
+        public DecoderResult getDecoderResult() {
+            return null;
+        }
+    }
+    
 }
