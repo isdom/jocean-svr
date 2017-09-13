@@ -452,7 +452,7 @@ public class Registrar implements MBeanRegisterAware {
                 final Func0<FullHttpRequest> getfhr = trade.inboundHolder().fullOf(RxNettys.BUILD_FULL_REQUEST);
                 return new MessageDecoder() {
                     @Override
-                    public <T> T decodeAsJson(final Class<T> type) {
+                    public <T> T decodeJsonAs(final Class<T> type) {
                         final FullHttpRequest fhr = getfhr.call();
                         if (null != fhr) {
                             try {
@@ -465,7 +465,7 @@ public class Registrar implements MBeanRegisterAware {
                     }
 
                     @Override
-                    public <T> T decodeAsXml(final Class<T> type) {
+                    public <T> T decodeXmlAs(final Class<T> type) {
                         final FullHttpRequest fhr = getfhr.call();
                         if (null != fhr) {
                             try {
@@ -478,7 +478,7 @@ public class Registrar implements MBeanRegisterAware {
                     }
 
                     @Override
-                    public <T> T decodeAsForm(final Class<T> type) {
+                    public <T> T decodeFormAs(final Class<T> type) {
                         return null;
                     }};
             }});
