@@ -32,6 +32,59 @@ public class ResponseUtil {
         throw new IllegalStateException("No instances!");
     }
     
+    static private class ACRHeader {
+        @HeaderParam("access-control-request-headers")
+        private String _headers;
+        
+        @HeaderParam("access-control-request-method")
+        private String _method;
+    
+        @HeaderParam("origin")
+        private String _origin;
+    }
+    
+    static private class ACAOnly implements MessageResponse, MessageBody {
+        @HeaderParam("access-control-allow-methods")
+        private String _headers;
+        
+        @HeaderParam("access-control-allow-methods")
+        private String _method;
+    
+        @HeaderParam("access-control-allow-origin")
+        private String _origin;
+
+        @HeaderParam("access-control-allow-credentials")
+        private boolean _credentials = true;
+        
+        @Override
+        public ByteBuf content() {
+            return null;
+        }
+
+        @Override
+        public int status() {
+            return 202;
+        }
+    }
+    
+    public static Transformer<HttpRequest, Object> acceptCORS() {
+        return new Transformer<HttpRequest, Object>() {
+            @Override
+            public Observable<Object> call(final Observable<HttpRequest> ohr) {
+                final ACRHeader hdr = new ACRHeader();
+                return ohr.doOnNext(ParamUtil.injectHeaderParams(hdr))
+                        .map(new Func1<HttpRequest, Object>() {
+                            @Override
+                            public Object call(final HttpRequest req) {
+                                final ACAOnly aca = new ACAOnly();
+                                aca._headers = hdr._headers;
+                                aca._method = hdr._method;
+                                aca._origin = hdr._origin;
+                                return aca;
+                            }});
+            }};
+    }
+    
     public static Observable<Object> flushOnly() {
         return Observable.<Object>just(new FlushOnly());
     }
