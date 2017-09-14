@@ -27,8 +27,12 @@ import java.util.regex.Pattern;
 import javax.ws.rs.BeanParam;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.CookieParam;
+import javax.ws.rs.GET;
+import javax.ws.rs.HEAD;
 import javax.ws.rs.HeaderParam;
-import javax.ws.rs.HttpMethod;
+import javax.ws.rs.OPTIONS;
+import javax.ws.rs.POST;
+import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.QueryParam;
@@ -75,6 +79,7 @@ import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
+import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
@@ -197,24 +202,38 @@ public class Registrar implements MBeanRegisterAware {
         }
         
         for (Method m : restMethods) {
-            
             final String methodPath = genMethodPathOf(rootPath, m);
-            final PathMatcher pathMatcher = PathMatcher.create(methodPath);
-            if (null == pathMatcher) {
-                //  Path without parameters
+            if (
+                registerProcessorWithHttpMethod(resourceCls, m, methodPath, GET.class)
+                +
+                registerProcessorWithHttpMethod(resourceCls, m, methodPath, POST.class)
+                +
+                registerProcessorWithHttpMethod(resourceCls, m, methodPath, PUT.class)
+                +
+                registerProcessorWithHttpMethod(resourceCls, m, methodPath, HEAD.class)
+                +
+                registerProcessorWithHttpMethod(resourceCls, m, methodPath, OPTIONS.class)
+                == 0) {
+                // NO HttpMethod annotation exist
+                // register with only path
                 this._resCtxs.put(methodPath, new ResContext(resourceCls, m));
-
                 if (LOG.isDebugEnabled()) {
                     LOG.debug("register Path {}", methodPath);
                 }
-            } else {
+            }
+//            final PathMatcher pathMatcher = PathMatcher.create(methodPath);
+//            if (null == pathMatcher) {
+                //  Path without parameters
+//                this._resCtxs.put(methodPath, new ResContext(resourceCls, m));
+
+//            } else {
                 // Path !WITH! parameters
 //                this._pathMatchers.put(httpMethod, Pair.of(pathMatcher, context));
 //                if (LOG.isDebugEnabled()) {
 //                    LOG.debug("register httpMethod {} for !Parametered! Path {} with matcher {} & context {}",
 //                            httpMethod, methodPath, pathMatcher, context);
 //                }
-            }
+//            }
         }
         /*
         final ResContext flowCtx = new ResContext(resourceCls);
@@ -235,6 +254,23 @@ public class Registrar implements MBeanRegisterAware {
         }
         */
         return this;
+    }
+
+    private int registerProcessorWithHttpMethod(final Class<?> resourceCls, 
+            final Method m, 
+            final String methodPath, 
+            final Class<? extends Annotation> hmtype) {
+        if (null!=m.getAnnotation(hmtype)) {
+            final javax.ws.rs.HttpMethod rsHttpMethod = 
+                    hmtype.getAnnotation(javax.ws.rs.HttpMethod.class);
+            this._resCtxs.put(rsHttpMethod.value() + ":" + methodPath, new ResContext(resourceCls, m));
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("register Method {}/Path {}", rsHttpMethod.value(), methodPath);
+            }
+            return 1;
+        } else {
+            return 0;
+        }
     }
 
     public Registrar unregister(final Class<?> cls) {
@@ -269,23 +305,23 @@ public class Registrar implements MBeanRegisterAware {
     public Observable<HttpObject> buildResource(
             final HttpRequest request,
             final HttpTrade trade) throws Exception {
-        final QueryStringDecoder decoder = new QueryStringDecoder(request.uri());
-
-        final String rawPath = getRawPath(decoder.path());
 
         // try direct path match
-        final ResContext ctx = this._resCtxs.get(rawPath);
+        final ResContext ctx = findResourceCtx(request);
+        
         if (null != ctx) {
+            final Method processor = selectProcessor(ctx, request.method());
+            
             final Object resource = this._beanHolder.getBean(ctx._cls);
             
             if (null!=resource) {
                 try {
-                    final Object returnValue = ctx._processor.invoke(resource, 
-                                buildArgs(ctx._processor.getGenericParameterTypes(), 
-                                        ctx._processor.getParameterAnnotations(),
+                    final Object returnValue = processor.invoke(resource, 
+                                buildArgs(processor.getGenericParameterTypes(), 
+                                        processor.getParameterAnnotations(),
                                         trade, request));
                     if (null!=returnValue) {
-                        final Type returnType = ctx._processor.getGenericReturnType();
+                        final Type returnType = processor.getGenericReturnType();
                         
                         if (isObservableType(returnType)) {
                             //  return type is Observable<XXX>
@@ -303,12 +339,39 @@ public class Registrar implements MBeanRegisterAware {
                     }
                 } catch (Exception e) {
                     LOG.warn("exception when invoke process {}, detail{}", 
-                            ctx._processor,
+                            processor,
                             ExceptionUtils.exception2detail(e));
                 }
             }
         }
         return RxNettys.response404NOTFOUND(request.protocolVersion());
+    }
+
+    private Method selectProcessor(final ResContext ctx, final HttpMethod httpMethod) {
+        final Class<? extends Annotation> hmtype = org.jocean.http.util.HttpUtil.toJSR331Type(httpMethod);
+        if (null != ctx._processor.getAnnotation(hmtype)) {
+            // 显式标注了 HttpMethod
+            return ctx._processor;
+        } else {
+            // 未显式标注本次请求的 HttpMethod, 尝试在该类中查找未标注Path, 但标注 HttpMethod 的处理方法
+            final Method[] methods = ReflectUtils.getAnnotationMethodsOf(ctx._cls, hmtype);
+            for (Method m : methods) {
+                if (null == m.getAnnotation(Path.class)) {
+                    return m;
+                }
+            }
+        }
+        return ctx._processor;
+    }
+
+    private ResContext findResourceCtx(final HttpRequest request) {
+        final QueryStringDecoder decoder = new QueryStringDecoder(request.uri());
+        final String rawPath = getRawPath(decoder.path());
+        final ResContext ctx = this._resCtxs.get(request.method().name() + ":" + rawPath);
+        if (null!=ctx) {
+            return ctx;
+        }
+        return this._resCtxs.get(rawPath);
     }
 
     private static Type getGenericTypeOf(final Type type, final int idx) {
@@ -878,7 +941,7 @@ public class Registrar implements MBeanRegisterAware {
             final Class<? extends Annotation> httpMethodAnnotation,
             final String methodPath,
             final ResContext context) {
-        final String httpMethod = checkNotNull(httpMethodAnnotation.getAnnotation(HttpMethod.class),
+        final String httpMethod = checkNotNull(httpMethodAnnotation.getAnnotation(javax.ws.rs.HttpMethod.class),
                 "(%s) must annotated by HttpMethod", httpMethodAnnotation).value();
 
         final PathMatcher pathMatcher = PathMatcher.create(methodPath);
