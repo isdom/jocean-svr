@@ -11,7 +11,7 @@ public interface MethodInterceptor {
         public Object resource();
         public Method processor();
         public HttpRequest request();
-        public Observable<HttpObject> obsRequest();
+        public Observable<? extends HttpObject> obsRequest();
         public Observable<HttpObject> obsResponse();
     }
     

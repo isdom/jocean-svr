@@ -17,8 +17,10 @@ import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -301,7 +303,6 @@ public class Registrar implements MBeanRegisterAware {
         return this;
     }
     
-    @SuppressWarnings("unchecked")
     public Observable<HttpObject> buildResource(
             final HttpRequest request,
             final HttpTrade trade) throws Exception {
@@ -315,36 +316,153 @@ public class Registrar implements MBeanRegisterAware {
             final Object resource = this._beanHolder.getBean(ctx._cls);
             
             if (null!=resource) {
-                try {
-                    final Object returnValue = processor.invoke(resource, 
-                                buildArgs(processor.getGenericParameterTypes(), 
-                                        processor.getParameterAnnotations(),
-                                        trade, request));
-                    if (null!=returnValue) {
-                        final Type returnType = processor.getGenericReturnType();
-                        
-                        if (isObservableType(returnType)) {
-                            //  return type is Observable<XXX>
-                            final Type gt1st = getGenericTypeOf(returnType, 0);
-                            if (gt1st.equals(HttpObject.class)) {
-                                return (Observable<HttpObject>)returnValue;
-                            } else if (gt1st.equals(String.class)) {
-                                return strings2Response((Observable<String>)returnValue, request);
-                            } else if (gt1st.equals(Object.class)) {
-                                return objs2Response((Observable<Object>)returnValue, request);
-                            }
-                        } else {
-                            // return is NOT Observable<?>
-                        }
+                final Deque<MethodInterceptor> interceptors = new LinkedList<>();
+                final MethodInterceptor.Context interceptorCtx = new MethodInterceptor.Context() {
+                    @Override
+                    public Object resource() {
+                        return resource;
                     }
-                } catch (Exception e) {
-                    LOG.warn("exception when invoke process {}, detail{}", 
-                            processor,
-                            ExceptionUtils.exception2detail(e));
+                    @Override
+                    public HttpRequest request() {
+                        return request;
+                    }
+                    @Override
+                    public Method processor() {
+                        return processor;
+                    }
+                    @Override
+                    public Observable<? extends HttpObject> obsRequest() {
+                        return trade.inbound();
+                    }
+                    @Override
+                    public Observable<HttpObject> obsResponse() {
+                        return null;
+                    }
+                };
+                final Observable<HttpObject> obsResponse = doPreInvoke(interceptorCtx, interceptors);
+                if (null != obsResponse) {
+                    //  intercept 直接响应
+                    return doPostInvoke(interceptors, copyCtxWithResponse(interceptorCtx, obsResponse));
+                } else {
+                    try {
+                        final Object returnValue = processor.invoke(resource, 
+                                    buildArgs(processor.getGenericParameterTypes(), 
+                                            processor.getParameterAnnotations(),
+                                            trade, request));
+                        if (null!=returnValue) {
+                            final Observable<HttpObject> resourceObsResponse = 
+                                    returnValue2ObsResponse(request, 
+                                            processor.getGenericReturnType(), 
+                                            returnValue);
+                            if (null != resourceObsResponse) {
+                                if (!interceptors.isEmpty()) {
+                                    return doPostInvoke(interceptors, 
+                                            copyCtxWithResponse(interceptorCtx, resourceObsResponse));
+                                } else {
+                                    return resourceObsResponse;
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        LOG.warn("exception when invoke process {}, detail{}", 
+                                processor,
+                                ExceptionUtils.exception2detail(e));
+                    }
                 }
             }
         }
         return RxNettys.response404NOTFOUND(request.protocolVersion());
+    }
+
+    @SuppressWarnings("unchecked")
+    private Observable<HttpObject> returnValue2ObsResponse(
+            final HttpRequest request, 
+            final Type returnType, 
+            final Object returnValue) {
+        if (isObservableType(returnType)) {
+            //  return type is Observable<XXX>
+            final Type gt1st = getGenericTypeOf(returnType, 0);
+            if (gt1st.equals(HttpObject.class)) {
+                return (Observable<HttpObject>)returnValue;
+            } else if (gt1st.equals(String.class)) {
+                return strings2Response((Observable<String>)returnValue, request);
+            } else if (gt1st.equals(Object.class)) {
+                return objs2Response((Observable<Object>)returnValue, request);
+            }
+        } else {
+            // return is NOT Observable<?>
+        }
+        return null;
+    }
+
+    private Observable<HttpObject> doPreInvoke(
+            final MethodInterceptor.Context ctx, 
+            final Deque<MethodInterceptor> interceptors) {
+        final Interceptors interceptorsAnno = ctx.resource().getClass().getAnnotation(Interceptors.class);
+        if (interceptors != null) {
+            final Class<? extends MethodInterceptor>[] types = interceptorsAnno.value();
+            for (Class<? extends MethodInterceptor> type : types) {
+                try {
+                    final MethodInterceptor interceptor = this._beanHolder.getBean(type);
+                    if (null!=interceptor) {
+                        final Observable<HttpObject> obsResponse = interceptor.preInvoke(ctx);
+                        interceptors.addFirst(interceptor);
+                        if (null != obsResponse) {
+                            return obsResponse;
+                        }
+                    }
+                } catch (Exception e) {
+                    LOG.warn("exception when preInvoke by interceptor type {}, detail: {}", 
+                            type, ExceptionUtils.exception2detail(e));
+                }
+            }
+        }
+        return null;
+    }
+
+    private Observable<HttpObject> doPostInvoke(
+            final Collection<MethodInterceptor> interceptors, 
+            MethodInterceptor.Context ctx) {
+        for (MethodInterceptor interceptor : interceptors) {
+            try {
+                final Observable<HttpObject> obsResponse = interceptor.postInvoke(ctx);
+                if (null != obsResponse) {
+                    ctx = copyCtxWithResponse(ctx, obsResponse);
+                }
+            } catch (Exception e) {
+                LOG.warn("exception when get do {}.postInvoke, detail: {}", 
+                        interceptor, ExceptionUtils.exception2detail(e));
+            }
+        }
+        return ctx.obsResponse();
+    }
+
+    private MethodInterceptor.Context copyCtxWithResponse(final MethodInterceptor.Context ctx, 
+            final Observable<HttpObject> obsResponse) {
+        return new MethodInterceptor.Context() {
+            @Override
+            public Object resource() {
+                return ctx.resource();
+            }
+            @Override
+            public Method processor() {
+                return ctx.processor();
+            }
+
+            @Override
+            public HttpRequest request() {
+                return ctx.request();
+            }
+
+            @Override
+            public Observable<? extends HttpObject> obsRequest() {
+                return ctx.obsRequest();
+            }
+
+            @Override
+            public Observable<HttpObject> obsResponse() {
+                return obsResponse;
+            }};
     }
 
     private Method selectProcessor(final ResContext ctx, final HttpMethod httpMethod) {
