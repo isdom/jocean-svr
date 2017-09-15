@@ -25,9 +25,15 @@ public class CORSInterceptor implements MethodInterceptor {
                         new DefaultFullHttpResponse(ctx.request().protocolVersion(), 
                                 HttpResponseStatus.ACCEPTED, Unpooled.EMPTY_BUFFER);
                 HttpUtil.setContentLength(corsresp, 0);
-                corsresp.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_HEADERS, headers);
-                corsresp.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_METHODS, methods);
-                corsresp.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+                if (null != headers) {
+                    corsresp.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_HEADERS, headers);
+                }
+                if (null != methods) {
+                    corsresp.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_METHODS, methods);
+                }
+                if (null != origin) {
+                    corsresp.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+                }
                 corsresp.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_CREDENTIALS, true);
                 return Observable.<HttpObject>just(corsresp)
                     .delaySubscription(ctx.obsRequest().last());
