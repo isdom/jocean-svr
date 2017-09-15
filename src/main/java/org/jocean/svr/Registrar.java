@@ -341,7 +341,7 @@ public class Registrar implements MBeanRegisterAware {
                 };
                 final Observable<HttpObject> obsResponse = doPreInvoke(interceptorCtx, interceptors);
                 if (null != obsResponse) {
-                    //  intercept 直接响应
+                    //  interceptor 直接响应
                     return doPostInvoke(interceptors, copyCtxWithResponse(interceptorCtx, obsResponse));
                 } else {
                     try {
@@ -466,19 +466,6 @@ public class Registrar implements MBeanRegisterAware {
     }
 
     private Method selectProcessor(final ResContext ctx, final HttpMethod httpMethod) {
-        final Class<? extends Annotation> hmtype = org.jocean.http.util.HttpUtil.toJSR331Type(httpMethod);
-        if (null != ctx._processor.getAnnotation(hmtype)) {
-            // 显式标注了 HttpMethod
-            return ctx._processor;
-        } else {
-            // 未显式标注本次请求的 HttpMethod, 尝试在该类中查找未标注Path, 但标注 HttpMethod 的处理方法
-            final Method[] methods = ReflectUtils.getAnnotationMethodsOf(ctx._cls, hmtype);
-            for (Method m : methods) {
-                if (null == m.getAnnotation(Path.class)) {
-                    return m;
-                }
-            }
-        }
         return ctx._processor;
     }
 
