@@ -15,7 +15,7 @@ public class LogRest implements MethodInterceptor {
 
     @Override
     public Observable<HttpObject> preInvoke(final Context ctx) {
-        LOG.debug("REST: PRE {}.{} handle {}", 
+        LOG.debug("REST: PRE [{}]\r\n[{}]\r\nhandle req:\r\n{}", 
                 ctx.resource(), ctx.processor(), ctx.request());
         return null;
     }
@@ -26,7 +26,7 @@ public class LogRest implements MethodInterceptor {
             @Override
             public void call(final HttpObject hobj) {
                 if (hobj instanceof HttpResponse) {
-                    LOG.debug("REST: POST {}.{} handle {}, and resp {}", 
+                    LOG.debug("REST: POST [{}]\r\n[{}]\r\nhandle req:\r\n{}\r\nand resp:\r\n{}", 
                             ctx.resource(), ctx.processor(), ctx.request(), hobj);
                 }
             }});
