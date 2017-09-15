@@ -371,7 +371,8 @@ public class Registrar implements MBeanRegisterAware {
                 }
             }
         }
-        return RxNettys.response404NOTFOUND(request.protocolVersion());
+        return RxNettys.response404NOTFOUND(request.protocolVersion())
+                .delaySubscription(trade.inbound().last());
     }
 
     @SuppressWarnings("unchecked")
