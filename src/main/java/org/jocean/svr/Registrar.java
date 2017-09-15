@@ -464,7 +464,8 @@ public class Registrar implements MBeanRegisterAware {
 
     private Object[] buildArgs(final Type[] genericParameterTypes, 
             final Annotation[][] parameterAnnotations, 
-            final HttpTrade trade, final HttpRequest request) {
+            final HttpTrade trade, 
+            final HttpRequest request) {
         final List<Object> args = new ArrayList<>();
         int idx = 0;
         for (Type argType : genericParameterTypes) {
@@ -475,8 +476,10 @@ public class Registrar implements MBeanRegisterAware {
     }
 
     //  TBD: 查表实现
-    private Object buildArgByType(final Type argType, final Annotation[] argAnnotations, 
-            final HttpTrade trade, final HttpRequest request) {
+    private Object buildArgByType(final Type argType, 
+            final Annotation[] argAnnotations, 
+            final HttpTrade trade, 
+            final HttpRequest request) {
         if (argType instanceof Class<?>) {
             final HeaderParam headerParam = getAnnotation(argAnnotations, HeaderParam.class);
             if (null != headerParam) {
@@ -497,7 +500,7 @@ public class Registrar implements MBeanRegisterAware {
                     return buildOMD(trade);
                 }
             } else if (UntilRequestCompleted.class.equals(getParameterizedRawType(argType))) {
-                return buildURC(trade);
+                return buildURC(trade.inbound());
             }
         } else if (argType.equals(ToFullHttpRequest.class)) {
             return buildTFR(trade);
@@ -590,11 +593,11 @@ public class Registrar implements MBeanRegisterAware {
             }};
     }
 
-    private UntilRequestCompleted<Object> buildURC(final HttpTrade trade) {
+    private UntilRequestCompleted<Object> buildURC(final Observable<? extends HttpObject> inbound) {
         return new UntilRequestCompleted<Object>() {
             @Override
             public Observable<Object> call(Observable<Object> any) {
-                return any.delaySubscription(trade.inbound().last());
+                return any.delaySubscription(inbound.last());
             }};
     }
 
