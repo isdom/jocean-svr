@@ -1,4 +1,6 @@
-package org.jocean.svr;
+package org.jocean.svr.interceptor;
+
+import org.jocean.svr.MethodInterceptor;
 
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -11,7 +13,7 @@ import io.netty.handler.codec.http.HttpUtil;
 import rx.Observable;
 import rx.functions.Action1;
 
-public class CORSInterceptor implements MethodInterceptor {
+public class EnableCORS implements MethodInterceptor {
 
     @Override
     public Observable<HttpObject> preInvoke(final Context ctx) {
