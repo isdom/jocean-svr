@@ -15,7 +15,6 @@ import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import io.netty.handler.codec.DecoderResult;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpUtil;
@@ -84,7 +83,7 @@ public class ResponseUtil {
     }
     
     public static Observable<Object> flushOnly() {
-        return Observable.<Object>just(new FlushOnly());
+        return Observable.<Object>just(DoFlush.Util.flushOnly());
     }
     
     public static Observable<Object> statusOnly(final int status) {
@@ -134,7 +133,7 @@ public class ResponseUtil {
                             final int status = continueHandler.call(req);
                             if (status == 100) {
                                 return Observable.concat(
-                                    Observable.<Object>just(new StatusOnly(100), new FlushOnly()), 
+                                    Observable.<Object>just(new StatusOnly(100), DoFlush.Util.flushOnly()), 
                                     response);
                             } else {
                                 return ResponseUtil.statusOnly(status);
@@ -195,21 +194,4 @@ public class ResponseUtil {
         
         private final int _status;
     }
-    
-    private static class FlushOnly implements HttpObject, DoFlush {
-        @Override
-        public DecoderResult decoderResult() {
-            return null;
-        }
-
-        @Override
-        public void setDecoderResult(DecoderResult result) {
-        }
-
-        @Override
-        public DecoderResult getDecoderResult() {
-            return null;
-        }
-    }
-    
 }

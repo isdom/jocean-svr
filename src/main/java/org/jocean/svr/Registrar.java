@@ -41,6 +41,7 @@ import org.jocean.j2se.jmx.MBeanRegisterAware;
 import org.jocean.j2se.spring.SpringBeanHolder;
 import org.jocean.j2se.unit.UnitAgent;
 import org.jocean.j2se.unit.UnitListener;
+import org.jocean.svr.interceptor.Handle100Continue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.config.BeanDefinition;
@@ -300,15 +301,16 @@ public class Registrar implements MBeanRegisterAware {
                     }
                 };
                 final Observable<HttpObject> obsResponse = doPreInvoke(interceptorCtx, interceptors);
+                final Map<String, Object> argsCtx = new HashMap<>();
                 if (null != obsResponse) {
                     //  interceptor 直接响应
-                    return doPostInvoke(interceptors, copyCtxOverrideResponse(interceptorCtx, obsResponse));
+                    return doPostInvoke(interceptors, copyCtxOverrideResponse(interceptorCtx, obsResponse), argsCtx);
                 } else {
                     try {
                         final Object returnValue = processor.invoke(resource, 
                                     buildArgs(processor.getGenericParameterTypes(), 
                                             processor.getParameterAnnotations(),
-                                            trade, request));
+                                            trade, request, argsCtx));
                         if (null!=returnValue) {
                             final Observable<HttpObject> resourceObsResponse = 
                                     returnValue2ObsResponse(request, 
@@ -317,7 +319,8 @@ public class Registrar implements MBeanRegisterAware {
                             if (null != resourceObsResponse) {
                                 if (!interceptors.isEmpty()) {
                                     return doPostInvoke(interceptors, 
-                                            copyCtxOverrideResponse(interceptorCtx, resourceObsResponse));
+                                            copyCtxOverrideResponse(interceptorCtx, resourceObsResponse),
+                                            argsCtx);
                                 } else {
                                     return resourceObsResponse;
                                 }
@@ -383,9 +386,11 @@ public class Registrar implements MBeanRegisterAware {
 
     private Observable<HttpObject> doPostInvoke(
             final Collection<MethodInterceptor> interceptors, 
-            MethodInterceptor.Context ctx) {
+            MethodInterceptor.Context ctx, 
+            final Map<String, Object> envCtx) {
         for (MethodInterceptor interceptor : interceptors) {
             try {
+                prepareInterceptor4PostInvoke(interceptor, envCtx);
                 final Observable<HttpObject> obsResponse = interceptor.postInvoke(ctx);
                 if (null != obsResponse) {
                     ctx = copyCtxOverrideResponse(ctx, obsResponse);
@@ -396,6 +401,17 @@ public class Registrar implements MBeanRegisterAware {
             }
         }
         return ctx.obsResponse();
+    }
+
+    private void prepareInterceptor4PostInvoke(final MethodInterceptor interceptor, final Map<String, Object> envCtx) {
+        if (interceptor instanceof Handle100Continue) {
+            @SuppressWarnings("unchecked")
+            final Func1<HttpRequest, Integer> predicate = 
+                    (Func1<HttpRequest, Integer>) envCtx.get("100continue_predicate");
+            if (null!=predicate) {
+                ((Handle100Continue)interceptor).setPredicate(predicate);
+            }
+        }
     }
 
     private MethodInterceptor.Context copyCtxOverrideResponse(final MethodInterceptor.Context ctx, 
@@ -531,11 +547,12 @@ public class Registrar implements MBeanRegisterAware {
     private Object[] buildArgs(final Type[] genericParameterTypes, 
             final Annotation[][] parameterAnnotations, 
             final HttpTrade trade, 
-            final HttpRequest request) {
+            final HttpRequest request, 
+            final Map<String, Object> argsCtx) {
         final List<Object> args = new ArrayList<>();
         int idx = 0;
         for (Type argType : genericParameterTypes) {
-            args.add(buildArgByType(argType, parameterAnnotations[idx], trade, request));
+            args.add(buildArgByType(argType, parameterAnnotations[idx], trade, request, argsCtx));
             idx++;
         }
         return args.toArray();
@@ -545,7 +562,8 @@ public class Registrar implements MBeanRegisterAware {
     private Object buildArgByType(final Type argType, 
             final Annotation[] argAnnotations, 
             final HttpTrade trade, 
-            final HttpRequest request) {
+            final HttpRequest request, 
+            final Map<String, Object> argsCtx) {
         if (argType instanceof Class<?>) {
             final HeaderParam headerParam = getAnnotation(argAnnotations, HeaderParam.class);
             if (null != headerParam) {
@@ -570,9 +588,21 @@ public class Registrar implements MBeanRegisterAware {
             }
         } else if (argType.equals(io.netty.handler.codec.http.HttpMethod.class)) {
             return request.method();
+        } else if (argType.equals(HttpRequest.class)) {
+            return request;
+        } else if (argType.equals(_100ContinueAware.class)) {
+            return build100ContinueAware(argsCtx);
         }
         
         return null;
+    }
+
+    private _100ContinueAware build100ContinueAware(final Map<String, Object> argsCtx) {
+        return new _100ContinueAware() {
+            @Override
+            public void setPredicate(final Func1<HttpRequest, Integer> predicate) {
+                argsCtx.put("100continue_predicate", predicate);
+            }};
     }
 
     private Observable<MessageDecoder> buildOMD(final HttpTrade trade) {
