@@ -70,6 +70,7 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.util.CharsetUtil;
 import rx.Observable;
+import rx.functions.Action1;
 import rx.functions.Func0;
 import rx.functions.Func1;
 
@@ -567,8 +568,6 @@ public class Registrar implements MBeanRegisterAware {
             } else if (UntilRequestCompleted.class.equals(getParameterizedRawType(argType))) {
                 return buildURC(trade.inbound());
             }
-        } else if (argType.equals(ToFullHttpRequest.class)) {
-            return buildTFR(trade);
         } else if (argType.equals(io.netty.handler.codec.http.HttpMethod.class)) {
             return request.method();
         }
@@ -582,6 +581,18 @@ public class Registrar implements MBeanRegisterAware {
             public MessageDecoder call(final Object last) {
                 final Func0<FullHttpRequest> getfhr = trade.inboundHolder().fullOf(RxNettys.BUILD_FULL_REQUEST);
                 return new MessageDecoder() {
+                    @Override
+                    public void visitFullRequest(final Action1<FullHttpRequest> visitor) {
+                        final FullHttpRequest fhr = getfhr.call();
+                        if (null != fhr) {
+                            try {
+                                visitor.call(fhr);
+                            } finally {
+                                fhr.release();
+                            }
+                        }
+                    }
+                    
                     @Override
                     public <T> T decodeJsonAs(final Class<T> type) {
                         final FullHttpRequest fhr = getfhr.call();
@@ -643,19 +654,6 @@ public class Registrar implements MBeanRegisterAware {
         }
         
         return null;
-    }
-
-    private ToFullHttpRequest buildTFR(final HttpTrade trade) {
-        return new ToFullHttpRequest() {
-            @Override
-            public Observable<Func0<FullHttpRequest>> call(Observable<Object> any) {
-                return any.last().flatMap(new Func1<Object, Observable<Func0<FullHttpRequest>>>() {
-                    @Override
-                    public Observable<Func0<FullHttpRequest>> call(Object anyobj) {
-                        return Observable.just(trade.inboundHolder().fullOf(RxNettys.BUILD_FULL_REQUEST))
-                                .delaySubscription(trade.inbound().last());
-                    }});
-            }};
     }
 
     private UntilRequestCompleted<Object> buildURC(final Observable<? extends HttpObject> inbound) {
