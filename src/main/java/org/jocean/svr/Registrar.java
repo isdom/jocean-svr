@@ -68,6 +68,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.QueryStringDecoder;
+import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder;
 import io.netty.util.CharsetUtil;
 import rx.Observable;
 import rx.functions.Action1;
@@ -567,7 +568,7 @@ public class Registrar implements MBeanRegisterAware {
                 if (HttpObject.class.equals(gt1st)) {
                     return trade.inbound();
                 } else if (MessageDecoder.class.equals(gt1st)) {
-                    return buildOMD(trade);
+                    return buildOMD(trade, request);
                 }
             } else if (UntilRequestCompleted.class.equals(getParameterizedRawType(argType))) {
                 return buildURC(trade.inbound());
@@ -590,55 +591,65 @@ public class Registrar implements MBeanRegisterAware {
         return null;
     }
 
-    private Observable<MessageDecoder> buildOMD(final HttpTrade trade) {
-        return trade.inbound().last().map(new Func1<Object, MessageDecoder>() {
-            @Override
-            public MessageDecoder call(final Object last) {
-                final Func0<FullHttpRequest> getfhr = trade.inboundHolder().fullOf(RxNettys.BUILD_FULL_REQUEST);
-                return new MessageDecoder() {
-                    @Override
-                    public void visitFullRequest(final Action1<FullHttpRequest> visitor) {
-                        final FullHttpRequest fhr = getfhr.call();
-                        if (null != fhr) {
-                            try {
-                                visitor.call(fhr);
-                            } finally {
-                                fhr.release();
+    private Observable<MessageDecoder> buildOMD(final HttpTrade trade, final HttpRequest request) {
+        if ( request.method().equals(HttpMethod.POST)
+            && HttpPostRequestDecoder.isMultipart(request)) {
+            return Observable.unsafeCreate(new MultipartOMD(trade, request));
+        } else {
+            return trade.inbound().last().map(new Func1<Object, MessageDecoder>() {
+                @Override
+                public MessageDecoder call(final Object last) {
+                    final Func0<FullHttpRequest> getfhr = trade.inboundHolder().fullOf(RxNettys.BUILD_FULL_REQUEST);
+                    return new MessageDecoder() {
+                        @Override
+                        public <T> T decodeJsonAs(final Class<T> type) {
+                            final FullHttpRequest fhr = getfhr.call();
+                            if (null != fhr) {
+                                try {
+                                    return ParamUtil.parseContentAsJson(fhr, type);
+                                } finally {
+                                    fhr.release();
+                                }
                             }
+                            return null;
                         }
-                    }
-                    
-                    @Override
-                    public <T> T decodeJsonAs(final Class<T> type) {
-                        final FullHttpRequest fhr = getfhr.call();
-                        if (null != fhr) {
-                            try {
-                                return ParamUtil.parseContentAsJson(fhr, type);
-                            } finally {
-                                fhr.release();
+    
+                        @Override
+                        public <T> T decodeXmlAs(final Class<T> type) {
+                            final FullHttpRequest fhr = getfhr.call();
+                            if (null != fhr) {
+                                try {
+                                    return ParamUtil.parseContentAsXml(fhr, type);
+                                } finally {
+                                    fhr.release();
+                                }
                             }
+                            return null;
                         }
-                        return null;
-                    }
+    
+                        @Override
+                        public <T> T decodeFormAs(final Class<T> type) {
+                            return null;
+                        }
 
-                    @Override
-                    public <T> T decodeXmlAs(final Class<T> type) {
-                        final FullHttpRequest fhr = getfhr.call();
-                        if (null != fhr) {
-                            try {
-                                return ParamUtil.parseContentAsXml(fhr, type);
-                            } finally {
-                                fhr.release();
-                            }
+                        @Override
+                        public String contentType() {
+                            return request.headers().get(HttpHeaderNames.CONTENT_TYPE);
                         }
-                        return null;
-                    }
 
-                    @Override
-                    public <T> T decodeFormAs(final Class<T> type) {
-                        return null;
-                    }};
-            }});
+                        @Override
+                        public void visitContent(final Action1<ByteBuf> visitor) {
+                            final FullHttpRequest fhr = getfhr.call();
+                            if (null != fhr) {
+                                try {
+                                    visitor.call(fhr.content());
+                                } finally {
+                                    fhr.release();
+                                }
+                            }
+                        }};
+                }});
+        }
     }
 
     @SuppressWarnings("unchecked")
