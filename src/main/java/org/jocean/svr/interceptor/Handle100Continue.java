@@ -1,8 +1,12 @@
 package org.jocean.svr.interceptor;
 
+import java.lang.reflect.Type;
+
 import org.jocean.http.DoFlush;
 import org.jocean.idiom.ExceptionUtils;
+import org.jocean.svr.ArgumentBuilder;
 import org.jocean.svr.MethodInterceptor;
+import org.jocean.svr._100ContinueAware;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,15 +19,11 @@ import io.netty.handler.codec.http.HttpUtil;
 import rx.Observable;
 import rx.functions.Func1;
 
-public class Handle100Continue implements MethodInterceptor {
+public class Handle100Continue implements MethodInterceptor, ArgumentBuilder {
 
     private static final Logger LOG
         = LoggerFactory.getLogger(Handle100Continue.class);
     
-    public void setPredicate(final Func1<HttpRequest, Integer> predicate) {
-        this._predicate = predicate;
-    }
-
     @Override
     public Observable<HttpObject> preInvoke(final Context ctx) {
         return null;
@@ -55,6 +55,20 @@ public class Handle100Continue implements MethodInterceptor {
                 ctx.obsResponse());
         } else {
             return Observable.<HttpObject>just(resp);
+        }
+    }
+    
+    @Override
+    public Object buildArg(final Type argType) {
+        if (_100ContinueAware.class.equals(argType)) {
+            return new _100ContinueAware() {
+                @Override
+                public void setPredicate(final Func1<HttpRequest, Integer> predicate) {
+                    _predicate = predicate;
+                }
+            };
+        } else {
+            return null;
         }
     }
     
