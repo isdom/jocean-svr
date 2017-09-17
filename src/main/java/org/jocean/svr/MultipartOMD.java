@@ -163,7 +163,9 @@ public class MultipartOMD implements Observable.OnSubscribe<MessageDecoder> {
         subscriber.add(Subscriptions.create(new Action0() {
             @Override
             public void call() {
-                fileUpload.release();
+                final boolean released = fileUpload.release();
+                LOG.debug("{}.unsubscribe invoke ({}).release return {}", 
+                        subscriber, fileUpload, released);
             }}));
         return new MessageDecoder() {
             @Override
