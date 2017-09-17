@@ -42,6 +42,7 @@ public class MultipartOMD implements Observable.OnSubscribe<MessageDecoder> {
             this._subscriber = subscriber;
             this._decoder = new HttpPostMultipartRequestDecoder(
                     hTTP_DATA_FACTORY, request);
+            _decoder.setDiscardThreshold(1024);
 //          _decoder.setDiscardThreshold(_discardThreshold);
 //          try {
 //              final Field chunkField = _postDecoder.getClass().getDeclaredField("undecodedChunk");
