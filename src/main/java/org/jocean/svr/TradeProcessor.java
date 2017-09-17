@@ -43,6 +43,7 @@ public class TradeProcessor extends Subscriber<HttpTrade>
 
     @Override
     public void onNext(final HttpTrade trade) {
+        trade.inboundHolder().setMaxBlockSize(-1);
         trade.inbound().subscribe(
             buildInboundSubscriber(trade));
     }
