@@ -175,6 +175,8 @@ public class MultipartOMD implements Observable.OnSubscribe<MessageDecoder> {
                     public FileUpload call() {
                         return fileUpload.retain();
                     }},
-                fileUpload.getContentType());
+                fileUpload.getContentType(),
+                fileUpload.getFilename(),
+                fileUpload.getName());
     }
 }

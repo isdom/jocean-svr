@@ -598,7 +598,9 @@ public class Registrar implements MBeanRegisterAware {
                 public MessageDecoder call(final Object last) {
                     return new MessageDecoderUsingHolder(
                         trade.inboundHolder().fullOf(RxNettys.BUILD_FULL_REQUEST), 
-                        request.headers().get(HttpHeaderNames.CONTENT_TYPE));
+                        request.headers().get(HttpHeaderNames.CONTENT_TYPE),
+                        null,
+                        null);
                 }});
         }
     }
