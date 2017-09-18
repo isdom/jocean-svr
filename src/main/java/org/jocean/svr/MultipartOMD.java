@@ -9,7 +9,6 @@ import org.jocean.idiom.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpRequest;
@@ -23,7 +22,7 @@ import io.netty.handler.codec.http.multipart.InterfaceHttpData;
 import rx.Observable;
 import rx.Subscriber;
 import rx.functions.Action0;
-import rx.functions.Action1;
+import rx.functions.Func0;
 import rx.functions.Func1;
 import rx.subscriptions.Subscriptions;
 
@@ -170,37 +169,12 @@ public class MultipartOMD implements Observable.OnSubscribe<MessageDecoder> {
                 LOG.debug("{}.unsubscribe invoke ({}).release return {}", 
                         subscriber, fileUpload, released);
             }}));
-        return new MessageDecoder() {
-            @Override
-            public String contentType() {
-                return fileUpload.getContentType();
-            }
-
-            @Override
-            public void visitContent(final Action1<ByteBuf> visitor) {
-                final FileUpload fu = fileUpload.retain();
-                if (null != fu) {
-                    try {
-                        visitor.call(fu.content());
-                    } finally {
-                        fu.release();
-                    }
-                }
-            }
-
-            @Override
-            public <T> T decodeJsonAs(Class<T> type) {
-                return null;
-            }
-
-            @Override
-            public <T> T decodeXmlAs(Class<T> type) {
-                return null;
-            }
-
-            @Override
-            public <T> T decodeFormAs(Class<T> type) {
-                return null;
-            }};
+        return new MessageDecoderUsingHolder(
+                new Func0<FileUpload>() {
+                    @Override
+                    public FileUpload call() {
+                        return fileUpload.retain();
+                    }},
+                fileUpload.getContentType());
     }
 }

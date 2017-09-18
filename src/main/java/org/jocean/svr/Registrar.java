@@ -56,7 +56,6 @@ import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.DefaultHttpContent;
 import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.DefaultLastHttpContent;
-import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
@@ -71,8 +70,6 @@ import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder;
 import io.netty.util.CharsetUtil;
 import rx.Observable;
-import rx.functions.Action1;
-import rx.functions.Func0;
 import rx.functions.Func1;
 
 /**
@@ -599,55 +596,9 @@ public class Registrar implements MBeanRegisterAware {
             return trade.inbound().last().map(new Func1<Object, MessageDecoder>() {
                 @Override
                 public MessageDecoder call(final Object last) {
-                    final Func0<FullHttpRequest> getfhr = trade.inboundHolder().fullOf(RxNettys.BUILD_FULL_REQUEST);
-                    return new MessageDecoder() {
-                        @Override
-                        public <T> T decodeJsonAs(final Class<T> type) {
-                            final FullHttpRequest fhr = getfhr.call();
-                            if (null != fhr) {
-                                try {
-                                    return ParamUtil.parseContentAsJson(fhr, type);
-                                } finally {
-                                    fhr.release();
-                                }
-                            }
-                            return null;
-                        }
-    
-                        @Override
-                        public <T> T decodeXmlAs(final Class<T> type) {
-                            final FullHttpRequest fhr = getfhr.call();
-                            if (null != fhr) {
-                                try {
-                                    return ParamUtil.parseContentAsXml(fhr, type);
-                                } finally {
-                                    fhr.release();
-                                }
-                            }
-                            return null;
-                        }
-    
-                        @Override
-                        public <T> T decodeFormAs(final Class<T> type) {
-                            return null;
-                        }
-
-                        @Override
-                        public String contentType() {
-                            return request.headers().get(HttpHeaderNames.CONTENT_TYPE);
-                        }
-
-                        @Override
-                        public void visitContent(final Action1<ByteBuf> visitor) {
-                            final FullHttpRequest fhr = getfhr.call();
-                            if (null != fhr) {
-                                try {
-                                    visitor.call(fhr.content());
-                                } finally {
-                                    fhr.release();
-                                }
-                            }
-                        }};
+                    return new MessageDecoderUsingHolder(
+                        trade.inboundHolder().fullOf(RxNettys.BUILD_FULL_REQUEST), 
+                        request.headers().get(HttpHeaderNames.CONTENT_TYPE));
                 }});
         }
     }

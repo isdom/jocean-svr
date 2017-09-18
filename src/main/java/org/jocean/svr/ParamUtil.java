@@ -23,9 +23,9 @@ import com.fasterxml.jackson.databind.deser.DeserializationProblemHandler;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufHolder;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.http.FullHttpRequest;
-import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import rx.functions.Action1;
@@ -167,7 +167,7 @@ public class ParamUtil {
             }};
     }
     
-    public static <T> T parseContentAsXml(final HttpContent content, final Class<T> type) {
+    public static <T> T parseContentAsXml(final ByteBufHolder holder, final Class<T> type) {
         final XmlMapper mapper = new XmlMapper();
         mapper.addHandler(new DeserializationProblemHandler() {
             @Override
@@ -179,7 +179,7 @@ public class ParamUtil {
                 return true;
             }});
         try {
-            return mapper.readValue(contentAsInputStream(content.content()), type);
+            return mapper.readValue(contentAsInputStream(holder.content()), type);
         } catch (Exception e) {
             LOG.warn("exception when parse xml, detail: {}",
                     ExceptionUtils.exception2detail(e));
@@ -203,12 +203,12 @@ public class ParamUtil {
             }};
     }
     
-    public static <T> T parseContentAsJson(final HttpContent content, final Class<T> type) {
+    public static <T> T parseContentAsJson(final ByteBufHolder holder, final Class<T> type) {
         try {
-            return JSON.parseObject(contentAsInputStream(content.content()), type);
+            return JSON.parseObject(contentAsInputStream(holder.content()), type);
         } catch (IOException e) {
             LOG.warn("exception when parse {} as json, detail: {}",
-                    content, ExceptionUtils.exception2detail(e));
+                    holder, ExceptionUtils.exception2detail(e));
             return null;
         }
     }
