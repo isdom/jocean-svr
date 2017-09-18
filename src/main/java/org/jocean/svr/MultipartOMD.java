@@ -74,6 +74,8 @@ public class MultipartOMD implements Observable.OnSubscribe<MessageDecoder> {
 
         private Observable<MessageDecoder> content2MD(final HttpContent content) {
             try {
+                LOG.info("content2MD: before offer content {} with size {}", 
+                        content, content.content().readableBytes());
                 this._decoder.offer(content);
             } catch (ErrorDataDecoderException e) {
                 LOG.warn("exception when postDecoder.offer, detail: {}", 
