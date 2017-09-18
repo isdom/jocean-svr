@@ -4,6 +4,7 @@ import org.jocean.netty.BlobRepo.Blob;
 
 import io.netty.buffer.ByteBuf;
 import rx.functions.Action1;
+import rx.functions.Func0;
 
 public interface MessageDecoder {
     
@@ -11,7 +12,7 @@ public interface MessageDecoder {
     
     public void visitContent(final Action1<ByteBuf> visitor);
     
-    public void visitContentAsBlob(final Action1<Blob> visitor);
+    public Func0<Blob> blobProducer();
     
     public <T> T decodeJsonAs(final Class<T> type);
     

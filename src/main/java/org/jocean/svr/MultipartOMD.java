@@ -123,9 +123,6 @@ public class MultipartOMD implements Observable.OnSubscribe<MessageDecoder> {
 //                }
                     
                 LOG.info("processHttpData: fileUpload's content is {}", Nettys.dumpByteBufHolder(fileUpload));
-//                final String contentType = fileUpload.getContentType();
-//                final String filename = fileUpload.getFilename();
-//                final String name = fileUpload.getName();
                 return buildMD(fileUpload, _subscriber);
             } else {
                 LOG.info("InterfaceHttpData ({}) is NOT fileUpload, so ignore", data);
@@ -166,8 +163,13 @@ public class MultipartOMD implements Observable.OnSubscribe<MessageDecoder> {
             @Override
             public void call() {
                 final boolean released = fileUpload.release();
-                LOG.debug("{}.unsubscribe invoke ({}).release return {}", 
-                        subscriber, fileUpload, released);
+                if (released) {
+                    LOG.debug("{}.unsubscribe invoke ({}).release return {}", 
+                            subscriber, fileUpload, released);
+                } else {
+                    LOG.warn("{}.unsubscribe invoke ({}).release return {}!, MAYBE ByteBuf Leak", 
+                            subscriber, fileUpload, released);
+                }
             }}));
         return new MessageDecoderUsingHolder(
                 new Func0<FileUpload>() {

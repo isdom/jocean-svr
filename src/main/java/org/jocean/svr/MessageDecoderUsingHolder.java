@@ -58,7 +58,6 @@ public class MessageDecoderUsingHolder implements MessageDecoder {
     public String contentType() {
         return this._contentType;
     }
-    // 
 
     @Override
     public void visitContent(final Action1<ByteBuf> visitor) {
@@ -73,17 +72,19 @@ public class MessageDecoderUsingHolder implements MessageDecoder {
     }
     
     @Override
-    public void visitContentAsBlob(final Action1<Blob> visitor) {
-        final ByteBufHolder holder = this._getcontent.call();
-        if (null != holder) {
-            try {
-                visitor.call(buildBlob(holder.content(), _contentType, _filename, _name));
-            } finally {
-                holder.release();
-            }
-        }
+    public Func0<Blob> blobProducer() {
+        return new Func0<Blob>() {
+            @Override
+            public Blob call() {
+                final ByteBufHolder holder = _getcontent.call();
+                if (null != holder) {
+                    return buildBlob(holder.content(), _contentType, _filename, _name);
+                } else {
+                    return null;
+                }
+            }};
     }
-    
+
     private static Blob buildBlob(final ByteBuf bytebuf,
             final String contentType, 
             final String filename,
@@ -93,7 +94,7 @@ public class MessageDecoderUsingHolder implements MessageDecoder {
             @Override
             public String toString() {
                 final StringBuilder builder = new StringBuilder();
-                builder.append("Blob [name=").append(name())
+                builder.append("blob [name=").append(name())
                         .append(", filename=").append(filename())
                         .append(", contentType=").append(contentType())
                         .append(", content.length=").append(length)
