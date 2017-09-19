@@ -78,18 +78,18 @@ public class MessageDecoderUsingHolder implements MessageDecoder {
             public Blob call() {
                 final ByteBufHolder holder = _getcontent.call();
                 if (null != holder) {
-                    return buildBlob(holder.content(), _contentType, _filename, _name);
+                    return buildBlob(holder, _contentType, _filename, _name);
                 } else {
                     return null;
                 }
             }};
     }
 
-    private static Blob buildBlob(final ByteBuf bytebuf,
+    private static Blob buildBlob(final ByteBufHolder holder,
             final String contentType, 
             final String filename,
             final String name) {
-        final int length = bytebuf.readableBytes();
+        final int length = holder.content().readableBytes();
         return new Blob() {
             @Override
             public String toString() {
@@ -117,46 +117,46 @@ public class MessageDecoderUsingHolder implements MessageDecoder {
 
             @Override
             public int refCnt() {
-                return bytebuf.refCnt();
+                return holder.refCnt();
             }
 
             @Override
             public Blob retain() {
-                bytebuf.retain();
+                holder.retain();
                 return this;
             }
 
             @Override
             public Blob retain(int increment) {
-                bytebuf.retain(increment);
+                holder.retain(increment);
                 return this;
             }
 
             @Override
             public Blob touch() {
-                bytebuf.touch();
+                holder.touch();
                 return this;
             }
 
             @Override
             public Blob touch(Object hint) {
-                bytebuf.touch(hint);
+                holder.touch(hint);
                 return this;
             }
 
             @Override
             public boolean release() {
-                return bytebuf.release();
+                return holder.release();
             }
 
             @Override
             public boolean release(int decrement) {
-                return bytebuf.release(decrement);
+                return holder.release(decrement);
             }
 
             @Override
             public InputStream inputStream() {
-                return new ByteBufInputStream(bytebuf.slice(), false);
+                return new ByteBufInputStream(holder.content().slice(), false);
             }
 
             @Override
