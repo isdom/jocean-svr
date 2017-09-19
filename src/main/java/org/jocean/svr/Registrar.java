@@ -165,7 +165,7 @@ public class Registrar implements MBeanRegisterAware {
                 );
 
         if (!Regexs.isMatched(this._pathPattern, rootPath)) {
-            LOG.info("flow {} 's path {} !NOT! match path pattern {}, just ignore",
+            LOG.info("resource {} 's path {} !NOT! match path pattern {}, just ignore",
                     resourceCls, rootPath, this._pathPattern);
             return this;
         }
@@ -174,8 +174,7 @@ public class Registrar implements MBeanRegisterAware {
                 ReflectUtils.getAnnotationMethodsOf(resourceCls, Path.class);
         
         if (0 == restMethods.length) {
-            LOG.info("flow {} 's path {} !NOT! match path pattern {}, just ignore",
-                    resourceCls, rootPath, this._pathPattern);
+            LOG.info("no processor exit of {}, just ignore", resourceCls);
             return this;
         }
         
