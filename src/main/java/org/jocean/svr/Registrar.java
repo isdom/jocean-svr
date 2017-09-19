@@ -638,9 +638,16 @@ public class Registrar implements MBeanRegisterAware {
     private UntilRequestCompleted<Object> buildURC(final Observable<? extends HttpObject> inbound) {
         return new UntilRequestCompleted<Object>() {
             @Override
-            public Observable<Object> call(Observable<Object> any) {
-                return any.delaySubscription(inbound.last());
-            }};
+            public Observable<Object> call(final Observable<Object> any) {
+                return any.delay(new Func1<Object, Observable<HttpObject>>() {
+                    @SuppressWarnings("unchecked")
+                    @Override
+                    public Observable<HttpObject> call(Object t) {
+                        return (Observable<HttpObject>) inbound.last();
+                    }
+                });
+            }
+        };
     }
 
     private String getRawPath(final String path) {
