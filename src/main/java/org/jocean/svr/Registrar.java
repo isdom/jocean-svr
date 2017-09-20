@@ -260,6 +260,26 @@ public class Registrar implements MBeanRegisterAware {
         return this;
     }
     
+    static class ArgsCtx {
+        public Type[] genericParameterTypes;
+        public Annotation[][] parameterAnnotations;
+        public HttpTrade trade;
+        public HttpRequest request;
+        public MethodInterceptor[] interceptors;
+
+        public ArgsCtx(final Type[] genericParameterTypes, 
+                final Annotation[][] parameterAnnotations, 
+                final HttpTrade trade,
+                final HttpRequest request, 
+                final MethodInterceptor[] interceptors) {
+            this.genericParameterTypes = genericParameterTypes;
+            this.parameterAnnotations = parameterAnnotations;
+            this.trade = trade;
+            this.request = request;
+            this.interceptors = interceptors;
+        }
+    }
+    
     public Observable<HttpObject> buildResource(
             final HttpRequest request,
             final HttpTrade trade) throws Exception {
@@ -296,42 +316,56 @@ public class Registrar implements MBeanRegisterAware {
                         return null;
                     }
                 };
-                final Observable<HttpObject> obsResponse = doPreInvoke(interceptorCtx, interceptors);
-                if (null != obsResponse) {
+                final Observable<HttpObject> aheadObsResponse = doPreInvoke(interceptorCtx, interceptors);
+                if (null != aheadObsResponse) {
                     //  interceptor 直接响应
-                    return doPostInvoke(interceptors, copyCtxOverrideResponse(interceptorCtx, obsResponse));
+                    return doPostInvoke(interceptors, copyCtxOverrideResponse(interceptorCtx, aheadObsResponse));
                 } else {
-                    try {
-                        final Object returnValue = processor.invoke(resource, 
-                                    buildArgs(processor.getGenericParameterTypes(), 
-                                            processor.getParameterAnnotations(),
-                                            trade, 
-                                            request, 
-                                            interceptors.toArray(new MethodInterceptor[0])));
-                        if (null!=returnValue) {
-                            final Observable<HttpObject> resourceObsResponse = 
-                                    returnValue2ObsResponse(request, 
-                                            processor.getGenericReturnType(), 
-                                            returnValue);
-                            if (null != resourceObsResponse) {
-                                if (!interceptors.isEmpty()) {
-                                    return doPostInvoke(interceptors, 
-                                            copyCtxOverrideResponse(interceptorCtx, resourceObsResponse));
-                                } else {
-                                    return resourceObsResponse;
-                                }
-                            }
-                        }
-                    } catch (Exception e) {
-                        LOG.warn("exception when invoke process {}, detail{}", 
-                                processor,
-                                ExceptionUtils.exception2detail(e));
+                    final ArgsCtx argctx = new ArgsCtx(processor.getGenericParameterTypes(), 
+                            processor.getParameterAnnotations(), 
+                            trade, 
+                            request,
+                            interceptors.toArray(new MethodInterceptor[0]));
+                    final Observable<HttpObject> obsResponse = invokeProcessor(request, 
+                            trade.inbound(),
+                            resource,
+                            processor, 
+                            argctx);
+                    if (null != obsResponse) {
+                        return doPostInvoke(interceptors, 
+                            copyCtxOverrideResponse(interceptorCtx, obsResponse));
                     }
                 }
             }
         }
         return RxNettys.response404NOTFOUND(request.protocolVersion())
                 .delaySubscription(trade.inbound().last());
+    }
+
+    private Observable<HttpObject> invokeProcessor(
+            final HttpRequest request, 
+            final Observable<? extends HttpObject> obsRequest, 
+            final Object resource,
+            final Method processor,
+            final ArgsCtx argsctx
+            ) {
+        try {
+            final Object returnValue = processor.invoke(resource, buildArgs(argsctx));
+            if (null!=returnValue) {
+                final Observable<HttpObject> obsResponse = returnValue2ObsResponse(request, 
+                        processor.getGenericReturnType(), 
+                        returnValue);
+                if (null!=obsResponse) {
+                    return obsResponse;
+                }
+            }
+        } catch (Exception e) {
+            LOG.warn("exception when invoke process {}, detail{}", 
+                    processor,
+                    ExceptionUtils.exception2detail(e));
+        }
+        return RxNettys.response404NOTFOUND(request.protocolVersion())
+                .delaySubscription(obsRequest.last());
     }
 
     @SuppressWarnings("unchecked")
@@ -527,15 +561,15 @@ public class Registrar implements MBeanRegisterAware {
             }});
     }
 
-    private Object[] buildArgs(final Type[] genericParameterTypes, 
-            final Annotation[][] parameterAnnotations, 
-            final HttpTrade trade, 
-            final HttpRequest request, 
-            final MethodInterceptor[] interceptors) {
+    private Object[] buildArgs(final ArgsCtx argCtx) {
         final List<Object> args = new ArrayList<>();
         int idx = 0;
-        for (Type argType : genericParameterTypes) {
-            args.add(buildArgByType(argType, parameterAnnotations[idx], trade, request, interceptors));
+        for (Type argType : argCtx.genericParameterTypes) {
+            args.add(buildArgByType(argType, 
+                    argCtx.parameterAnnotations[idx], 
+                    argCtx.trade, 
+                    argCtx.request, 
+                    argCtx.interceptors));
             idx++;
         }
         return args.toArray();
