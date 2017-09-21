@@ -319,7 +319,8 @@ public class Registrar implements MBeanRegisterAware {
                 final Observable<HttpObject> aheadObsResponse = doPreInvoke(interceptorCtx, interceptors);
                 if (null != aheadObsResponse) {
                     //  interceptor 直接响应
-                    return doPostInvoke(interceptors, copyCtxOverrideResponse(interceptorCtx, aheadObsResponse));
+                    return doPostInvoke(interceptors, 
+                            copyCtxOverrideResponse(interceptorCtx, aheadObsResponse));
                 } else {
                     final ArgsCtx argctx = new ArgsCtx(processor.getGenericParameterTypes(), 
                             processor.getParameterAnnotations(), 
