@@ -32,11 +32,13 @@
         </constructor-arg>
     </bean>
     
+    <bean id="type2interceptors" class="java.util.concurrent.ConcurrentHashMap"/>
+    
     <bean id="registrar" class="org.jocean.svr.Registrar"
         init-method="start"
         destroy-method="stop">
-        <property name="beanHolder" ref="${beanHolder.name:unitAgent}"/>
         <property name="pathPattern" value="${restin.pathpattern}"/>
+        <property name="type2interceptors" ref="type2interceptors"/>
     </bean>
     
     <bean factory-bean="agentServer" 

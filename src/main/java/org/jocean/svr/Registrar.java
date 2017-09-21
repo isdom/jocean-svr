@@ -32,6 +32,8 @@ import javax.ws.rs.QueryParam;
 
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
 import org.jocean.http.util.RxNettys;
+import org.jocean.idiom.BeanHolder;
+import org.jocean.idiom.BeanHolderAware;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Pair;
 import org.jocean.idiom.ReflectUtils;
@@ -48,7 +50,9 @@ import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.ConfigurableApplicationContext;
 
 import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multimap;
+import com.google.common.collect.Sets;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -75,7 +79,7 @@ import rx.functions.Func1;
 /**
  * @author isdom
  */
-public class Registrar implements MBeanRegisterAware {
+public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     private static final Logger LOG
             = LoggerFactory.getLogger(Registrar.class);
@@ -100,10 +104,11 @@ public class Registrar implements MBeanRegisterAware {
         this._pathMatchers.clear();
     }
     
-    public void setBeanHolder(final SpringBeanHolder beanHolder) {
-        this._beanHolder = beanHolder;
+    @Override
+    public void setBeanHolder(final BeanHolder beanHolder) {
+        this._beanHolder = (SpringBeanHolder) beanHolder;
     }
-
+    
     private void scanAndRegisterResource(final ConfigurableListableBeanFactory factory) {
         for ( String name : factory.getBeanDefinitionNames() ) {
             final BeanDefinition def = factory.getBeanDefinition(name);
@@ -332,10 +337,8 @@ public class Registrar implements MBeanRegisterAware {
                             resource,
                             processor, 
                             argctx);
-                    if (null != obsResponse) {
-                        return doPostInvoke(interceptors, 
-                            copyCtxOverrideResponse(interceptorCtx, obsResponse));
-                    }
+                    return doPostInvoke(interceptors, 
+                        copyCtxOverrideResponse(interceptorCtx, obsResponse));
                 }
             }
         }
@@ -393,9 +396,8 @@ public class Registrar implements MBeanRegisterAware {
     private Observable<HttpObject> doPreInvoke(
             final MethodInterceptor.Context ctx, 
             final Deque<MethodInterceptor> interceptors) {
-        final Interceptors interceptorsAnno = ctx.resource().getClass().getAnnotation(Interceptors.class);
-        if (interceptors != null) {
-            final Class<? extends MethodInterceptor>[] types = interceptorsAnno.value();
+        final Class<? extends MethodInterceptor>[] types = interceptorTypesOf(ctx.resource().getClass());
+        if (null != types && types.length > 0) {
             for (Class<? extends MethodInterceptor> type : types) {
                 try {
                     final MethodInterceptor interceptor = this._beanHolder.getBean(type);
@@ -413,6 +415,31 @@ public class Registrar implements MBeanRegisterAware {
             }
         }
         return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Class<? extends MethodInterceptor>[] interceptorTypesOf(final Class<?> cls) {
+        final Class<? extends MethodInterceptor>[] inters4rt = this._type2interceptors.get(cls);
+        final Class<? extends MethodInterceptor>[] inters4anno = getInterceptorTypesOfAnnotation(cls);
+        if (null!=inters4rt && null==inters4anno) {
+            return inters4rt;
+        } else if (null==inters4rt && null!=inters4anno) {
+            return inters4anno;
+        } else if (null!=inters4rt && null!=inters4anno) {
+            return Sets.union(ImmutableSet.copyOf(inters4rt), ImmutableSet.copyOf(inters4anno))
+                    .toArray(new Class[0]);
+        } else {
+            return null;
+        }
+    }
+
+    private Class<? extends MethodInterceptor>[] getInterceptorTypesOfAnnotation(final Class<?> cls) {
+        final Interceptors interceptorsAnno = cls.getAnnotation(Interceptors.class);
+        if (null!=interceptorsAnno) {
+            return interceptorsAnno.value();
+        } else {
+            return null;
+        }
     }
 
     private Observable<HttpObject> doPostInvoke(
@@ -721,6 +748,10 @@ public class Registrar implements MBeanRegisterAware {
 //        this._register = register;
     }
     
+    public void setType2interceptors(final Map<Class<?>, Class<? extends MethodInterceptor>[]> type2interceptors) {
+        this._type2interceptors = type2interceptors;
+    }
+
     private ByteBuf body2content(final MessageBody body) {
         return null != body.content() ? body.content() : Unpooled.EMPTY_BUFFER;
     }
@@ -744,6 +775,8 @@ public class Registrar implements MBeanRegisterAware {
         }
     };
     
+    private Map<Class<?>, Class<? extends MethodInterceptor>[]> _type2interceptors;
+
     private SpringBeanHolder _beanHolder;
     private Pattern _pathPattern;
 }
