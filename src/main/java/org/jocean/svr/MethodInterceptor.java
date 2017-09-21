@@ -36,7 +36,7 @@ public interface MethodInterceptor {
             final String[] strs = interceptors.split(",");
             for (String s : strs) {
                 try {
-                    final Class<?> t = Class.forName(s);
+                    final Class<?> t = Class.forName(s.trim());
                     if (MethodInterceptor.class.isAssignableFrom(t)) {
                         types.add((Class<? extends MethodInterceptor>) t);
                     } else {
