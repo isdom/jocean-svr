@@ -65,7 +65,7 @@ public class StatRest implements MethodInterceptor {
                     @Override
                     public void call() {
                         _stats.recordExecutedInterval(_path, "<--fullresp", respclock.stopAndRestart());
-                        _stats.recordExecutedInterval(_path, "<==>fulltrade", _clock.stopAndRestart());
+                        _stats.recordExecutedInterval(_path, "<-->fulltrade", _clock.stopAndRestart());
                         _stats.incExecutedCount(_path);
                     }})
                 ;
