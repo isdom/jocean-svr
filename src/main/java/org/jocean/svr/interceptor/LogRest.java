@@ -11,7 +11,7 @@ import rx.functions.Action1;
 
 public class LogRest implements MethodInterceptor {
     private static final Logger LOG
-    = LoggerFactory.getLogger(LogRest.class);
+        = LoggerFactory.getLogger(LogRest.class);
 
     @Override
     public Observable<HttpObject> preInvoke(final Context ctx) {
