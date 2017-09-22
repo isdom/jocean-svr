@@ -56,7 +56,8 @@ public class StatRest implements MethodInterceptor, ArgumentBuilder {
 
     @Override
     public Object buildArg(final Type argType) {
-        if (ProcessMemo.class.equals(argType)) {
+        if (ProcessMemo.class.equals(argType) 
+            && null != this._stats) {
             return new ProcessMemo() {
                 @Override
                 public void setEndreason(final String endreason) {
