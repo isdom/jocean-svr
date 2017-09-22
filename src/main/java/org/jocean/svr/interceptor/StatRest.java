@@ -1,11 +1,15 @@
 package org.jocean.svr.interceptor;
 
+import java.lang.reflect.Type;
+
 import javax.inject.Inject;
 
 import org.jocean.idiom.StopWatch;
 import org.jocean.idiom.rx.RxSubscribers;
 import org.jocean.j2se.stats.ApiStats;
+import org.jocean.svr.ArgumentBuilder;
 import org.jocean.svr.MethodInterceptor;
+import org.jocean.svr.ProcessMemo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,7 +20,7 @@ import rx.Observable;
 import rx.functions.Action0;
 import rx.functions.Action1;
 
-public class StatRest implements MethodInterceptor {
+public class StatRest implements MethodInterceptor, ArgumentBuilder {
     @SuppressWarnings("unused")
     private static final Logger LOG
         = LoggerFactory.getLogger(StatRest.class);
@@ -43,13 +47,32 @@ public class StatRest implements MethodInterceptor {
                     new Action0() {
                         @Override
                         public void call() {
-                            _stats.recordExecutedInterval(_path, "-->fullreq", _clock.pauseAndContinue());
+                            _stats.recordExecutedInterval(_path, "__req", _clock.pauseAndContinue());
                         }});
         }
         
         return null;
     }
 
+    @Override
+    public Object buildArg(final Type argType) {
+        if (ProcessMemo.class.equals(argType)) {
+            return new ProcessMemo() {
+                @Override
+                public void setEndreason(final String endreason) {
+                    _endreason = endreason;
+                }
+
+                @Override
+                public void markDurationAs(final String stage) {
+                    _stats.recordExecutedInterval(_path, stage, _processclock.stopAndRestart());
+                }
+            };
+        } else {
+            return null;
+        }
+    }
+    
     @Override
     public Observable<HttpObject> postInvoke(final Context ctx) {
         if (null != this._stats) {
@@ -64,8 +87,9 @@ public class StatRest implements MethodInterceptor {
                 .doOnCompleted(new Action0() {
                     @Override
                     public void call() {
-                        _stats.recordExecutedInterval(_path, "<--fullresp", respclock.stopAndRestart());
-                        _stats.recordExecutedInterval(_path, "<-->fulltrade", _clock.stopAndRestart());
+                        final String er = _endreason;
+                        _stats.recordExecutedInterval(_path, "__resp", respclock.stopAndRestart());
+                        _stats.recordExecutedInterval(_path, "_whole_." + er, _clock.stopAndRestart());
                         _stats.incExecutedCount(_path);
                     }})
                 ;
@@ -79,5 +103,8 @@ public class StatRest implements MethodInterceptor {
     
     private String _path;
     
+    private volatile String _endreason = "default";
+    
     private final StopWatch _clock = new StopWatch();
+    private final StopWatch _processclock = new StopWatch();
 }
