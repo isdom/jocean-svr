@@ -21,7 +21,6 @@ import rx.functions.Action0;
 import rx.functions.Action1;
 
 public class StatRest implements MethodInterceptor, ArgumentBuilder {
-    @SuppressWarnings("unused")
     private static final Logger LOG
         = LoggerFactory.getLogger(StatRest.class);
 
@@ -56,8 +55,7 @@ public class StatRest implements MethodInterceptor, ArgumentBuilder {
 
     @Override
     public Object buildArg(final Type argType) {
-        if (ProcessMemo.class.equals(argType) 
-            && null != this._stats) {
+        if (ProcessMemo.class.equals(argType)) {
             return new ProcessMemo() {
                 @Override
                 public void setEndreason(final String endreason) {
@@ -66,7 +64,11 @@ public class StatRest implements MethodInterceptor, ArgumentBuilder {
 
                 @Override
                 public void markDurationAs(final String stage) {
-                    _stats.recordExecutedInterval(_path, stage, _processclock.stopAndRestart());
+                    if (null != _stats) {
+                        _stats.recordExecutedInterval(_path, stage, _processclock.stopAndRestart());
+                    } else {
+                        LOG.warn("can not mark duration, cause missing ApiStats instance!\r\n\tforget add unit/apistats.xml module ?");
+                    }
                 }
             };
         } else {
