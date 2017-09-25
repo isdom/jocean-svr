@@ -7,8 +7,15 @@ import org.jocean.netty.BlobRepo.Blob;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufHolder;
 import io.netty.buffer.ByteBufInputStream;
+import io.netty.handler.codec.http.DefaultLastHttpContent;
+import io.netty.handler.codec.http.HttpContent;
+import rx.Observable;
+import rx.Observable.OnSubscribe;
+import rx.Subscriber;
+import rx.functions.Action0;
 import rx.functions.Action1;
 import rx.functions.Func0;
+import rx.subscriptions.Subscriptions;
 
 public class MessageDecoderUsingHolder implements MessageDecoder {
     public MessageDecoderUsingHolder(
@@ -162,6 +169,34 @@ public class MessageDecoderUsingHolder implements MessageDecoder {
             @Override
             public int contentLength() {
                 return length;
+            }
+
+            @Override
+            public Observable<? extends HttpContent> content() {
+                return Observable.unsafeCreate(new OnSubscribe<HttpContent>() {
+                    @Override
+                    public void call(final Subscriber<? super HttpContent> subscriber) {
+                        if (!subscriber.isUnsubscribed()) {
+                            try {
+                                final ByteBuf buf = holder.content().retainedSlice();
+                                if (null!=buf) {
+                                    final HttpContent content = 
+                                        new DefaultLastHttpContent(buf);
+                                    subscriber.add(Subscriptions.create(new Action0() {
+                                        @Override
+                                        public void call() {
+                                            content.release();
+                                        }}));
+                                    subscriber.onNext(content);
+                                    subscriber.onCompleted();
+                                } else {
+                                    subscriber.onError(new RuntimeException("invalid content"));
+                                }
+                            } catch (Exception e) {
+                                subscriber.onError(e);
+                            }
+                        }
+                    }});
             }};
     }
 
