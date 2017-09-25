@@ -3,6 +3,8 @@ package org.jocean.svr;
 import java.io.InputStream;
 
 import org.jocean.netty.BlobRepo.Blob;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufHolder;
@@ -18,6 +20,9 @@ import rx.functions.Func0;
 import rx.subscriptions.Subscriptions;
 
 public class MessageDecoderUsingHolder implements MessageDecoder {
+    private static final Logger LOG
+        = LoggerFactory.getLogger(MessageDecoderUsingHolder.class);
+    
     public MessageDecoderUsingHolder(
             final Func0<? extends ByteBufHolder> getcontent, 
             final String contentType,
@@ -185,7 +190,9 @@ public class MessageDecoderUsingHolder implements MessageDecoder {
                                     subscriber.add(Subscriptions.create(new Action0() {
                                         @Override
                                         public void call() {
-                                            content.release();
+                                            final boolean released = content.release();
+                                            LOG.debug("content()'s HttpContent {} invoke release with return {}",
+                                                    content, released);
                                         }}));
                                     subscriber.onNext(content);
                                     subscriber.onCompleted();

@@ -28,7 +28,7 @@ public interface MethodInterceptor {
     public static class Util {
         
         private static final Logger LOG
-        = LoggerFactory.getLogger(Util.class);
+            = LoggerFactory.getLogger(Util.class);
         
         @SuppressWarnings("unchecked")
         public static Class<? extends MethodInterceptor>[] str2types(final String interceptors) {
