@@ -9,8 +9,6 @@ import org.slf4j.LoggerFactory;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufHolder;
 import io.netty.buffer.ByteBufInputStream;
-import io.netty.handler.codec.http.DefaultLastHttpContent;
-import io.netty.handler.codec.http.HttpContent;
 import rx.Observable;
 import rx.Observable.OnSubscribe;
 import rx.Subscriber;
@@ -177,24 +175,24 @@ public class MessageDecoderUsingHolder implements MessageDecoder {
             }
 
             @Override
-            public Observable<? extends HttpContent> content() {
-                return Observable.unsafeCreate(new OnSubscribe<HttpContent>() {
+            public Observable<? extends ByteBuf> content() {
+                return Observable.unsafeCreate(new OnSubscribe<ByteBuf>() {
                     @Override
-                    public void call(final Subscriber<? super HttpContent> subscriber) {
+                    public void call(final Subscriber<? super ByteBuf> subscriber) {
                         if (!subscriber.isUnsubscribed()) {
                             try {
                                 final ByteBuf buf = holder.content().retainedSlice();
                                 if (null!=buf) {
-                                    final HttpContent content = 
-                                        new DefaultLastHttpContent(buf);
+//                                    final HttpContent content = 
+//                                        new DefaultLastHttpContent(buf);
                                     subscriber.add(Subscriptions.create(new Action0() {
                                         @Override
                                         public void call() {
-                                            final boolean released = content.release();
-                                            LOG.debug("content()'s HttpContent {} invoke release with return {}",
-                                                    content, released);
+                                            final boolean released = buf.release();
+                                            LOG.debug("content()'s ByteBuf {} invoke release with return {}",
+                                                    buf, released);
                                         }}));
-                                    subscriber.onNext(content);
+                                    subscriber.onNext(buf);
                                     subscriber.onCompleted();
                                 } else {
                                     subscriber.onError(new RuntimeException("invalid content"));
