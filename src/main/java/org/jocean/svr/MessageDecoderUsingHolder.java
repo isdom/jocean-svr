@@ -104,7 +104,8 @@ public class MessageDecoderUsingHolder implements MessageDecoder {
             @Override
             public String toString() {
                 final StringBuilder builder = new StringBuilder();
-                builder.append("blob [name=").append(name())
+                builder.append("holder-blob[holder=").append(holder)
+                        .append(", name=").append(name())
                         .append(", filename=").append(filename())
                         .append(", contentType=").append(contentType())
                         .append(", content.length=").append(length)
