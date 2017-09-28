@@ -190,8 +190,8 @@ public class MessageDecoderUsingHolder implements MessageDecoder {
                                         @Override
                                         public void call() {
                                             final boolean released = buf.release();
-                                            LOG.debug("content()'s ByteBuf {} invoke release with return {}",
-                                                    buf, released);
+                                            LOG.debug("{} unsubscribe cause call content()'s {}(ByteBuf)'s release with return {}", 
+                                                    subscriber, buf, released);
                                         }}));
                                     subscriber.onNext(buf);
                                     subscriber.onCompleted();
