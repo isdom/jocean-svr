@@ -26,7 +26,7 @@ import rx.functions.Func0;
 import rx.functions.Func1;
 import rx.subscriptions.Subscriptions;
 
-public class MultipartOMD implements Observable.OnSubscribe<MessageDecoder> {
+class MultipartOMD implements Observable.OnSubscribe<MessageDecoder> {
     private static final Logger LOG =
             LoggerFactory.getLogger(MultipartOMD.class);
 

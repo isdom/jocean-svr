@@ -17,7 +17,7 @@ import rx.functions.Action1;
 import rx.functions.Func0;
 import rx.subscriptions.Subscriptions;
 
-public class MessageDecoderUsingHolder implements MessageDecoder {
+class MessageDecoderUsingHolder implements MessageDecoder {
     private static final Logger LOG
         = LoggerFactory.getLogger(MessageDecoderUsingHolder.class);
     
