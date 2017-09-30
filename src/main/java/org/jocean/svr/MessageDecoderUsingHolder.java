@@ -184,8 +184,6 @@ class MessageDecoderUsingHolder implements MessageDecoder {
                             try {
                                 final ByteBuf buf = holder.content().retainedSlice();
                                 if (null!=buf) {
-//                                    final HttpContent content = 
-//                                        new DefaultLastHttpContent(buf);
                                     subscriber.add(Subscriptions.create(new Action0() {
                                         @Override
                                         public void call() {

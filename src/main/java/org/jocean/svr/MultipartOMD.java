@@ -112,18 +112,8 @@ class MultipartOMD implements Observable.OnSubscribe<MessageDecoder> {
             if (data.getHttpDataType().equals(
                 InterfaceHttpData.HttpDataType.FileUpload)) {
                 final FileUpload fileUpload = (FileUpload)data;
-                
-                //  if _contentTypePrefix is not null, try to match
-//                if ( null != _contentTypePrefix 
-//                    && !fileUpload.getContentType().startsWith(_contentTypePrefix))
-//                {
-//                    LOG.info("fileUpload's contentType is {}, NOT match prefix {}, so ignore",
-//                            fileUpload.getContentType(), _contentTypePrefix);
-//                    return null;
-//                }
-                    
                 LOG.info("processHttpData: fileUpload's content is {}", Nettys.dumpByteBufHolder(fileUpload));
-                return buildMD(fileUpload, _subscriber);
+                return buildMD(fileUpload, this._subscriber);
             } else {
                 LOG.info("InterfaceHttpData ({}) is NOT fileUpload, so ignore", data);
             }
