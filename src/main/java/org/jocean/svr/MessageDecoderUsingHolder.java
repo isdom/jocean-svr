@@ -13,7 +13,6 @@ import rx.Observable;
 import rx.Observable.OnSubscribe;
 import rx.Subscriber;
 import rx.functions.Action0;
-import rx.functions.Action1;
 import rx.functions.Func0;
 import rx.subscriptions.Subscriptions;
 
@@ -23,11 +22,13 @@ class MessageDecoderUsingHolder implements MessageDecoder {
     
     public MessageDecoderUsingHolder(
             final Func0<? extends ByteBufHolder> getcontent, 
+            final int contentLength, 
             final String contentType,
             final String filename,
             final String name
             ) {
         this._getcontent = getcontent;
+        this._contentLength = contentLength;
         this._contentType = contentType;
         this._filename = filename;
         this._name = name;
@@ -70,15 +71,44 @@ class MessageDecoderUsingHolder implements MessageDecoder {
     }
 
     @Override
-    public void visitContent(final Action1<ByteBuf> visitor) {
-        final ByteBufHolder holder = this._getcontent.call();
-        if (null != holder) {
-            try {
-                visitor.call(holder.content());
-            } finally {
-                holder.release();
-            }
-        }
+    public int contentLength() {
+        return this._contentLength;
+    }
+
+    @Override
+    public Observable<? extends ByteBuf> content() {
+        return Observable.unsafeCreate(new OnSubscribe<ByteBuf>() {
+            @Override
+            public void call(final Subscriber<? super ByteBuf> subscriber) {
+                if (!subscriber.isUnsubscribed()) {
+                    final ByteBufHolder holder = _getcontent.call();
+                    if (null != holder) {
+                        subscriber.add(Subscriptions.create(new Action0() {
+                            @Override
+                            public void call() {
+                                holder.release();
+                            }}));
+                        try {
+                            final ByteBuf buf = holder.content().retainedSlice();
+                            if (null!=buf) {
+                                subscriber.add(Subscriptions.create(new Action0() {
+                                    @Override
+                                    public void call() {
+                                        buf.release();
+                                    }}));
+                                subscriber.onNext(buf);
+                                subscriber.onCompleted();
+                            } else {
+                                subscriber.onError(new RuntimeException("invalid content"));
+                            }
+                        } catch (Exception e) {
+                            subscriber.onError(e);
+                        }
+                    } else {
+                        subscriber.onError(new RuntimeException("invalid content"));
+                    }
+                }
+            }});
     }
     
     @Override
@@ -205,6 +235,7 @@ class MessageDecoderUsingHolder implements MessageDecoder {
     }
 
     private final Func0<? extends ByteBufHolder> _getcontent;
+    private final int    _contentLength;
     private final String _contentType;
     private final String _filename;
     private final String _name;

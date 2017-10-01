@@ -661,6 +661,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 public MessageDecoder call(final Object last) {
                     return new MessageDecoderUsingHolder(
                         trade.inboundHolder().fullOf(RxNettys.BUILD_FULL_REQUEST), 
+                        HttpUtil.getContentLength(request, -1),
                         request.headers().get(HttpHeaderNames.CONTENT_TYPE),
                         null,
                         null);

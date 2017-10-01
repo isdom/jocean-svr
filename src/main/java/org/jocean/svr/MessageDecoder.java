@@ -3,14 +3,16 @@ package org.jocean.svr;
 import org.jocean.netty.BlobRepo.Blob;
 
 import io.netty.buffer.ByteBuf;
-import rx.functions.Action1;
+import rx.Observable;
 import rx.functions.Func0;
 
 public interface MessageDecoder {
     
     public String contentType();
     
-    public void visitContent(final Action1<ByteBuf> visitor);
+    public int contentLength();
+    
+    public Observable<? extends ByteBuf> content();
     
     public Func0<Blob> blobProducer();
     
