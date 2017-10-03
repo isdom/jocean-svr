@@ -12,6 +12,7 @@ import io.netty.buffer.ByteBufInputStream;
 import rx.Observable;
 import rx.Observable.OnSubscribe;
 import rx.Subscriber;
+import rx.Subscription;
 import rx.functions.Action0;
 import rx.functions.Func0;
 import rx.subscriptions.Subscriptions;
@@ -19,6 +20,8 @@ import rx.subscriptions.Subscriptions;
 class MessageDecoderUsingHolder implements MessageDecoder {
     private static final Logger LOG
         = LoggerFactory.getLogger(MessageDecoderUsingHolder.class);
+    
+    private final Subscription _subscription;
     
     public MessageDecoderUsingHolder(
             final Func0<? extends ByteBufHolder> getcontent, 
@@ -32,8 +35,27 @@ class MessageDecoderUsingHolder implements MessageDecoder {
         this._contentType = contentType;
         this._filename = filename;
         this._name = name;
+        
+        final ByteBufHolder holder = this._getcontent.call();
+        this._subscription = Subscriptions.create(new Action0() {
+            @Override
+            public void call() {
+                if (null != holder) {
+                    holder.release();
+                }
+            }});
     }
 
+    @Override
+    public void unsubscribe() {
+        this._subscription.unsubscribe();
+    }
+
+    @Override
+    public boolean isUnsubscribed() {
+        return this._subscription.isUnsubscribed();
+    }
+    
     @Override
     public <T> T decodeJsonAs(final Class<T> type) {
         final ByteBufHolder holder = this._getcontent.call();
@@ -77,20 +99,14 @@ class MessageDecoderUsingHolder implements MessageDecoder {
 
     @Override
     public Observable<? extends ByteBuf> content() {
-        final ByteBufHolder holder = _getcontent.call();
-        LOG.debug("pre retain holder {} with refCnt {}", holder, holder.refCnt());
-        
+//        final ByteBufHolder holder = _getcontent.call();
+//        LOG.debug("pre retain holder {} with refCnt {}", holder, holder.refCnt());
         return Observable.unsafeCreate(new OnSubscribe<ByteBuf>() {
             @Override
             public void call(final Subscriber<? super ByteBuf> subscriber) {
                 if (!subscriber.isUnsubscribed()) {
                     final ByteBufHolder holder = _getcontent.call();
                     if (null != holder) {
-                        subscriber.add(Subscriptions.create(new Action0() {
-                            @Override
-                            public void call() {
-                                holder.release();
-                            }}));
                         try {
                             final ByteBuf buf = holder.content().retainedSlice();
                             if (null!=buf) {
@@ -106,6 +122,8 @@ class MessageDecoderUsingHolder implements MessageDecoder {
                             }
                         } catch (Exception e) {
                             subscriber.onError(e);
+                        } finally {
+                            holder.release();
                         }
                     } else {
                         subscriber.onError(new RuntimeException("invalid content"));

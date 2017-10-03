@@ -5,8 +5,9 @@ import org.jocean.netty.BlobRepo.Blob;
 import io.netty.buffer.ByteBuf;
 import rx.Observable;
 import rx.functions.Func0;
+import rx.Subscription;
 
-public interface MessageDecoder {
+public interface MessageDecoder extends Subscription {
     
     public String contentType();
     

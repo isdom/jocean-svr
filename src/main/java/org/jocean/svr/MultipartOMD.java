@@ -35,10 +35,10 @@ class MultipartOMD implements Observable.OnSubscribe<MessageDecoder> {
                 new DefaultHttpDataFactory(false);  // DO NOT use Disk;
         
         private final HttpPostMultipartRequestDecoder _decoder;
-        private final Subscriber<?> _subscriber;
+//        private final Subscriber<?> _subscriber;
         
         ToBlob(final HttpRequest request, final Subscriber<?> subscriber) {
-            this._subscriber = subscriber;
+//            this._subscriber = subscriber;
             this._decoder = new HttpPostMultipartRequestDecoder(
                     hTTP_DATA_FACTORY, request);
             _decoder.setDiscardThreshold(1024);
@@ -113,7 +113,7 @@ class MultipartOMD implements Observable.OnSubscribe<MessageDecoder> {
                 InterfaceHttpData.HttpDataType.FileUpload)) {
                 final FileUpload fileUpload = (FileUpload)data;
                 LOG.info("processHttpData: fileUpload's content is {}", Nettys.dumpByteBufHolder(fileUpload));
-                return buildMD(fileUpload, this._subscriber);
+                return buildMD(fileUpload);
             } else {
                 LOG.info("InterfaceHttpData ({}) is NOT fileUpload, so ignore", data);
             }
@@ -147,20 +147,20 @@ class MultipartOMD implements Observable.OnSubscribe<MessageDecoder> {
     private final HttpTrade _trade;
     private final HttpRequest _request;
 
-    private static MessageDecoder buildMD(final FileUpload fileUpload, final Subscriber<?> subscriber) {
-        fileUpload.retain();
-        subscriber.add(Subscriptions.create(new Action0() {
-            @Override
-            public void call() {
-                final boolean released = fileUpload.release();
-                if (released) {
-                    LOG.debug("{}.unsubscribe invoke ({}).release return {}", 
-                            subscriber, fileUpload, released);
-                } else {
-                    LOG.warn("{}.unsubscribe invoke ({}).release return {}!, MAYBE ByteBuf Leak", 
-                            subscriber, fileUpload, released);
-                }
-            }}));
+    private static MessageDecoder buildMD(final FileUpload fileUpload) {
+//        fileUpload.retain();
+//        subscriber.add(Subscriptions.create(new Action0() {
+//            @Override
+//            public void call() {
+//                final boolean released = fileUpload.release();
+//                if (released) {
+//                    LOG.debug("{}.unsubscribe invoke ({}).release return {}", 
+//                            subscriber, fileUpload, released);
+//                } else {
+//                    LOG.warn("{}.unsubscribe invoke ({}).release return {}!, MAYBE ByteBuf Leak", 
+//                            subscriber, fileUpload, released);
+//                }
+//            }}));
         return new MessageDecoderUsingHolder(
                 new Func0<FileUpload>() {
                     @Override

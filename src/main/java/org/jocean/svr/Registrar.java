@@ -74,6 +74,8 @@ import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder;
 import io.netty.util.CharsetUtil;
 import rx.Observable;
+import rx.functions.Action0;
+import rx.functions.Action1;
 import rx.functions.Func1;
 
 /**
@@ -626,7 +628,16 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 if (HttpObject.class.equals(gt1st)) {
                     return trade.inbound();
                 } else if (MessageDecoder.class.equals(gt1st)) {
-                    return buildOMD(trade, request);
+                    return buildOMD(trade, request)
+                        .doOnNext(new Action1<MessageDecoder>() {
+                            @Override
+                            public void call(final MessageDecoder md) {
+                                trade.doOnTerminate(new Action0() {
+                                    @Override
+                                    public void call() {
+                                        md.unsubscribe();
+                                    }});
+                            }});
                 }
             } else if (UntilRequestCompleted.class.equals(getParameterizedRawType(argType))) {
                 return buildURC(trade.inbound());
