@@ -99,8 +99,6 @@ class MessageDecoderUsingHolder implements MessageDecoder {
 
     @Override
     public Observable<? extends ByteBuf> content() {
-//        final ByteBufHolder holder = _getcontent.call();
-//        LOG.debug("pre retain holder {} with refCnt {}", holder, holder.refCnt());
         return Observable.unsafeCreate(new OnSubscribe<ByteBuf>() {
             @Override
             public void call(final Subscriber<? super ByteBuf> subscriber) {
