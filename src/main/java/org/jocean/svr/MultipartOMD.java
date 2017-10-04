@@ -22,7 +22,6 @@ import io.netty.handler.codec.http.multipart.InterfaceHttpData;
 import rx.Observable;
 import rx.Subscriber;
 import rx.functions.Action0;
-import rx.functions.Func0;
 import rx.functions.Func1;
 import rx.subscriptions.Subscriptions;
 
@@ -147,11 +146,7 @@ class MultipartOMD implements Observable.OnSubscribe<MessageDecoder> {
 
     private static MessageDecoder buildMD(final FileUpload fileUpload) {
         return new MessageDecoderUsingHolder(
-                new Func0<FileUpload>() {
-                    @Override
-                    public FileUpload call() {
-                        return fileUpload.retain();
-                    }},
+                fileUpload.retain(),
                 fileUpload.content().readableBytes(),
                 fileUpload.getContentType(),
                 fileUpload.getFilename(),

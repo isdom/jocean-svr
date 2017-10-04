@@ -24,24 +24,23 @@ class MessageDecoderUsingHolder implements MessageDecoder {
     private final Subscription _subscription;
     
     public MessageDecoderUsingHolder(
-            final Func0<? extends ByteBufHolder> getcontent, 
+            final ByteBufHolder holder, 
             final int contentLength, 
             final String contentType,
             final String filename,
             final String name
             ) {
-        this._getcontent = getcontent;
+        this._holder = holder;
         this._contentLength = contentLength;
         this._contentType = contentType;
         this._filename = filename;
         this._name = name;
         
-        final ByteBufHolder holder = this._getcontent.call();
         this._subscription = Subscriptions.create(new Action0() {
             @Override
             public void call() {
                 if (null != holder) {
-                    holder.release();
+                    _holder.release();
                 }
             }});
     }
@@ -58,26 +57,16 @@ class MessageDecoderUsingHolder implements MessageDecoder {
     
     @Override
     public <T> T decodeJsonAs(final Class<T> type) {
-        final ByteBufHolder holder = this._getcontent.call();
-        if (null != holder) {
-            try {
-                return ParamUtil.parseContentAsJson(holder, type);
-            } finally {
-                holder.release();
-            }
+        if (!isUnsubscribed()) {
+            return ParamUtil.parseContentAsJson(this._holder, type);
         }
         return null;
     }
 
     @Override
     public <T> T decodeXmlAs(final Class<T> type) {
-        final ByteBufHolder holder = this._getcontent.call();
-        if (null != holder) {
-            try {
-                return ParamUtil.parseContentAsXml(holder, type);
-            } finally {
-                holder.release();
-            }
+        if (!isUnsubscribed()) {
+            return ParamUtil.parseContentAsXml(this._holder, type);
         }
         return null;
     }
@@ -103,10 +92,9 @@ class MessageDecoderUsingHolder implements MessageDecoder {
             @Override
             public void call(final Subscriber<? super ByteBuf> subscriber) {
                 if (!subscriber.isUnsubscribed()) {
-                    final ByteBufHolder holder = _getcontent.call();
-                    if (null != holder) {
+                    if (!isUnsubscribed()) {
                         try {
-                            final ByteBuf buf = holder.content().retainedSlice();
+                            final ByteBuf buf = _holder.content().retainedSlice();
                             if (null!=buf) {
                                 subscriber.add(Subscriptions.create(new Action0() {
                                     @Override
@@ -120,8 +108,6 @@ class MessageDecoderUsingHolder implements MessageDecoder {
                             }
                         } catch (Exception e) {
                             subscriber.onError(e);
-                        } finally {
-                            holder.release();
                         }
                     } else {
                         subscriber.onError(new RuntimeException("invalid content"));
@@ -135,9 +121,8 @@ class MessageDecoderUsingHolder implements MessageDecoder {
         return new Func0<Blob>() {
             @Override
             public Blob call() {
-                final ByteBufHolder holder = _getcontent.call();
-                if (null != holder) {
-                    return buildBlob(holder, _contentType, _filename, _name);
+                if (!isUnsubscribed()) {
+                    return buildBlob(_holder, _contentType, _filename, _name);
                 } else {
                     return null;
                 }
@@ -253,7 +238,7 @@ class MessageDecoderUsingHolder implements MessageDecoder {
             }};
     }
 
-    private final Func0<? extends ByteBufHolder> _getcontent;
+    private final ByteBufHolder _holder;
     private final int    _contentLength;
     private final String _contentType;
     private final String _filename;
