@@ -30,14 +30,14 @@ class MultipartOMD implements Observable.OnSubscribe<MessageDecoder> {
             LoggerFactory.getLogger(MultipartOMD.class);
 
     private final class ToBlob implements Func1<HttpObject, Observable<MessageDecoder>> {
-        private final HttpDataFactory hTTP_DATA_FACTORY = 
+        private final HttpDataFactory _httpDataFactory = 
                 new DefaultHttpDataFactory(false);  // DO NOT use Disk;
         
         private final HttpPostMultipartRequestDecoder _decoder;
         
         ToBlob(final HttpRequest request, final Subscriber<?> subscriber) {
             this._decoder = new HttpPostMultipartRequestDecoder(
-                    hTTP_DATA_FACTORY, request);
+                    _httpDataFactory, request);
             _decoder.setDiscardThreshold(1024);
 //          _decoder.setDiscardThreshold(_discardThreshold);
 //          try {
@@ -56,6 +56,7 @@ class MultipartOMD implements Observable.OnSubscribe<MessageDecoder> {
                 @Override
                 public void call() {
                     _decoder.destroy();
+                    _httpDataFactory.cleanAllHttpData();
                 }}));
         }
         
