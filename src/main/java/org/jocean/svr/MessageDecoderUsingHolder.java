@@ -57,16 +57,26 @@ class MessageDecoderUsingHolder implements MessageDecoder {
     
     @Override
     public <T> T decodeJsonAs(final Class<T> type) {
-        if (!isUnsubscribed()) {
-            return ParamUtil.parseContentAsJson(this._holder, type);
+        final ByteBufHolder holder = this._holder.retain();
+        if (null != holder) {
+            try {
+                return ParamUtil.parseContentAsJson(holder, type);
+            } finally {
+                holder.release();
+            }
         }
         return null;
     }
 
     @Override
     public <T> T decodeXmlAs(final Class<T> type) {
-        if (!isUnsubscribed()) {
-            return ParamUtil.parseContentAsXml(this._holder, type);
+        final ByteBufHolder holder = this._holder.retain();
+        if (null != holder) {
+            try {
+                return ParamUtil.parseContentAsXml(holder, type);
+            } finally {
+                holder.release();
+            }
         }
         return null;
     }
@@ -104,13 +114,13 @@ class MessageDecoderUsingHolder implements MessageDecoder {
                                 subscriber.onNext(buf);
                                 subscriber.onCompleted();
                             } else {
-                                subscriber.onError(new RuntimeException("invalid content"));
+                                subscriber.onError(new RuntimeException("invalid bytebuf"));
                             }
                         } catch (Exception e) {
                             subscriber.onError(e);
                         }
                     } else {
-                        subscriber.onError(new RuntimeException("invalid content"));
+                        subscriber.onError(new RuntimeException("content has been unsubscribed"));
                     }
                 }
             }});
