@@ -18,6 +18,8 @@ import rx.functions.Func0;
 import rx.subscriptions.Subscriptions;
 
 class MessageDecoderUsingHolder implements MessageDecoder {
+    
+    @SuppressWarnings("unused")
     private static final Logger LOG
         = LoggerFactory.getLogger(MessageDecoderUsingHolder.class);
     
@@ -217,34 +219,6 @@ class MessageDecoderUsingHolder implements MessageDecoder {
             @Override
             public int contentLength() {
                 return length;
-            }
-
-            @Override
-            public Observable<? extends ByteBuf> content() {
-                return Observable.unsafeCreate(new OnSubscribe<ByteBuf>() {
-                    @Override
-                    public void call(final Subscriber<? super ByteBuf> subscriber) {
-                        if (!subscriber.isUnsubscribed()) {
-                            try {
-                                final ByteBuf buf = holder.content().retainedSlice();
-                                if (null!=buf) {
-                                    subscriber.add(Subscriptions.create(new Action0() {
-                                        @Override
-                                        public void call() {
-                                            final boolean released = buf.release();
-                                            LOG.debug("{} unsubscribe cause call content()'s {}(ByteBuf)'s release with return {}", 
-                                                    subscriber, buf, released);
-                                        }}));
-                                    subscriber.onNext(buf);
-                                    subscriber.onCompleted();
-                                } else {
-                                    subscriber.onError(new RuntimeException("invalid content"));
-                                }
-                            } catch (Exception e) {
-                                subscriber.onError(e);
-                            }
-                        }
-                    }});
             }};
     }
 
