@@ -670,6 +670,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return trade.inbound().last().map(new Func1<Object, MessageDecoder>() {
                 @Override
                 public MessageDecoder call(final Object last) {
+                    //  TODO, re-impl MessageDecoder
                     return new MessageDecoderUsingHolder(
                         trade.inboundHolder().fullOf(RxNettys.BUILD_FULL_REQUEST).call(), 
                         HttpUtil.getContentLength(request, -1),

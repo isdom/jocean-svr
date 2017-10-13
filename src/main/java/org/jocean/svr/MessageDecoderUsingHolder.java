@@ -2,6 +2,7 @@ package org.jocean.svr;
 
 import java.io.InputStream;
 
+import org.jocean.idiom.DisposableWrapper;
 import org.jocean.netty.BlobRepo.Blob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufHolder;
 import io.netty.buffer.ByteBufInputStream;
+import io.netty.util.ReferenceCountUtil;
 import rx.Observable;
 import rx.Observable.OnSubscribe;
 import rx.Subscriber;
@@ -58,11 +60,11 @@ class MessageDecoderUsingHolder implements MessageDecoder {
     }
     
     @Override
-    public <T> T decodeJsonAs(final Class<T> type) {
+    public <T> Observable<? extends T> decodeJsonAs(final Class<T> type) {
         final ByteBufHolder holder = this._holder.retain();
         if (null != holder) {
             try {
-                return ParamUtil.parseContentAsJson(holder, type);
+                return Observable.just(ParamUtil.parseContentAsJson(holder, type));
             } finally {
                 holder.release();
             }
@@ -71,11 +73,11 @@ class MessageDecoderUsingHolder implements MessageDecoder {
     }
 
     @Override
-    public <T> T decodeXmlAs(final Class<T> type) {
+    public <T> Observable<? extends T> decodeXmlAs(final Class<T> type) {
         final ByteBufHolder holder = this._holder.retain();
         if (null != holder) {
             try {
-                return ParamUtil.parseContentAsXml(holder, type);
+                return Observable.just(ParamUtil.parseContentAsXml(holder, type));
             } finally {
                 holder.release();
             }
@@ -84,8 +86,8 @@ class MessageDecoderUsingHolder implements MessageDecoder {
     }
 
     @Override
-    public <T> T decodeFormAs(final Class<T> type) {
-        return null;
+    public <T> Observable<? extends T> decodeFormAs(final Class<T> type) {
+        return Observable.error(new UnsupportedOperationException());
     }
 
     @Override
@@ -99,21 +101,41 @@ class MessageDecoderUsingHolder implements MessageDecoder {
     }
 
     @Override
-    public Observable<? extends ByteBuf> content() {
-        return Observable.unsafeCreate(new OnSubscribe<ByteBuf>() {
+    public Observable<? extends DisposableWrapper<ByteBuf>> content() {
+        return Observable.unsafeCreate(new OnSubscribe<DisposableWrapper<ByteBuf>>() {
             @Override
-            public void call(final Subscriber<? super ByteBuf> subscriber) {
+            public void call(final Subscriber<? super DisposableWrapper<ByteBuf>> subscriber) {
                 if (!subscriber.isUnsubscribed()) {
                     if (!isUnsubscribed()) {
                         try {
                             final ByteBuf buf = _holder.content().retainedSlice();
+                            final Subscription  subscription = Subscriptions.create(new Action0() {
+                                @Override
+                                public void call() {
+                                    ReferenceCountUtil.release(buf);
+                                }});
                             if (null!=buf) {
-                                subscriber.add(Subscriptions.create(new Action0() {
+//                                subscriber.add(Subscriptions.create(new Action0() {
+//                                    @Override
+//                                    public void call() {
+//                                        buf.release();
+//                                    }}));
+                                subscriber.onNext(new DisposableWrapper<ByteBuf>() {
+
                                     @Override
-                                    public void call() {
-                                        buf.release();
-                                    }}));
-                                subscriber.onNext(buf);
+                                    public ByteBuf unwrap() {
+                                        return buf;
+                                    }
+
+                                    @Override
+                                    public void dispose() {
+                                        subscription.unsubscribe();
+                                    }
+
+                                    @Override
+                                    public boolean isDisposed() {
+                                        return subscription.isUnsubscribed();
+                                    }});
                                 subscriber.onCompleted();
                             } else {
                                 subscriber.onError(new RuntimeException("invalid bytebuf"));

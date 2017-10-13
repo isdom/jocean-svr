@@ -1,5 +1,6 @@
 package org.jocean.svr;
 
+import org.jocean.idiom.DisposableWrapper;
 import org.jocean.netty.BlobRepo.Blob;
 
 import io.netty.buffer.ByteBuf;
@@ -13,13 +14,13 @@ public interface MessageDecoder extends Subscription {
     
     public int contentLength();
     
-    public Observable<? extends ByteBuf> content();
+    public Observable<? extends DisposableWrapper<ByteBuf>> content();
+    
+    public <T> Observable<? extends T> decodeJsonAs(final Class<T> type);
+    
+    public <T> Observable<? extends T> decodeXmlAs(final Class<T> type);
+    
+    public <T> Observable<? extends T> decodeFormAs(final Class<T> type);
     
     public Func0<Blob> blobProducer();
-    
-    public <T> T decodeJsonAs(final Class<T> type);
-    
-    public <T> T decodeXmlAs(final Class<T> type);
-    
-    public <T> T decodeFormAs(final Class<T> type);
 }
