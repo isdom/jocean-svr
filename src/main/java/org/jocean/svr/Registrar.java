@@ -34,6 +34,8 @@ import org.jocean.http.server.HttpServerBuilder.HttpTrade;
 import org.jocean.http.util.RxNettys;
 import org.jocean.idiom.BeanHolder;
 import org.jocean.idiom.BeanHolderAware;
+import org.jocean.idiom.DisposableWrapper;
+import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Pair;
 import org.jocean.idiom.ReflectUtils;
@@ -43,6 +45,7 @@ import org.jocean.j2se.jmx.MBeanRegisterAware;
 import org.jocean.j2se.spring.SpringBeanHolder;
 import org.jocean.j2se.unit.UnitAgent;
 import org.jocean.j2se.unit.UnitListener;
+import org.jocean.netty.BlobRepo.Blob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.config.BeanDefinition;
@@ -60,7 +63,9 @@ import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.DefaultHttpContent;
 import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.DefaultLastHttpContent;
+import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
@@ -76,6 +81,7 @@ import io.netty.util.CharsetUtil;
 import rx.Observable;
 import rx.functions.Action0;
 import rx.functions.Action1;
+import rx.functions.Func0;
 import rx.functions.Func1;
 
 /**
@@ -667,18 +673,95 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             && HttpPostRequestDecoder.isMultipart(request)) {
             return Observable.unsafeCreate(new MultipartOMD(trade, request));
         } else {
-            return trade.inbound().last().map(new Func1<Object, MessageDecoder>() {
+            return Observable.just(new MessageDecoder() {
                 @Override
-                public MessageDecoder call(final Object last) {
-                    //  TODO, re-impl MessageDecoder
-                    return new MessageDecoderUsingHolder(
-                        trade.inboundHolder().fullOf(RxNettys.BUILD_FULL_REQUEST).call(), 
-                        HttpUtil.getContentLength(request, -1),
-                        request.headers().get(HttpHeaderNames.CONTENT_TYPE),
-                        null,
-                        null);
+                public void unsubscribe() {
+                }
+
+                @Override
+                public boolean isUnsubscribed() {
+                    return false;
+                }
+
+                @Override
+                public String contentType() {
+                    return request.headers().get(HttpHeaderNames.CONTENT_TYPE);
+                }
+
+                @Override
+                public int contentLength() {
+                    return HttpUtil.getContentLength(request, -1);
+                }
+
+                @Override
+                public Observable<? extends DisposableWrapper<ByteBuf>> content() {
+                    return trade.obsrequest().flatMap(new Func1<DisposableWrapper<HttpObject>, Observable<? extends DisposableWrapper<ByteBuf>>>() {
+                        @Override
+                        public Observable<? extends DisposableWrapper<ByteBuf>> call(final DisposableWrapper<HttpObject> dwh) {
+                            if (dwh.unwrap() instanceof HttpContent ) {
+                                return Observable.just(new DisposableWrapper<ByteBuf>() {
+                                    @Override
+                                    public ByteBuf unwrap() {
+                                        return ((HttpContent)dwh.unwrap()).content();
+                                    }
+                
+                                    @Override
+                                    public void dispose() {
+                                        dwh.dispose();
+                                    }
+                
+                                    @Override
+                                    public boolean isDisposed() {
+                                        return dwh.isDisposed();
+                                    }});
+                            } else {
+                                return Observable.empty();
+                            }
+                        }});
+                }
+
+                @Override
+                public <T> Observable<? extends T> decodeJsonAs(final Class<T> type) {
+                    return tofullreq(trade).map(reqwrapper -> {
+                            try {
+                                return ParamUtil.parseContentAsJson(reqwrapper.unwrap(), type);
+                            }
+                            finally {
+                                reqwrapper.dispose();
+                            }});
+                }
+
+                @Override
+                public <T> Observable<? extends T> decodeXmlAs(final Class<T> type) {
+                    return tofullreq(trade).map(reqwrapper -> {
+                        try {
+                            return ParamUtil.parseContentAsXml(reqwrapper.unwrap(), type);
+                        }
+                        finally {
+                            reqwrapper.dispose();
+                        }});
+                }
+
+                @Override
+                public <T> Observable<? extends T> decodeFormAs(final Class<T> type) {
+                    return Observable.error(new UnsupportedOperationException());
+                }
+
+                @Override
+                public Func0<Blob> blobProducer() {
+                    throw new UnsupportedOperationException();
                 }});
         }
+    }
+
+    private Observable<DisposableWrapper<FullHttpRequest>> tofullreq(final HttpTrade trade) {
+        return trade.obsrequest()
+            .map(DisposableWrapperUtil.unwrap())
+            .toList()
+            .map(httpobjs ->
+                DisposableWrapperUtil.disposeOn(trade,
+                    RxNettys.wrap(RxNettys.httpobjs2fullreq(httpobjs)))
+            );
     }
 
     @SuppressWarnings("unchecked")
