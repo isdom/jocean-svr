@@ -58,6 +58,7 @@ import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufHolder;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.DefaultHttpContent;
@@ -78,11 +79,13 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder;
 import io.netty.util.CharsetUtil;
+import io.netty.util.ReferenceCountUtil;
 import rx.Observable;
 import rx.functions.Action0;
 import rx.functions.Action1;
 import rx.functions.Func0;
 import rx.functions.Func1;
+import rx.functions.Func2;
 
 /**
  * @author isdom
@@ -722,24 +725,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
                 @Override
                 public <T> Observable<? extends T> decodeJsonAs(final Class<T> type) {
-                    return tofullreq(trade).map(reqwrapper -> {
-                            try {
-                                return ParamUtil.parseContentAsJson(reqwrapper.unwrap(), type);
-                            }
-                            finally {
-                                reqwrapper.dispose();
-                            }});
+                    return decodeBodyAs(trade, type, ParamUtil::parseContentAsJson);
                 }
 
                 @Override
                 public <T> Observable<? extends T> decodeXmlAs(final Class<T> type) {
-                    return tofullreq(trade).map(reqwrapper -> {
-                        try {
-                            return ParamUtil.parseContentAsXml(reqwrapper.unwrap(), type);
-                        }
-                        finally {
-                            reqwrapper.dispose();
-                        }});
+                    return decodeBodyAs(trade, type, ParamUtil::parseContentAsXml);
                 }
 
                 @Override
@@ -754,14 +745,20 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
-    private Observable<DisposableWrapper<FullHttpRequest>> tofullreq(final HttpTrade trade) {
+    private static <T> Observable<? extends T> decodeBodyAs(final HttpTrade trade, 
+            final Class<T> type, 
+            final Func2<ByteBufHolder, Class<T>, T> func) {
         return trade.obsrequest()
-            .map(DisposableWrapperUtil.unwrap())
-            .toList()
-            .map(httpobjs ->
-                DisposableWrapperUtil.disposeOn(trade,
-                    RxNettys.wrap(RxNettys.httpobjs2fullreq(httpobjs)))
-            );
+                .map(DisposableWrapperUtil.unwrap())
+                .toList()
+                .map( httpobjs -> { 
+                    final FullHttpRequest req = RxNettys.httpobjs2fullreq(httpobjs);
+                    try {
+                        return func.call(req, type);
+                    } finally {
+                        ReferenceCountUtil.release(req);
+                    }
+                 });
     }
 
     @SuppressWarnings("unchecked")
