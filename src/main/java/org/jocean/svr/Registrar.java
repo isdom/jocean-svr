@@ -66,7 +66,6 @@ import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.DefaultLastHttpContent;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
-import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
@@ -698,39 +697,17 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
                 @Override
                 public Observable<? extends DisposableWrapper<ByteBuf>> content() {
-                    return trade.obsrequest().flatMap(new Func1<DisposableWrapper<HttpObject>, Observable<? extends DisposableWrapper<ByteBuf>>>() {
-                        @Override
-                        public Observable<? extends DisposableWrapper<ByteBuf>> call(final DisposableWrapper<HttpObject> dwh) {
-                            if (dwh.unwrap() instanceof HttpContent ) {
-                                return Observable.just(new DisposableWrapper<ByteBuf>() {
-                                    @Override
-                                    public ByteBuf unwrap() {
-                                        return ((HttpContent)dwh.unwrap()).content();
-                                    }
-                
-                                    @Override
-                                    public void dispose() {
-                                        dwh.dispose();
-                                    }
-                
-                                    @Override
-                                    public boolean isDisposed() {
-                                        return dwh.isDisposed();
-                                    }});
-                            } else {
-                                return Observable.empty();
-                            }
-                        }});
+                    return trade.obsrequest().flatMap(RxNettys.message2body());
                 }
 
                 @Override
                 public <T> Observable<? extends T> decodeJsonAs(final Class<T> type) {
-                    return decodeBodyAs(trade, type, ParamUtil::parseContentAsJson);
+                    return decodeBodyAs(trade, ParamUtil::parseContentAsJson, type);
                 }
 
                 @Override
                 public <T> Observable<? extends T> decodeXmlAs(final Class<T> type) {
-                    return decodeBodyAs(trade, type, ParamUtil::parseContentAsXml);
+                    return decodeBodyAs(trade, ParamUtil::parseContentAsXml, type);
                 }
 
                 @Override
@@ -746,8 +723,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private static <T> Observable<? extends T> decodeBodyAs(final HttpTrade trade, 
-            final Class<T> type, 
-            final Func2<ByteBufHolder, Class<T>, T> func) {
+            final Func2<ByteBufHolder, Class<T>, T> func, 
+            final Class<T> type) {
         return trade.obsrequest()
                 .map(DisposableWrapperUtil.unwrap())
                 .toList()
