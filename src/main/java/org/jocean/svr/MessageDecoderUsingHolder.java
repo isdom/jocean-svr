@@ -64,7 +64,7 @@ class MessageDecoderUsingHolder implements MessageDecoder {
         final ByteBufHolder holder = this._holder.retain();
         if (null != holder) {
             try {
-                return Observable.just(ParamUtil.parseContentAsJson(holder, type));
+                return Observable.just(ParamUtil.parseContentAsJson(holder.content(), type));
             } finally {
                 holder.release();
             }
@@ -77,7 +77,7 @@ class MessageDecoderUsingHolder implements MessageDecoder {
         final ByteBufHolder holder = this._holder.retain();
         if (null != holder) {
             try {
-                return Observable.just(ParamUtil.parseContentAsXml(holder, type));
+                return Observable.just(ParamUtil.parseContentAsXml(holder.content(), type));
             } finally {
                 holder.release();
             }

@@ -23,7 +23,6 @@ import com.fasterxml.jackson.databind.deser.DeserializationProblemHandler;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufHolder;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpRequest;
@@ -158,7 +157,7 @@ public class ParamUtil {
                 final FullHttpRequest fhr = getfhr.call();
                 if (null != fhr) {
                     try {
-                        return parseContentAsXml(fhr, type);
+                        return parseContentAsXml(fhr.content(), type);
                     } finally {
                         fhr.release();
                     }
@@ -167,7 +166,7 @@ public class ParamUtil {
             }};
     }
     
-    public static <T> T parseContentAsXml(final ByteBufHolder holder, final Class<T> type) {
+    public static <T> T parseContentAsXml(final ByteBuf buf, final Class<T> type) {
         final XmlMapper mapper = new XmlMapper();
         mapper.addHandler(new DeserializationProblemHandler() {
             @Override
@@ -179,7 +178,7 @@ public class ParamUtil {
                 return true;
             }});
         try {
-            return mapper.readValue(contentAsInputStream(holder.content()), type);
+            return mapper.readValue(contentAsInputStream(buf), type);
         } catch (Exception e) {
             LOG.warn("exception when parse xml, detail: {}",
                     ExceptionUtils.exception2detail(e));
@@ -194,7 +193,7 @@ public class ParamUtil {
                 final FullHttpRequest fhr = getfhr.call();
                 if (null != fhr) {
                     try {
-                        return parseContentAsJson(fhr, type);
+                        return parseContentAsJson(fhr.content(), type);
                     } finally {
                         fhr.release();
                     }
@@ -203,12 +202,12 @@ public class ParamUtil {
             }};
     }
     
-    public static <T> T parseContentAsJson(final ByteBufHolder holder, final Class<T> type) {
+    public static <T> T parseContentAsJson(final ByteBuf buf, final Class<T> type) {
         try {
-            return JSON.parseObject(contentAsInputStream(holder.content()), type);
+            return JSON.parseObject(contentAsInputStream(buf), type);
         } catch (IOException e) {
             LOG.warn("exception when parse {} as json, detail: {}",
-                    holder, ExceptionUtils.exception2detail(e));
+                    buf, ExceptionUtils.exception2detail(e));
             return null;
         }
     }

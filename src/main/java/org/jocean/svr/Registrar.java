@@ -31,6 +31,7 @@ import javax.ws.rs.Path;
 import javax.ws.rs.QueryParam;
 
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
+import org.jocean.http.util.Nettys;
 import org.jocean.http.util.RxNettys;
 import org.jocean.idiom.BeanHolder;
 import org.jocean.idiom.BeanHolderAware;
@@ -58,13 +59,11 @@ import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufHolder;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.DefaultHttpContent;
 import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.DefaultLastHttpContent;
-import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
@@ -702,12 +701,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
                 @Override
                 public <T> Observable<? extends T> decodeJsonAs(final Class<T> type) {
-                    return decodeBodyAs(trade, ParamUtil::parseContentAsJson, type);
+                    return decodeContentAs(content(), ParamUtil::parseContentAsJson, type);
                 }
 
                 @Override
                 public <T> Observable<? extends T> decodeXmlAs(final Class<T> type) {
-                    return decodeBodyAs(trade, ParamUtil::parseContentAsXml, type);
+                    return decodeContentAs(content(), ParamUtil::parseContentAsXml, type);
                 }
 
                 @Override
@@ -722,18 +721,18 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
-    private static <T> Observable<? extends T> decodeBodyAs(final HttpTrade trade, 
-            final Func2<ByteBufHolder, Class<T>, T> func, 
+    private static <T> Observable<? extends T> decodeContentAs(
+            final Observable<? extends DisposableWrapper<ByteBuf>> content, 
+            final Func2<ByteBuf, Class<T>, T> func, 
             final Class<T> type) {
-        return trade.obsrequest()
-                .map(DisposableWrapperUtil.unwrap())
+        return content.map(DisposableWrapperUtil.unwrap())
                 .toList()
-                .map( httpobjs -> { 
-                    final FullHttpRequest req = RxNettys.httpobjs2fullreq(httpobjs);
+                .map( bufs -> { 
+                    final ByteBuf buf = Nettys.composite(bufs);
                     try {
-                        return func.call(req, type);
+                        return func.call(buf, type);
                     } finally {
-                        ReferenceCountUtil.release(req);
+                        ReferenceCountUtil.release(buf);
                     }
                  });
     }
