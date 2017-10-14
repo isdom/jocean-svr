@@ -115,11 +115,6 @@ class MessageDecoderUsingHolder implements MessageDecoder {
                                     ReferenceCountUtil.release(buf);
                                 }});
                             if (null!=buf) {
-//                                subscriber.add(Subscriptions.create(new Action0() {
-//                                    @Override
-//                                    public void call() {
-//                                        buf.release();
-//                                    }}));
                                 subscriber.onNext(new DisposableWrapper<ByteBuf>() {
 
                                     @Override
