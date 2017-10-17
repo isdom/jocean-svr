@@ -670,10 +670,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Observable<MessageDecoder> buildOMD(final HttpTrade trade, final HttpRequest request) {
-        if ( request.method().equals(HttpMethod.POST)
-            && HttpPostRequestDecoder.isMultipart(request)) {
-            return Observable.unsafeCreate(new MultipartOMD(trade, request));
-        } else {
+//        if ( request.method().equals(HttpMethod.POST)
+//            && HttpPostRequestDecoder.isMultipart(request)) {
+//            return Observable.unsafeCreate(new MultipartOMD(trade, request));
+//        } else {
             return Observable.just(new MessageDecoder() {
                 @Override
                 public void unsubscribe() {
@@ -718,7 +718,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 public Func0<Blob> blobProducer() {
                     throw new UnsupportedOperationException();
                 }});
-        }
+//        }
     }
 
     private static <T> Observable<? extends T> decodeContentAs(
