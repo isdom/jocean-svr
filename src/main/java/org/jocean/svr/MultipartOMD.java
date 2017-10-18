@@ -145,8 +145,9 @@ class MultipartOMD implements Observable.OnSubscribe<MessageDecoder> {
     private final HttpTrade _trade;
     private final HttpRequest _request;
 
-    private static MessageDecoder buildMD(final FileUpload fileUpload) {
+    private MessageDecoder buildMD(final FileUpload fileUpload) {
         return new MessageDecoderUsingHolder(
+                this._trade,
                 fileUpload.retain(),
                 fileUpload.content().readableBytes(),
                 fileUpload.getContentType(),

@@ -1,12 +1,14 @@
 package org.jocean.svr;
 
+import org.jocean.http.util.RxNettys;
 import org.jocean.idiom.DisposableWrapper;
+import org.jocean.idiom.DisposableWrapperUtil;
+import org.jocean.idiom.TerminateAware;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufHolder;
-import io.netty.util.ReferenceCountUtil;
 import rx.Observable;
 import rx.Observable.OnSubscribe;
 import rx.Subscriber;
@@ -23,12 +25,14 @@ class MessageDecoderUsingHolder implements MessageDecoder {
     private final Subscription _subscription;
     
     public MessageDecoderUsingHolder(
+            final TerminateAware<?> terminateAware,
             final ByteBufHolder holder, 
             final int contentLength, 
             final String contentType,
             final String filename,
             final String name
             ) {
+        this._terminateAware = terminateAware;
         this._holder = holder;
         this._contentLength = contentLength;
         this._contentType = contentType;
@@ -104,28 +108,8 @@ class MessageDecoderUsingHolder implements MessageDecoder {
                     if (!isUnsubscribed()) {
                         try {
                             final ByteBuf buf = _holder.content().retainedSlice();
-                            final Subscription  subscription = Subscriptions.create(new Action0() {
-                                @Override
-                                public void call() {
-                                    ReferenceCountUtil.release(buf);
-                                }});
-                            if (null!=buf) {
-                                subscriber.onNext(new DisposableWrapper<ByteBuf>() {
-
-                                    @Override
-                                    public ByteBuf unwrap() {
-                                        return buf;
-                                    }
-
-                                    @Override
-                                    public void dispose() {
-                                        subscription.unsubscribe();
-                                    }
-
-                                    @Override
-                                    public boolean isDisposed() {
-                                        return subscription.isUnsubscribed();
-                                    }});
+                            if (null != buf) {
+                                subscriber.onNext(DisposableWrapperUtil.disposeOn(_terminateAware, RxNettys.wrap(buf)));
                                 subscriber.onCompleted();
                             } else {
                                 subscriber.onError(new RuntimeException("invalid bytebuf"));
@@ -137,9 +121,11 @@ class MessageDecoderUsingHolder implements MessageDecoder {
                         subscriber.onError(new RuntimeException("content has been unsubscribed"));
                     }
                 }
-            }});
+            }
+        });
     }
     
+    private final TerminateAware<?> _terminateAware;
     private final ByteBufHolder _holder;
     private final int    _contentLength;
     private final String _contentType;
