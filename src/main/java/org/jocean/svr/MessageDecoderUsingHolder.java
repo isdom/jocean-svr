@@ -1,22 +1,17 @@
 package org.jocean.svr;
 
-import java.io.InputStream;
-
 import org.jocean.idiom.DisposableWrapper;
-import org.jocean.netty.BlobRepo.Blob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufHolder;
-import io.netty.buffer.ByteBufInputStream;
 import io.netty.util.ReferenceCountUtil;
 import rx.Observable;
 import rx.Observable.OnSubscribe;
 import rx.Subscriber;
 import rx.Subscription;
 import rx.functions.Action0;
-import rx.functions.Func0;
 import rx.subscriptions.Subscriptions;
 
 class MessageDecoderUsingHolder implements MessageDecoder {
@@ -145,100 +140,6 @@ class MessageDecoderUsingHolder implements MessageDecoder {
             }});
     }
     
-    @Override
-    public Func0<Blob> blobProducer() {
-        return new Func0<Blob>() {
-            @Override
-            public Blob call() {
-                if (!isUnsubscribed()) {
-                    return buildBlob(_holder, _contentType, _filename, _name);
-                } else {
-                    return null;
-                }
-            }};
-    }
-
-    private static Blob buildBlob(final ByteBufHolder holder,
-            final String contentType, 
-            final String filename,
-            final String name) {
-        final int length = holder.content().readableBytes();
-        return new Blob() {
-            @Override
-            public String toString() {
-                final StringBuilder builder = new StringBuilder();
-                builder.append("holder-blob[holder=").append(holder)
-                        .append(", name=").append(name())
-                        .append(", filename=").append(filename())
-                        .append(", contentType=").append(contentType())
-                        .append(", content.length=").append(length)
-                        .append("]");
-                return builder.toString();
-            }
-            
-            @Override
-            public String contentType() {
-                return contentType;
-            }
-            @Override
-            public String name() {
-                return name;
-            }
-            @Override
-            public String filename() {
-                return filename;
-            }
-
-            @Override
-            public int refCnt() {
-                return holder.refCnt();
-            }
-
-            @Override
-            public Blob retain() {
-                holder.retain();
-                return this;
-            }
-
-            @Override
-            public Blob retain(int increment) {
-                holder.retain(increment);
-                return this;
-            }
-
-            @Override
-            public Blob touch() {
-                holder.touch();
-                return this;
-            }
-
-            @Override
-            public Blob touch(Object hint) {
-                holder.touch(hint);
-                return this;
-            }
-
-            @Override
-            public boolean release() {
-                return holder.release();
-            }
-
-            @Override
-            public boolean release(int decrement) {
-                return holder.release(decrement);
-            }
-
-            @Override
-            public InputStream inputStream() {
-                return new ByteBufInputStream(holder.content().slice(), false);
-            }
-
-            @Override
-            public int contentLength() {
-                return length;
-            }};
-    }
-
     private final ByteBufHolder _holder;
     private final int    _contentLength;
     private final String _contentType;

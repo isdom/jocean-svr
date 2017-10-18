@@ -46,7 +46,6 @@ import org.jocean.j2se.jmx.MBeanRegisterAware;
 import org.jocean.j2se.spring.SpringBeanHolder;
 import org.jocean.j2se.unit.UnitAgent;
 import org.jocean.j2se.unit.UnitListener;
-import org.jocean.netty.BlobRepo.Blob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.config.BeanDefinition;
@@ -81,7 +80,6 @@ import io.netty.util.ReferenceCountUtil;
 import rx.Observable;
 import rx.functions.Action0;
 import rx.functions.Action1;
-import rx.functions.Func0;
 import rx.functions.Func1;
 import rx.functions.Func2;
 
@@ -670,10 +668,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Observable<MessageDecoder> buildOMD(final HttpTrade trade, final HttpRequest request) {
-//        if ( request.method().equals(HttpMethod.POST)
-//            && HttpPostRequestDecoder.isMultipart(request)) {
-//            return Observable.unsafeCreate(new MultipartOMD(trade, request));
-//        } else {
+        if (request.method().equals(HttpMethod.POST) && HttpPostRequestDecoder.isMultipart(request)) {
+            return Observable.unsafeCreate(new MultipartOMD(trade, request));
+        } else {
             return Observable.just(new MessageDecoder() {
                 @Override
                 public void unsubscribe() {
@@ -713,12 +710,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 public <T> Observable<? extends T> decodeFormAs(final Class<T> type) {
                     return Observable.error(new UnsupportedOperationException());
                 }
-
-                @Override
-                public Func0<Blob> blobProducer() {
-                    throw new UnsupportedOperationException();
-                }});
-//        }
+            });
+        }
     }
 
     private static <T> Observable<? extends T> decodeContentAs(
