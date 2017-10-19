@@ -5,6 +5,7 @@ import java.util.List;
 
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
 import org.jocean.http.util.Nettys;
+import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,7 +30,7 @@ class MultipartOMD implements Observable.OnSubscribe<MessageDecoder> {
     private static final Logger LOG =
             LoggerFactory.getLogger(MultipartOMD.class);
 
-    private final class ToBlob implements Func1<HttpObject, Observable<MessageDecoder>> {
+    private final class ToBlob implements Func1<DisposableWrapper<HttpObject>, Observable<MessageDecoder>> {
         private final HttpDataFactory _httpDataFactory = 
                 new DefaultHttpDataFactory(false);  // DO NOT use Disk;
         
@@ -61,9 +62,9 @@ class MultipartOMD implements Observable.OnSubscribe<MessageDecoder> {
         }
         
         @Override
-        public Observable<MessageDecoder> call(final HttpObject msg) {
-            if (msg instanceof HttpContent) {
-                return content2MD((HttpContent)msg);
+        public Observable<MessageDecoder> call(final DisposableWrapper<HttpObject> msg) {
+            if (msg.unwrap() instanceof HttpContent) {
+                return content2MD((HttpContent)msg.unwrap());
             } else {
                 return Observable.empty();
             }
@@ -136,7 +137,7 @@ class MultipartOMD implements Observable.OnSubscribe<MessageDecoder> {
             final ToBlob toblob = new ToBlob(this._request, subscriber);
             
             // TBD: release toblob and release subscriber within trade
-            this._trade.inbound()
+            this._trade.obsrequest()
             .flatMap(toblob)
             .subscribe(subscriber);
         }
