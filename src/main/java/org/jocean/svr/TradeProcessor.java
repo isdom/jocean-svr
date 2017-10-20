@@ -5,6 +5,7 @@ package org.jocean.svr;
 
 import org.jocean.http.WritePolicy;
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
+import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.j2se.jmx.MBeanRegister;
 import org.jocean.j2se.jmx.MBeanRegisterAware;
@@ -43,7 +44,7 @@ public class TradeProcessor extends Subscriber<HttpTrade>
 
     @Override
     public void onNext(final HttpTrade trade) {
-        trade.inbound().subscribe(
+        trade.obsrequest().map(DisposableWrapperUtil.unwrap()).subscribe(
             buildInboundSubscriber(trade));
     }
 
