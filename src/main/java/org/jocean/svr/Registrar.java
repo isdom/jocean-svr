@@ -321,7 +321,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     }
                     @Override
                     public Observable<? extends HttpObject> obsRequest() {
-                        return trade.obsrequest().map(DisposableWrapperUtil.unwrap());
+                        return trade.inbound().map(DisposableWrapperUtil.unwrap());
                     }
                     @Override
                     public Observable<HttpObject> obsResponse() {
@@ -340,7 +340,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             request,
                             interceptors.toArray(new MethodInterceptor[0]));
                     final Observable<HttpObject> obsResponse = invokeProcessor(request, 
-                            trade.obsrequest().map(DisposableWrapperUtil.unwrap()),
+                            trade.inbound().map(DisposableWrapperUtil.unwrap()),
                             resource,
                             processor, 
                             argctx);
@@ -350,7 +350,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
         }
         return RxNettys.response404NOTFOUND(request.protocolVersion())
-                .delaySubscription(trade.obsrequest().last());
+                .delaySubscription(trade.inbound().last());
     }
 
     private Observable<HttpObject> invokeProcessor(
@@ -631,7 +631,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (isObservableType(argType)) {
                 final Type gt1st = getGenericTypeOf(argType, 0);
                 if (HttpObject.class.equals(gt1st)) {
-                    return trade.obsrequest().map(DisposableWrapperUtil.unwrap());
+                    return trade.inbound().map(DisposableWrapperUtil.unwrap());
                 } else if (MessageDecoder.class.equals(gt1st)) {
                     return buildOMD(trade, request)
                         .doOnNext(new Action1<MessageDecoder>() {
@@ -645,7 +645,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             }});
                 }
             } else if (UntilRequestCompleted.class.equals(getParameterizedRawType(argType))) {
-                return buildURC(trade.obsrequest().map(DisposableWrapperUtil.unwrap()));
+                return buildURC(trade.inbound().map(DisposableWrapperUtil.unwrap()));
             }
         } else if (argType.equals(io.netty.handler.codec.http.HttpMethod.class)) {
             return request.method();
@@ -693,7 +693,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
                 @Override
                 public Observable<? extends DisposableWrapper<ByteBuf>> content() {
-                    return trade.obsrequest().flatMap(RxNettys.message2body());
+                    return trade.inbound().flatMap(RxNettys.message2body());
                 }
 
                 public <T> Observable<? extends T> decodeAs(final Class<T> type) {

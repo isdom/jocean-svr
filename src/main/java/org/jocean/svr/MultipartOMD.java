@@ -137,7 +137,7 @@ class MultipartOMD implements Observable.OnSubscribe<MessageDecoder> {
             final ToBlob toblob = new ToBlob(this._request, subscriber);
             
             // TBD: release toblob and release subscriber within trade
-            this._trade.obsrequest()
+            this._trade.inbound()
             .flatMap(toblob)
             .subscribe(subscriber);
         }

@@ -44,7 +44,7 @@ public class TradeProcessor extends Subscriber<HttpTrade>
 
     @Override
     public void onNext(final HttpTrade trade) {
-        trade.obsrequest().map(DisposableWrapperUtil.unwrap()).subscribe(
+        trade.inbound().map(DisposableWrapperUtil.unwrap()).subscribe(
             buildInboundSubscriber(trade));
     }
 
