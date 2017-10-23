@@ -109,7 +109,7 @@ class MessageDecoderUsingHolder implements MessageDecoder {
                         try {
                             final ByteBuf buf = _holder.content().retainedSlice();
                             if (null != buf) {
-                                subscriber.onNext(DisposableWrapperUtil.disposeOn(_terminateAware, RxNettys.wrap(buf)));
+                                subscriber.onNext(DisposableWrapperUtil.disposeOn(_terminateAware, RxNettys.wrap4release(buf)));
                                 subscriber.onCompleted();
                             } else {
                                 subscriber.onError(new RuntimeException("invalid bytebuf"));
