@@ -14,6 +14,8 @@ public interface MessageDecoder extends Subscription {
     
     public Observable<? extends DisposableWrapper<ByteBuf>> content();
     
+    public <T> Observable<? extends T> decodeAs(final Class<T> type);
+    
     public <T> Observable<? extends T> decodeJsonAs(final Class<T> type);
     
     public <T> Observable<? extends T> decodeXmlAs(final Class<T> type);

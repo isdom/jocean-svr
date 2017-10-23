@@ -696,6 +696,25 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     return trade.obsrequest().flatMap(RxNettys.message2body());
                 }
 
+                public <T> Observable<? extends T> decodeAs(final Class<T> type) {
+                    if (contentType().startsWith(HttpHeaderValues.APPLICATION_JSON.toString())) {
+                        return decodeJsonAs(type);
+                    } else if (contentType().startsWith("application/xml")
+                        || contentType().startsWith("text/xml")) {
+                        return decodeXmlAs(type);
+                    } else if (request.method().equals(HttpMethod.GET)) {
+                        // try decoder query string
+                        try {
+                            final T bean = (T)type.newInstance();
+                            ParamUtil.request2QueryParams(request, bean);
+                            return Observable.just(bean);
+                        } catch (Exception e) {
+                            return Observable.error(e);
+                        }
+                    }
+                    return Observable.error(new RuntimeException("can't decodeAs type:" + type));
+                }
+                
                 @Override
                 public <T> Observable<? extends T> decodeJsonAs(final Class<T> type) {
                     return decodeContentAs(content(), ParamUtil::parseContentAsJson, type);

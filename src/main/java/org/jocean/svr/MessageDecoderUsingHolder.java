@@ -59,6 +59,11 @@ class MessageDecoderUsingHolder implements MessageDecoder {
     }
     
     @Override
+    public <T> Observable<? extends T> decodeAs(final Class<T> type) {
+        return Observable.error(new UnsupportedOperationException());
+    }
+    
+    @Override
     public <T> Observable<? extends T> decodeJsonAs(final Class<T> type) {
         final ByteBufHolder holder = this._holder.retain();
         if (null != holder) {
