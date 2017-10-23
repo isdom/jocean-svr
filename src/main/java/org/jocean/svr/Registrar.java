@@ -697,11 +697,13 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 }
 
                 public <T> Observable<? extends T> decodeAs(final Class<T> type) {
-                    if (contentType().startsWith(HttpHeaderValues.APPLICATION_JSON.toString())) {
-                        return decodeJsonAs(type);
-                    } else if (contentType().startsWith("application/xml")
-                        || contentType().startsWith("text/xml")) {
-                        return decodeXmlAs(type);
+                    if (null != contentType()) {
+                        if (contentType().startsWith(HttpHeaderValues.APPLICATION_JSON.toString())) {
+                            return decodeJsonAs(type);
+                        } else if (contentType().startsWith("application/xml")
+                            || contentType().startsWith("text/xml")) {
+                            return decodeXmlAs(type);
+                        }
                     } else if (request.method().equals(HttpMethod.GET)) {
                         // try decoder query string
                         try {
