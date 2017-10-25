@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+import javax.ws.rs.BeanParam;
 import javax.ws.rs.GET;
 import javax.ws.rs.HEAD;
 import javax.ws.rs.HeaderParam;
@@ -617,6 +618,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final HttpRequest request, 
             final MethodInterceptor[] interceptors) {
         if (argType instanceof Class<?>) {
+            if (null != getAnnotation(argAnnotations, BeanParam.class)) {
+                return buildBeanParam(request, (Class<?>)argType);
+            }
             final HeaderParam headerParam = getAnnotation(argAnnotations, HeaderParam.class);
             if (null != headerParam) {
                 return buildHeaderParam(request, headerParam.value(), (Class<?>)argType);
@@ -704,7 +708,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             || contentType().startsWith("text/xml")) {
                             return decodeXmlAs(type);
                         }
-                    } else if (request.method().equals(HttpMethod.GET)) {
+                    }
+                    if (request.method().equals(HttpMethod.GET)) {
                         // try decoder query string
                         try {
                             final T bean = (T)type.newInstance();
@@ -759,6 +764,18 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
         }
         return null;
+    }
+
+    private Object buildBeanParam(final HttpRequest request, final Class<?> argType) {
+        try {
+            final Object bean = argType.newInstance();
+            ParamUtil.request2HeaderParams(request, bean);
+            ParamUtil.request2QueryParams(request, bean);
+            return bean;
+        } catch (Exception e) {
+            LOG.warn("exception when buildBeanParam for type {}, detail: {}", ExceptionUtils.exception2detail(e));
+            throw new RuntimeException(e);
+        }
     }
 
     private Object buildHeaderParam(final HttpRequest request, final String name, final Class<?> argType) {
