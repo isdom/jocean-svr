@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import com.alibaba.fastjson.JSON;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
+import com.google.common.base.Charsets;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -107,6 +108,11 @@ public class ResponseUtil {
                     ExceptionUtils.exception2detail(e));
             return statusOnly(500);
         }
+    }
+    
+    public static Observable<Object> responseAsText(final int status, final String text) {
+        return Observable.<Object>just(
+                new FullResponse(status, MediaType.TEXT_PLAIN, Unpooled.wrappedBuffer(text.getBytes(Charsets.UTF_8))));
     }
     
     public static MessageResponse respWithStatus(final int status) {
