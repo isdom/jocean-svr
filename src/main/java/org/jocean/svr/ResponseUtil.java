@@ -91,6 +91,30 @@ public class ResponseUtil {
         return Observable.<Object>just(new StatusOnly(status));
     }
     
+    private static class Redirectable implements MessageResponse, MessageBody {
+
+        public Redirectable(final String location) {
+            this._location = location;
+        }
+        
+        @Override
+        public int status() {
+            return 302;
+        }
+        
+        @Override
+        public ByteBuf content() {
+            return null;
+        }
+
+        @HeaderParam("location")
+        private String _location;
+    }
+    
+    public static Observable<Object> redirectOnly(final String location) {
+        return Observable.<Object>just(new Redirectable(location));
+    }
+    
     public static Observable<Object> responseAsJson(final int status, final Object pojo) {
         
         final ByteBuf content = Unpooled.wrappedBuffer(JSON.toJSONBytes(pojo));
