@@ -395,8 +395,14 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             } else if (gt1st.equals(Object.class)) {
                 return objs2Response((Observable<Object>)returnValue, request);
             }
-        } else {
+        } else if (null != returnValue) {
+            if (String.class.equals(returnValue.getClass())) {
+                return strings2Response(Observable.just((String)returnValue), request);
+            }
             // return is NOT Observable<?>
+//            if (Object.class.equals(returnType)) {
+//                // TODO
+//            }
         }
         return null;
     }
