@@ -83,12 +83,12 @@ public class ResponseUtil {
                 .delaySubscription(request.last());
     }
     
-    public static Observable<Object> flushOnly() {
-        return Observable.<Object>just(DoFlush.Util.flushOnly());
+    public static Object flushOnly() {
+        return DoFlush.Util.flushOnly();
     }
     
-    public static Observable<Object> statusOnly(final int status) {
-        return Observable.<Object>just(new StatusOnly(status));
+    public static Object statusOnly(final int status) {
+        return new StatusOnly(status);
     }
     
     private static class Redirectable implements MessageResponse, MessageBody {
@@ -111,32 +111,27 @@ public class ResponseUtil {
         private String _location;
     }
     
-    public static Observable<Object> redirectOnly(final String location) {
-        return Observable.<Object>just(new Redirectable(location));
+    public static Object redirectOnly(final String location) {
+        return new Redirectable(location);
     }
     
-    public static Observable<Object> responseAsJson(final int status, final Object pojo) {
-        
-        final ByteBuf content = Unpooled.wrappedBuffer(JSON.toJSONBytes(pojo));
-        return Observable.<Object>just(new FullResponse(status, MediaType.APPLICATION_JSON, content));
+    public static Object responseAsJson(final int status, final Object pojo) {
+        return new FullResponse(status, MediaType.APPLICATION_JSON, Unpooled.wrappedBuffer(JSON.toJSONBytes(pojo)));
     }
     
-    public static Observable<Object> responseAsXml(final int status, final Object pojo) {
+    public static Object responseAsXml(final int status, final Object pojo) {
         try {
             final XmlMapper mapper = new XmlMapper();
-            
-            final ByteBuf content = Unpooled.wrappedBuffer(mapper.writeValueAsBytes(pojo));
-            return Observable.<Object>just(new FullResponse(status, MediaType.APPLICATION_XML, content));
+            return new FullResponse(status, MediaType.APPLICATION_XML,
+                    Unpooled.wrappedBuffer(mapper.writeValueAsBytes(pojo)));
         } catch (JsonProcessingException e) {
-            LOG.warn("exception when convert {} to xml, detail: {}", pojo,
-                    ExceptionUtils.exception2detail(e));
+            LOG.warn("exception when convert {} to xml, detail: {}", pojo, ExceptionUtils.exception2detail(e));
             return statusOnly(500);
         }
     }
     
-    public static Observable<Object> responseAsText(final int status, final String text) {
-        return Observable.<Object>just(
-                new FullResponse(status, MediaType.TEXT_PLAIN, Unpooled.wrappedBuffer(text.getBytes(Charsets.UTF_8))));
+    public static Object responseAsText(final int status, final String text) {
+        return new FullResponse(status, MediaType.TEXT_PLAIN, Unpooled.wrappedBuffer(text.getBytes(Charsets.UTF_8)));
     }
     
     public static MessageResponse respWithStatus(final int status) {
@@ -166,7 +161,7 @@ public class ResponseUtil {
                                     Observable.<Object>just(new StatusOnly(100), DoFlush.Util.flushOnly()), 
                                     response);
                             } else {
-                                return ResponseUtil.statusOnly(status);
+                                return Observable.<Object>just(ResponseUtil.statusOnly(status));
                             }
                         }
                     }});
