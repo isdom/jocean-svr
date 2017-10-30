@@ -171,39 +171,23 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
         final Class<?> resourceCls = checkNotNull(cls);
 
-        final String rootPath =
-                checkNotNull(checkNotNull(resourceCls.getAnnotation(Path.class),
-                                "resource class(%s) must be annotation by Path", resourceCls).value(),
-                        "resource class(%s)'s Path must have value setted", resourceCls
-                );
+        if (!hasMatchedProcessor(resourceCls)) {
+            return this;
+        }
 
-        if (!Regexs.isMatched(this._pathPattern, rootPath)) {
-            LOG.info("resource {} 's path {} !NOT! match path pattern {}, just ignore",
-                    resourceCls, rootPath, this._pathPattern);
-            return this;
-        }
-        
-        final Method[] restMethods =
-                ReflectUtils.getAnnotationMethodsOf(resourceCls, Path.class);
-        
-        if (0 == restMethods.length) {
-            LOG.info("no processor exit of {}, just ignore", resourceCls);
-            return this;
-        }
-        
+        final String rootPath = checkNotNull(checkNotNull(resourceCls.getAnnotation(Path.class),
+                "resource class(%s) must be annotation by Path", resourceCls).value(),
+                "resource class(%s)'s Path must have value setted", resourceCls);
+
+        final Method[] restMethods = ReflectUtils.getAnnotationMethodsOf(resourceCls, Path.class);
+
         for (Method m : restMethods) {
             final String methodPath = genMethodPathOf(rootPath, m);
-            if (
-                registerProcessorWithHttpMethod(resourceCls, m, methodPath, GET.class)
-                +
-                registerProcessorWithHttpMethod(resourceCls, m, methodPath, POST.class)
-                +
-                registerProcessorWithHttpMethod(resourceCls, m, methodPath, PUT.class)
-                +
-                registerProcessorWithHttpMethod(resourceCls, m, methodPath, HEAD.class)
-                +
-                registerProcessorWithHttpMethod(resourceCls, m, methodPath, OPTIONS.class)
-                == 0) {
+            if (registerProcessorWithHttpMethod(resourceCls, m, methodPath, GET.class)
+                    + registerProcessorWithHttpMethod(resourceCls, m, methodPath, POST.class)
+                    + registerProcessorWithHttpMethod(resourceCls, m, methodPath, PUT.class)
+                    + registerProcessorWithHttpMethod(resourceCls, m, methodPath, HEAD.class)
+                    + registerProcessorWithHttpMethod(resourceCls, m, methodPath, OPTIONS.class) == 0) {
                 // NO HttpMethod annotation exist
                 // register with only path
                 this._resCtxs.put(methodPath, new ResContext(resourceCls, m));
@@ -211,21 +195,45 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     LOG.debug("register Path {}", methodPath);
                 }
             }
-//            final PathMatcher pathMatcher = PathMatcher.create(methodPath);
-//            if (null == pathMatcher) {
-                //  Path without parameters
-//                this._resCtxs.put(methodPath, new ResContext(resourceCls, m));
+            // final PathMatcher pathMatcher = PathMatcher.create(methodPath);
+            // if (null == pathMatcher) {
+            // Path without parameters
+            // this._resCtxs.put(methodPath, new ResContext(resourceCls, m));
 
-//            } else {
-                // Path !WITH! parameters
-//                this._pathMatchers.put(httpMethod, Pair.of(pathMatcher, context));
-//                if (LOG.isDebugEnabled()) {
-//                    LOG.debug("register httpMethod {} for !Parametered! Path {} with matcher {} & context {}",
-//                            httpMethod, methodPath, pathMatcher, context);
-//                }
-//            }
+            // } else {
+            // Path !WITH! parameters
+            // this._pathMatchers.put(httpMethod, Pair.of(pathMatcher,
+            // context));
+            // if (LOG.isDebugEnabled()) {
+            // LOG.debug("register httpMethod {} for !Parametered! Path {} with
+            // matcher {} & context {}",
+            // httpMethod, methodPath, pathMatcher, context);
+            // }
+            // }
         }
         return this;
+    }
+
+    private boolean hasMatchedProcessor(final Class<?> resourceCls) {
+        final String rootPath = checkNotNull(checkNotNull(resourceCls.getAnnotation(Path.class),
+                "resource class(%s) must be annotation by Path", resourceCls).value(),
+                "resource class(%s)'s Path must have value setted", resourceCls);
+
+        final Method[] restMethods = ReflectUtils.getAnnotationMethodsOf(resourceCls, Path.class);
+
+        if (0 == restMethods.length) {
+            LOG.info("resource {} has no processor, just ignore", resourceCls);
+            return false;
+        }
+
+        for (Method m : restMethods) {
+            final String methodPath = genMethodPathOf(rootPath, m);
+            if (Regexs.isMatched(this._pathPattern, methodPath)) {
+                return true;
+            }
+        }
+        LOG.info("resource {} has no processor matched path pattern {}, just ignore", resourceCls, this._pathPattern);
+        return false;
     }
 
     private int registerProcessorWithHttpMethod(final Class<?> resourceCls, 
