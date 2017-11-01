@@ -1,7 +1,5 @@
 package org.jocean.svr;
 
-import java.beans.PropertyEditor;
-import java.beans.PropertyEditorManager;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
@@ -10,6 +8,7 @@ import java.util.List;
 import javax.ws.rs.HeaderParam;
 import javax.ws.rs.QueryParam;
 
+import org.jocean.idiom.Beans;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.ReflectUtils;
 import org.slf4j.Logger;
@@ -107,30 +106,12 @@ public class ParamUtil {
     
     public static <T> T getAsType(final List<String> list, final Class<T> type) {
         if (null != list && list.size() > 0) {
-            return getAsType(list.get(0), type);
+            return Beans.fromString(list.get(0), type);
         } else {
             return null;
         }
     }
     
-    @SuppressWarnings("unchecked")
-    public static <T> T getAsType(final String value, final Class<T> type) {
-        if (type.equals(String.class)) {
-            return (T)value;
-        } else {
-            final PropertyEditor editor = PropertyEditorManager.findEditor(type);
-            if (null != editor) {
-                editor.setAsText(value);
-                return (T)editor.getValue();
-            } else {
-                LOG.warn("can't found PropertyEditor for type{}, skip get value {}.",
-                        type, value);
-                throw new RuntimeException(
-                    "can't found PropertyEditor for type ("+ type +")");
-            }
-        }
-    }
-
     /**
      * @param value
      * @param obj
@@ -142,7 +123,7 @@ public class ParamUtil {
             final Field field) {
         if (null != value) {
             try {
-                field.set(obj, getAsType(value, field.getType()));
+                field.set(obj, Beans.fromString(value, field.getType()));
             } catch (Exception e) {
                 LOG.warn("exception when set obj({}).{} with value({}), detail:{} ",
                         obj, field.getName(), value, ExceptionUtils.exception2detail(e));

@@ -36,6 +36,7 @@ import org.jocean.http.util.Nettys;
 import org.jocean.http.util.RxNettys;
 import org.jocean.idiom.BeanHolder;
 import org.jocean.idiom.BeanHolderAware;
+import org.jocean.idiom.Beans;
 import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.ExceptionUtils;
@@ -797,7 +798,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Object buildHeaderParam(final HttpRequest request, final String name, final Class<?> argType) {
-        return ParamUtil.getAsType(request.headers().get(name), argType);
+        return Beans.fromString(request.headers().get(name), argType);
     }
 
     private Object buildQueryParam(final HttpRequest request, final String key, final Class<?> argType) {
@@ -810,7 +811,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         
         if ("".equals(key)) {
             // for case: QueryParam(""), means fill with entire query string
-            return ParamUtil.getAsType(ParamUtil.rawQuery(request.uri()), argType);
+            return Beans.fromString(ParamUtil.rawQuery(request.uri()), argType);
         }
         
         return null;
