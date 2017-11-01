@@ -21,6 +21,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+import javax.inject.Inject;
+import javax.inject.Named;
 import javax.ws.rs.BeanParam;
 import javax.ws.rs.GET;
 import javax.ws.rs.HEAD;
@@ -48,8 +50,11 @@ import org.jocean.j2se.jmx.MBeanRegisterAware;
 import org.jocean.j2se.spring.SpringBeanHolder;
 import org.jocean.j2se.unit.UnitAgent;
 import org.jocean.j2se.unit.UnitListener;
+import org.jocean.j2se.util.BeanHolders;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -647,6 +652,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final QueryParam queryParam = getAnnotation(argAnnotations, QueryParam.class);
             if (null != queryParam) {
                 return buildQueryParam(request, queryParam.value(), (Class<?>)argType);
+            }
+            if (null != getAnnotation(argAnnotations, Inject.class)) {
+                return BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Named.class));
+            }
+            if (null != getAnnotation(argAnnotations, Autowired.class)) {
+                return BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Qualifier.class));
             }
         }
         if (argType instanceof ParameterizedType){  
