@@ -653,9 +653,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (null != queryParam) {
                 return buildQueryParam(request, queryParam.value(), (Class<?>)argType);
             }
-//            if (null != getAnnotation(argAnnotations, Inject.class)) {
-//                return BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Named.class));
-//            }
             if (null != getAnnotation(argAnnotations, Autowired.class)) {
                 return BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Qualifier.class), resource);
             }
@@ -687,6 +684,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return request;
         } else if (argType.equals(HttpTrade.class)) {
             return trade;
+        } else if (argType.equals(BeanHolder.class)) {
+            return this._beanHolder;
         } else {
             for (MethodInterceptor interceptor : interceptors) {
                 if (interceptor instanceof ArgumentBuilder) {
