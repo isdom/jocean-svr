@@ -21,8 +21,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-import javax.inject.Inject;
-import javax.inject.Named;
 import javax.ws.rs.BeanParam;
 import javax.ws.rs.GET;
 import javax.ws.rs.HEAD;
@@ -376,7 +374,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final ArgsCtx argsctx
             ) {
         try {
-            final Object returnValue = processor.invoke(resource, buildArgs(argsctx));
+            final Object returnValue = processor.invoke(resource, buildArgs(resource, argsctx));
             if (null!=returnValue) {
                 final Observable<HttpObject> obsResponse = returnValue2ObsResponse(request, 
                         processor.getGenericReturnType(), 
@@ -621,11 +619,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }});
     }
 
-    private Object[] buildArgs(final ArgsCtx argCtx) {
+    private Object[] buildArgs(final Object resource, final ArgsCtx argCtx) {
         final List<Object> args = new ArrayList<>();
         int idx = 0;
         for (Type argType : argCtx.genericParameterTypes) {
-            args.add(buildArgByType(argType, 
+            args.add(buildArgByType(resource,
+                    argType, 
                     argCtx.parameterAnnotations[idx], 
                     argCtx.trade, 
                     argCtx.request, 
@@ -636,7 +635,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     //  TBD: 查表实现
-    private Object buildArgByType(final Type argType, 
+    private Object buildArgByType(final Object resource, 
+            final Type argType, 
             final Annotation[] argAnnotations, 
             final HttpTrade trade, 
             final HttpRequest request, 
@@ -653,11 +653,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (null != queryParam) {
                 return buildQueryParam(request, queryParam.value(), (Class<?>)argType);
             }
-            if (null != getAnnotation(argAnnotations, Inject.class)) {
-                return BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Named.class));
-            }
+//            if (null != getAnnotation(argAnnotations, Inject.class)) {
+//                return BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Named.class));
+//            }
             if (null != getAnnotation(argAnnotations, Autowired.class)) {
-                return BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Qualifier.class));
+                return BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Qualifier.class), resource);
             }
         }
         if (argType instanceof ParameterizedType){  
