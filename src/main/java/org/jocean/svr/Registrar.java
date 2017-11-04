@@ -730,14 +730,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 }
 
                 public <T> Observable<? extends T> decodeAs(final Class<T> type) {
-                    if (null != contentType()) {
-                        if (contentType().startsWith(HttpHeaderValues.APPLICATION_JSON.toString())) {
-                            return decodeJsonAs(type);
-                        } else if (contentType().startsWith("application/xml")
-                            || contentType().startsWith("text/xml")) {
-                            return decodeXmlAs(type);
-                        }
-                    }
                     if (request.method().equals(HttpMethod.GET)) {
                         // try decoder query string
                         try {
@@ -746,6 +738,14 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             return Observable.just(bean);
                         } catch (Exception e) {
                             return Observable.error(e);
+                        }
+                    }
+                    if (null != contentType()) {
+                        if (contentType().startsWith(HttpHeaderValues.APPLICATION_JSON.toString())) {
+                            return decodeJsonAs(type);
+                        } else if (contentType().startsWith("application/xml")
+                            || contentType().startsWith("text/xml")) {
+                            return decodeXmlAs(type);
                         }
                     }
                     return Observable.error(new RuntimeException("can't decodeAs type:" + type));
