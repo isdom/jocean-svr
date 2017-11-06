@@ -449,6 +449,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return null;
     }
 
+    // TODO: 使用 cache 进行优化
     @SuppressWarnings("unchecked")
     private Class<? extends MethodInterceptor>[] interceptorTypesOf(final Class<?> cls) {
         final Class<? extends MethodInterceptor>[] inters4rt = this._type2interceptors.get(cls);
@@ -461,6 +462,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return Sets.union(ImmutableSet.copyOf(inters4rt), ImmutableSet.copyOf(inters4anno))
                     .toArray(new Class[0]);
         } else {
+            for (Map.Entry<String, Class<? extends MethodInterceptor>[]> entry :  this._pkg2interceptors.entrySet()) {
+                if (cls.getPackage().getName().startsWith(entry.getKey())) {
+                    return entry.getValue();
+                }
+            }
             return null;
         }
     }
@@ -907,6 +913,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     @Named("type2interceptors")
     Map<Class<?>, Class<? extends MethodInterceptor>[]> _type2interceptors;
 
+    @Inject
+    @Named("pkg2interceptors")
+    Map<String, Class<? extends MethodInterceptor>[]> _pkg2interceptors;
+    
     private SpringBeanHolder _beanHolder;
     private Pattern _pathPattern;
 }
