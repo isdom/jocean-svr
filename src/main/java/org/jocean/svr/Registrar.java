@@ -21,6 +21,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+import javax.inject.Inject;
+import javax.inject.Named;
 import javax.ws.rs.BeanParam;
 import javax.ws.rs.GET;
 import javax.ws.rs.HEAD;
@@ -878,10 +880,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 //        this._register = register;
     }
     
-    public void setType2interceptors(final Map<Class<?>, Class<? extends MethodInterceptor>[]> type2interceptors) {
-        this._type2interceptors = type2interceptors;
-    }
-
     private ByteBuf body2content(final MessageBody body) {
         return null != body.content() ? body.content() : Unpooled.EMPTY_BUFFER;
     }
@@ -905,7 +903,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     };
     
-    private Map<Class<?>, Class<? extends MethodInterceptor>[]> _type2interceptors;
+    @Inject
+    @Named("type2interceptors")
+    Map<Class<?>, Class<? extends MethodInterceptor>[]> _type2interceptors;
 
     private SpringBeanHolder _beanHolder;
     private Pattern _pathPattern;

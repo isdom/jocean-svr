@@ -38,7 +38,6 @@
         init-method="start"
         destroy-method="stop">
         <property name="pathPattern" value="${restin.pathpattern}"/>
-        <property name="type2interceptors" ref="type2interceptors"/>
     </bean>
     
     <bean factory-bean="agentServer" 
