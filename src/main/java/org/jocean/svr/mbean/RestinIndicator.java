@@ -16,6 +16,11 @@ public class RestinIndicator extends InboundIndicator
     }
 
     @Override
+    public String getHostPattern() {
+        return this._hostPattern;
+    }
+    
+    @Override
     public String getCategory() {
         return this._category;
     }
@@ -45,6 +50,10 @@ public class RestinIndicator extends InboundIndicator
         this._pathPattern = pathPattern;
     }
 
+    public void setHostPattern(final String hostPattern) {
+        this._hostPattern = hostPattern;
+    }
+    
     public void setCategory(final String category) {
         this._category = category;
     }
@@ -56,6 +65,7 @@ public class RestinIndicator extends InboundIndicator
     private String _mbeanName;
     private MBeanRegister _register;
     private String _pathPattern;
+    private String _hostPattern;
     private String _category;
     private int _priority;
 }

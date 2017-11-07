@@ -27,6 +27,7 @@
                     <property name="category" value="${restin.category}"/>
                     <property name="priority" value="${restin.priority:100}"/>
                     <property name="pathPattern" value="${restin.pathpattern}"/>
+                    <property name="hostPattern" value="${restin.hostPattern:}"/>
                 </bean>
             </array>
         </constructor-arg>

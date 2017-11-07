@@ -8,5 +8,7 @@ public interface RestinMXBean extends InboundMXBean {
     
     public String getPathPattern();
     
+    public String getHostPattern();
+    
     public int getPriority();
 }
