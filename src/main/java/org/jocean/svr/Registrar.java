@@ -58,6 +58,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.stereotype.Controller;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ImmutableSet;
@@ -129,7 +130,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (null!=def && null != def.getBeanClassName()) {
                 try {
                     final Class<?> cls = Class.forName(def.getBeanClassName());
-                    if ( null!= cls.getAnnotation(Path.class)) {
+                    if ( null!= cls.getAnnotation(Controller.class)) {
                         register(cls);
                     }
                 } catch (Exception e) {
@@ -148,7 +149,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (null!=def && null != def.getBeanClassName()) {
                 try {
                     final Class<?> cls = Class.forName(def.getBeanClassName());
-                    if ( null!= cls.getAnnotation(Path.class)) {
+                    if ( null!= cls.getAnnotation(Controller.class)) {
                         unregister(cls);
                     }
                 } catch (Exception e) {
@@ -177,28 +178,25 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
         final Class<?> resourceCls = checkNotNull(cls);
 
-        if (!hasMatchedProcessor(resourceCls)) {
-            return this;
-        }
-
-        final String rootPath = checkNotNull(checkNotNull(resourceCls.getAnnotation(Path.class),
-                "resource class(%s) must be annotation by Path", resourceCls).value(),
-                "resource class(%s)'s Path must have value setted", resourceCls);
+        // maybe ""
+        final String rootPath = getPathOfClass(resourceCls);
 
         final Method[] restMethods = ReflectUtils.getAnnotationMethodsOf(resourceCls, Path.class);
 
         for (Method m : restMethods) {
             final String methodPath = genMethodPathOf(rootPath, m);
-            if (registerProcessorWithHttpMethod(resourceCls, m, methodPath, GET.class)
+            if (Regexs.isMatched(this._pathPattern, methodPath)) {
+                if (registerProcessorWithHttpMethod(resourceCls, m, methodPath, GET.class)
                     + registerProcessorWithHttpMethod(resourceCls, m, methodPath, POST.class)
                     + registerProcessorWithHttpMethod(resourceCls, m, methodPath, PUT.class)
                     + registerProcessorWithHttpMethod(resourceCls, m, methodPath, HEAD.class)
                     + registerProcessorWithHttpMethod(resourceCls, m, methodPath, OPTIONS.class) == 0) {
-                // NO HttpMethod annotation exist
-                // register with only path
-                this._resCtxs.put(methodPath, new ResContext(resourceCls, m));
-                if (LOG.isDebugEnabled()) {
-                    LOG.debug("register Path {}", methodPath);
+                    // NO HttpMethod annotation exist
+                    // register with only path
+                    this._resCtxs.put(methodPath, new ResContext(resourceCls, m));
+                    if (LOG.isDebugEnabled()) {
+                        LOG.debug("register Path {}", methodPath);
+                    }
                 }
             }
             // final PathMatcher pathMatcher = PathMatcher.create(methodPath);
@@ -220,26 +218,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return this;
     }
 
-    private boolean hasMatchedProcessor(final Class<?> resourceCls) {
-        final String rootPath = checkNotNull(checkNotNull(resourceCls.getAnnotation(Path.class),
-                "resource class(%s) must be annotation by Path", resourceCls).value(),
-                "resource class(%s)'s Path must have value setted", resourceCls);
-
-        final Method[] restMethods = ReflectUtils.getAnnotationMethodsOf(resourceCls, Path.class);
-
-        if (0 == restMethods.length) {
-            LOG.info("resource {} has no processor, just ignore", resourceCls);
-            return false;
-        }
-
-        for (Method m : restMethods) {
-            final String methodPath = genMethodPathOf(rootPath, m);
-            if (Regexs.isMatched(this._pathPattern, methodPath)) {
-                return true;
-            }
-        }
-        LOG.info("resource {} has no processor matched path pattern {}, just ignore", resourceCls, this._pathPattern);
-        return false;
+    private String getPathOfClass(final Class<?> resourceCls) {
+        final Path path = resourceCls.getAnnotation(Path.class);
+        return null != path ? path.value() : "";
     }
 
     private int registerProcessorWithHttpMethod(final Class<?> resourceCls, 
