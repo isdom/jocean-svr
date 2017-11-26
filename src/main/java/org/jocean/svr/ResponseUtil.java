@@ -168,6 +168,18 @@ public class ResponseUtil {
             }};
     }
     
+    private static final Transformer<Object, Object> DEFAULT_ERROR_HANDLER = new Transformer<Object, Object>() {
+        @Override
+        public Observable<Object> call(final Observable<Object> response) {
+            return response.onErrorResumeNext(error -> Observable.just(responseAsText(200,
+                    null != error.getMessage() ? error.getMessage() : ExceptionUtils.exception2detail(error))));
+        }
+    };
+    
+    public static Transformer<Object, Object> defaultErrorHandler() {
+        return DEFAULT_ERROR_HANDLER;
+    }
+    
     public static MessageBody emptyBody() {
         return EMPTY_BODY;
     }
