@@ -676,6 +676,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return request;
         } else if (argType.equals(HttpTrade.class)) {
             return trade;
+        } else if (argType.equals(TerminateAware.class)) {
+            return trade;
         } else if (argType.equals(BeanHolder.class)) {
             return this._beanHolder;
         } else {
