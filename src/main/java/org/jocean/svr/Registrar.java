@@ -45,6 +45,7 @@ import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Pair;
 import org.jocean.idiom.ReflectUtils;
 import org.jocean.idiom.Regexs;
+import org.jocean.idiom.TerminateAware;
 import org.jocean.idiom.jmx.MBeanRegister;
 import org.jocean.idiom.jmx.MBeanRegisterAware;
 import org.jocean.j2se.spring.SpringBeanHolder;
@@ -666,6 +667,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 }
             } else if (UntilRequestCompleted.class.equals(getParameterizedRawType(argType))) {
                 return buildURC(trade.inbound().map(DisposableWrapperUtil.unwrap()));
+            } else if (TerminateAware.class.equals(getParameterizedRawType(argType))) {
+                return trade;
             }
         } else if (argType.equals(io.netty.handler.codec.http.HttpMethod.class)) {
             return request.method();
