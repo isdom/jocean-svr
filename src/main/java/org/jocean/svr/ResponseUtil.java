@@ -43,7 +43,7 @@ public class ResponseUtil {
         private String _origin;
     }
     
-    static private class ACAOnly implements MessageResponse, MessageBody {
+    static private class ACAOnly implements MessageResponse, ResponseBody {
         @HeaderParam("access-control-allow-headers")
         private String _headers;
         
@@ -91,7 +91,7 @@ public class ResponseUtil {
         return new StatusOnly(status);
     }
     
-    private static class Redirectable implements MessageResponse, MessageBody {
+    private static class Redirectable implements MessageResponse, ResponseBody {
 
         public Redirectable(final String location) {
             this._location = location;
@@ -180,17 +180,17 @@ public class ResponseUtil {
         return DEFAULT_ERROR_HANDLER;
     }
     
-    public static MessageBody emptyBody() {
+    public static ResponseBody emptyBody() {
         return EMPTY_BODY;
     }
     
-    private static final MessageBody EMPTY_BODY = new MessageBody() {
+    private static final ResponseBody EMPTY_BODY = new ResponseBody() {
         @Override
         public ByteBuf content() {
             return null;
         }};
     
-    private static final class FullResponse implements MessageResponse, MessageBody {
+    private static final class FullResponse implements MessageResponse, ResponseBody {
         FullResponse(final int status, final String contentType, final ByteBuf content) {
             this._status = status;
             this._contentType = contentType;
@@ -214,7 +214,7 @@ public class ResponseUtil {
         private final String _contentType;
     }
         
-    private static final class StatusOnly implements MessageResponse, MessageBody {
+    private static final class StatusOnly implements MessageResponse, ResponseBody {
         StatusOnly(final int status) {
             this._status = status;
         }

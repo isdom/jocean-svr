@@ -33,6 +33,8 @@ import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.QueryParam;
 
+import org.jocean.http.MessageBody;
+import org.jocean.http.MessageUtil;
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
 import org.jocean.http.util.Nettys;
 import org.jocean.http.util.RxNettys;
@@ -543,8 +545,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     return (HttpObject)obj;
                 } else if (obj instanceof MessageResponse) {
                     return buildResponse((MessageResponse)obj, request.protocolVersion());
-                } else if (obj instanceof MessageBody) {
-                    return new DefaultLastHttpContent(body2content((MessageBody)obj));
+                } else if (obj instanceof ResponseBody) {
+                    return new DefaultLastHttpContent(body2content((ResponseBody)obj));
                 } else {
                     return new DefaultHttpContent(Unpooled.copiedBuffer(obj.toString(), CharsetUtil.UTF_8));
                 }
@@ -553,8 +555,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     private HttpResponse buildResponse(final MessageResponse msgresp, final HttpVersion version) {
         HttpResponse resp = null;
-        if (msgresp instanceof MessageBody) {
-            final ByteBuf content = body2content((MessageBody)msgresp);
+        if (msgresp instanceof ResponseBody) {
+            final ByteBuf content = body2content((ResponseBody)msgresp);
             resp = new DefaultFullHttpResponse(version, HttpResponseStatus.valueOf(msgresp.status()), 
                     content);
             HttpUtil.setContentLength(resp, content.readableBytes());
@@ -654,16 +656,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 if (HttpObject.class.equals(gt1st)) {
                     return trade.inbound().map(DisposableWrapperUtil.unwrap());
                 } else if (MessageDecoder.class.equals(gt1st)) {
-                    return buildOMD(trade, request)
-                        .doOnNext(new Action1<MessageDecoder>() {
-                            @Override
-                            public void call(final MessageDecoder md) {
-                                trade.doOnTerminate(new Action0() {
-                                    @Override
-                                    public void call() {
-                                        md.unsubscribe();
-                                    }});
-                            }});
+                    return buildOMD(trade, request).doOnNext(md->trade.doOnTerminate(()->md.unsubscribe()));
+                }else if (MessageBody.class.equals(gt1st)) {
+                    return buildMessageBody(trade, request);
                 }
             } else if (UntilRequestCompleted.class.equals(getParameterizedRawType(argType))) {
                 return buildURC(trade.inbound().map(DisposableWrapperUtil.unwrap()));
@@ -690,6 +685,14 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
         
         return null;
+    }
+
+    private Observable<MessageBody> buildMessageBody(final HttpTrade trade, final HttpRequest request) {
+        if (request.method().equals(HttpMethod.POST) && HttpPostRequestDecoder.isMultipart(request)) {
+            return Observable.error(new UnsupportedOperationException("!NOT! support multipart content type"));
+        } else {
+            return trade.inbound().compose(MessageUtil.asBody());
+        }
     }
 
     private Observable<MessageDecoder> buildOMD(final HttpTrade trade, final HttpRequest request) {
@@ -870,7 +873,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 //        this._register = register;
     }
     
-    private ByteBuf body2content(final MessageBody body) {
+    private ByteBuf body2content(final ResponseBody body) {
         return null != body.content() ? body.content() : Unpooled.EMPTY_BUFFER;
     }
 
