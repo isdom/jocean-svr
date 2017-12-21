@@ -687,7 +687,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     private Observable<MessageBody> buildMessageBody(final HttpTrade trade, final HttpRequest request) {
         if (request.method().equals(HttpMethod.POST) && HttpPostRequestDecoder.isMultipart(request)) {
-            return Observable.error(new UnsupportedOperationException("!NOT! support multipart content type"));
+            return Observable.unsafeCreate(new MultipartBody(trade, request));
         } else {
             return trade.inbound().compose(MessageUtil.asBody());
         }
