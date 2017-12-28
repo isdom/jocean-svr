@@ -3,6 +3,8 @@
  */
 package org.jocean.svr;
 
+import java.util.concurrent.atomic.AtomicReference;
+
 import org.jocean.http.WritePolicy;
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
 import org.jocean.idiom.DisposableWrapperUtil;
@@ -14,6 +16,7 @@ import org.slf4j.LoggerFactory;
 
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpRequest;
+import rx.Observable;
 import rx.Subscriber;
 
 /**
@@ -65,14 +68,13 @@ public class TradeProcessor extends Subscriber<HttpTrade>
             public void onNext(final HttpObject msg) {
                 if (msg instanceof HttpRequest) {
                     try {
-                        trade.outbound(
-                            _registrar.buildResource((HttpRequest)msg, trade),
-                            new WritePolicy() {
-                                @Override
-                                public void applyTo(final Outboundable outboundable) {
-                                    outboundable.setFlushPerWrite(false);
-                                }}
-                            );
+                        final AtomicReference<WritePolicy> _ref = new AtomicReference<>(null);
+                        final Observable<HttpObject> outbound = _registrar.buildResource((HttpRequest)msg, trade, new WritePolicyAware() {
+                            @Override
+                            public void setWritePolicy(final WritePolicy writePolicy) {
+                                _ref.set(writePolicy);
+                            }});
+                        trade.outbound(outbound, _ref.get());
                     } catch (Exception e) {
                         LOG.warn("exception when buildResource, detail:{}",
                                 ExceptionUtils.exception2detail(e));

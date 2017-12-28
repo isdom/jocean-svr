@@ -274,24 +274,28 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         public Annotation[][] parameterAnnotations;
         public HttpTrade trade;
         public HttpRequest request;
+        public WritePolicyAware writePolicyAware;
         public MethodInterceptor[] interceptors;
 
         public ArgsCtx(final Type[] genericParameterTypes, 
                 final Annotation[][] parameterAnnotations, 
                 final HttpTrade trade,
                 final HttpRequest request, 
+                final WritePolicyAware writePolicyAware, 
                 final MethodInterceptor[] interceptors) {
             this.genericParameterTypes = genericParameterTypes;
             this.parameterAnnotations = parameterAnnotations;
             this.trade = trade;
             this.request = request;
+            this.writePolicyAware = writePolicyAware;
             this.interceptors = interceptors;
         }
     }
     
     public Observable<HttpObject> buildResource(
             final HttpRequest request,
-            final HttpTrade trade) throws Exception {
+            final HttpTrade trade, 
+            final WritePolicyAware writePolicyAware) throws Exception {
 
         // try direct path match
         final ResContext ctx = findResourceCtx(request);
@@ -335,6 +339,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             processor.getParameterAnnotations(), 
                             trade, 
                             request,
+                            writePolicyAware,
                             interceptors.toArray(new MethodInterceptor[0]));
                     final Observable<HttpObject> obsResponse = invokeProcessor(request, 
                             trade.inbound().map(DisposableWrapperUtil.unwrap()),
@@ -618,6 +623,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     argCtx.parameterAnnotations[idx], 
                     argCtx.trade, 
                     argCtx.request, 
+                    argCtx.writePolicyAware,
                     argCtx.interceptors));
             idx++;
         }
@@ -630,6 +636,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final Annotation[] argAnnotations, 
             final HttpTrade trade, 
             final HttpRequest request, 
+            final WritePolicyAware writePolicyAware, 
             final MethodInterceptor[] interceptors) {
         if (argType instanceof Class<?>) {
             if (null != getAnnotation(argAnnotations, BeanParam.class)) {
@@ -671,6 +678,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return trade;
         } else if (argType.equals(BeanHolder.class)) {
             return this._beanHolder;
+        } else if (argType.equals(WritePolicyAware.class)) {
+            return writePolicyAware;
         } else {
             for (MethodInterceptor interceptor : interceptors) {
                 if (interceptor instanceof ArgumentBuilder) {
