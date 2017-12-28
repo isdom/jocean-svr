@@ -18,12 +18,12 @@ public interface MethodInterceptor {
         public Method processor();
         public HttpRequest request();
         public Observable<? extends HttpObject> obsRequest();
-        public Observable<HttpObject> obsResponse();
+        public Observable<? extends Object> obsResponse();
     }
     
-    public Observable<HttpObject> preInvoke(final Context ctx);
+    public Observable<? extends Object> preInvoke(final Context ctx);
 
-    public Observable<HttpObject> postInvoke(final Context ctx);
+    public Observable<? extends Object> postInvoke(final Context ctx);
     
     public static class Util {
         

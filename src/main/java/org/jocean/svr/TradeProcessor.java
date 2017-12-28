@@ -69,7 +69,7 @@ public class TradeProcessor extends Subscriber<HttpTrade>
                 if (msg instanceof HttpRequest) {
                     try {
                         final AtomicReference<WritePolicy> _ref = new AtomicReference<>(null);
-                        final Observable<HttpObject> outbound = _registrar.buildResource((HttpRequest)msg, trade, new WritePolicyAware() {
+                        final Observable<? extends Object> outbound = _registrar.buildResource((HttpRequest)msg, trade, new WritePolicyAware() {
                             @Override
                             public void setWritePolicy(final WritePolicy writePolicy) {
                                 _ref.set(writePolicy);

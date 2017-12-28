@@ -33,6 +33,7 @@ import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.QueryParam;
 
+import org.jocean.http.FullMessage;
 import org.jocean.http.MessageBody;
 import org.jocean.http.MessageUtil;
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
@@ -292,7 +293,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
     
-    public Observable<HttpObject> buildResource(
+    public Observable<? extends Object> buildResource(
             final HttpRequest request,
             final HttpTrade trade, 
             final WritePolicyAware writePolicyAware) throws Exception {
@@ -329,7 +330,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         return null;
                     }
                 };
-                final Observable<HttpObject> aheadObsResponse = doPreInvoke(interceptorCtx, interceptors);
+                final Observable<? extends Object> aheadObsResponse = doPreInvoke(interceptorCtx, interceptors);
                 if (null != aheadObsResponse) {
                     //  interceptor 直接响应
                     return doPostInvoke(interceptors, 
@@ -341,7 +342,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             request,
                             writePolicyAware,
                             interceptors.toArray(new MethodInterceptor[0]));
-                    final Observable<HttpObject> obsResponse = invokeProcessor(request, 
+                    final Observable<? extends Object> obsResponse = invokeProcessor(request, 
                             trade.inbound().map(DisposableWrapperUtil.unwrap()),
                             resource,
                             processor, 
@@ -355,7 +356,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 .delaySubscription(trade.inbound().last());
     }
 
-    private Observable<HttpObject> invokeProcessor(
+    private Observable<? extends Object> invokeProcessor(
             final HttpRequest request, 
             final Observable<? extends HttpObject> obsRequest, 
             final Object resource,
@@ -365,7 +366,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         try {
             final Object returnValue = processor.invoke(resource, buildArgs(resource, argsctx));
             if (null!=returnValue) {
-                final Observable<HttpObject> obsResponse = returnValue2ObsResponse(request, 
+                final Observable<? extends Object> obsResponse = returnValue2ObsResponse(request, 
                         processor.getGenericReturnType(), 
                         returnValue);
                 if (null!=obsResponse) {
@@ -382,7 +383,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     @SuppressWarnings("unchecked")
-    private Observable<HttpObject> returnValue2ObsResponse(
+    private Observable<? extends Object> returnValue2ObsResponse(
             final HttpRequest request, 
             final Type returnType, 
             final Object returnValue) {
@@ -412,7 +413,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return null;
     }
 
-    private Observable<HttpObject> doPreInvoke(
+    private Observable<? extends Object> doPreInvoke(
             final MethodInterceptor.Context ctx, 
             final Deque<MethodInterceptor> interceptors) {
         final Class<? extends MethodInterceptor>[] types = interceptorTypesOf(ctx.resource().getClass());
@@ -421,7 +422,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 try {
                     final MethodInterceptor interceptor = this._beanHolder.getBean(type);
                     if (null!=interceptor) {
-                        final Observable<HttpObject> obsResponse = interceptor.preInvoke(ctx);
+                        final Observable<? extends Object> obsResponse = interceptor.preInvoke(ctx);
                         interceptors.addFirst(interceptor);
                         if (null != obsResponse) {
                             return obsResponse;
@@ -467,12 +468,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
-    private Observable<HttpObject> doPostInvoke(
+    private Observable<? extends Object> doPostInvoke(
             final Collection<MethodInterceptor> interceptors, 
             MethodInterceptor.Context ctx) {
         for (MethodInterceptor interceptor : interceptors) {
             try {
-                final Observable<HttpObject> obsResponse = interceptor.postInvoke(ctx);
+                final Observable<? extends Object> obsResponse = interceptor.postInvoke(ctx);
                 if (null != obsResponse) {
                     ctx = copyCtxOverrideResponse(ctx, obsResponse);
                 }
@@ -485,7 +486,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private MethodInterceptor.Context copyCtxOverrideResponse(final MethodInterceptor.Context ctx, 
-            final Observable<HttpObject> obsResponse) {
+            final Observable<? extends Object> obsResponse) {
         return new MethodInterceptor.Context() {
             @Override
             public Object resource() {
@@ -507,7 +508,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
 
             @Override
-            public Observable<HttpObject> obsResponse() {
+            public Observable<? extends Object> obsResponse() {
                 return obsResponse;
             }};
     }
@@ -540,20 +541,22 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return Observable.class.equals(getParameterizedRawType(type));
     }
 
-    private Observable<HttpObject> objs2Response(final Observable<Object> objs, final HttpRequest request) {
-        return objs.map(new Func1<Object, HttpObject>() {
-            @Override
-            public HttpObject call(final Object obj) {
+    private Observable<? extends Object> objs2Response(final Observable<Object> objs, final HttpRequest request) {
+        return objs.flatMap(obj -> {
                 if (obj instanceof HttpObject) {
-                    return (HttpObject)obj;
+                    return Observable.just(obj);
                 } else if (obj instanceof MessageResponse) {
-                    return buildResponse((MessageResponse)obj, request.protocolVersion());
+                    return Observable.just(buildResponse((MessageResponse)obj, request.protocolVersion()));
                 } else if (obj instanceof ResponseBody) {
-                    return new DefaultLastHttpContent(body2content((ResponseBody)obj));
+                    return Observable.just(new DefaultLastHttpContent(body2content((ResponseBody)obj)));
+                } else if (obj instanceof FullMessage) {
+                    final FullMessage fulmsg = (FullMessage)obj;
+                    return Observable.concat(Observable.<HttpResponse>just(fulmsg.message()), 
+                            fulmsg.body().concatMap(body -> body.content()));
                 } else {
-                    return new DefaultHttpContent(Unpooled.copiedBuffer(obj.toString(), CharsetUtil.UTF_8));
+                    return Observable.just(new DefaultHttpContent(Unpooled.copiedBuffer(obj.toString(), CharsetUtil.UTF_8)));
                 }
-            }});
+            });
     }
 
     private HttpResponse buildResponse(final MessageResponse msgresp, final HttpVersion version) {

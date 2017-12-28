@@ -11,12 +11,11 @@ import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpUtil;
 import rx.Observable;
-import rx.functions.Action1;
 
 public class EnableCORS implements MethodInterceptor {
 
     @Override
-    public Observable<HttpObject> preInvoke(final Context ctx) {
+    public Observable<? extends Object> preInvoke(final Context ctx) {
         if (ctx.request().method().equals(HttpMethod.OPTIONS)) {
             final String headers = 
                 ctx.request().headers().get(HttpHeaderNames.ACCESS_CONTROL_REQUEST_HEADERS);
@@ -47,14 +46,12 @@ public class EnableCORS implements MethodInterceptor {
     }
 
     @Override
-    public Observable<HttpObject> postInvoke(final Context ctx) {
+    public Observable<? extends Object> postInvoke(final Context ctx) {
         final String origin = ctx.request().headers().get(HttpHeaderNames.ORIGIN);
         if (null != origin) {
-            return ctx.obsResponse().doOnNext(new Action1<HttpObject>() {
-                @Override
-                public void call(final HttpObject hobj) {
-                    if (hobj instanceof HttpResponse) {
-                        final HttpResponse response = (HttpResponse)hobj;
+            return ctx.obsResponse().doOnNext(obj -> {
+                    if (obj instanceof HttpResponse) {
+                        final HttpResponse response = (HttpResponse)obj;
                         if (!response.headers().contains(HttpHeaderNames.ACCESS_CONTROL_ALLOW_ORIGIN)) {
                             response.headers().set(
                                 HttpHeaderNames.ACCESS_CONTROL_ALLOW_ORIGIN, origin); 
@@ -62,7 +59,7 @@ public class EnableCORS implements MethodInterceptor {
                                 HttpHeaderNames.ACCESS_CONTROL_ALLOW_CREDENTIALS, true);
                         }
                     }
-                }});
+                });
         } else {
             return null;
         }

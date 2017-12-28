@@ -13,12 +13,9 @@ import org.jocean.svr.ProcessMemo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import rx.Observable;
-import rx.functions.Action0;
-import rx.functions.Action1;
 
 public class StatRest implements MethodInterceptor, ArgumentBuilder {
     private static final Logger LOG
@@ -37,17 +34,13 @@ public class StatRest implements MethodInterceptor, ArgumentBuilder {
     }
     
     @Override
-    public Observable<HttpObject> preInvoke(final Context ctx) {
+    public Observable<? extends Object> preInvoke(final Context ctx) {
         if (null != this._stats) {
             final QueryStringDecoder decoder = new QueryStringDecoder(ctx.request().uri());
             this._path = getRawPath(decoder.path());
             ctx.obsRequest().subscribe(RxSubscribers.ignoreNext(),
                     RxSubscribers.ignoreError(),
-                    new Action0() {
-                        @Override
-                        public void call() {
-                            _stats.recordExecutedInterval(_path, "__req", _clock.pauseAndContinue());
-                        }});
+                    () -> _stats.recordExecutedInterval(_path, "__req", _clock.pauseAndContinue()));
         }
         
         return null;
@@ -77,25 +70,19 @@ public class StatRest implements MethodInterceptor, ArgumentBuilder {
     }
     
     @Override
-    public Observable<HttpObject> postInvoke(final Context ctx) {
+    public Observable<? extends Object> postInvoke(final Context ctx) {
         if (null != this._stats) {
             final StopWatch respclock = new StopWatch();
-            return ctx.obsResponse().doOnNext(new Action1<HttpObject>() {
-                @Override
-                public void call(final HttpObject hobj) {
-                    if (hobj instanceof HttpResponse) {
+            return ctx.obsResponse().doOnNext(obj -> {
+                    if (obj instanceof HttpResponse) {
                         respclock.stopAndRestart();
                     }
-                }})
-                .doOnCompleted(new Action0() {
-                    @Override
-                    public void call() {
-                        final String er = _endreason;
-                        _stats.recordExecutedInterval(_path, "__resp", respclock.stopAndRestart());
-                        _stats.recordExecutedInterval(_path, "_whole_." + er, _clock.stopAndRestart());
-                        _stats.incExecutedCount(_path);
-                    }})
-                ;
+                }).doOnCompleted(() -> {
+                    final String er = _endreason;
+                    _stats.recordExecutedInterval(_path, "__resp", respclock.stopAndRestart());
+                    _stats.recordExecutedInterval(_path, "_whole_." + er, _clock.stopAndRestart());
+                    _stats.incExecutedCount(_path);
+                });
         } else {
             return null;
         }

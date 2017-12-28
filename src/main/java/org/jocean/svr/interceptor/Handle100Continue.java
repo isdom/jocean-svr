@@ -25,12 +25,12 @@ public class Handle100Continue implements MethodInterceptor, ArgumentBuilder {
         = LoggerFactory.getLogger(Handle100Continue.class);
     
     @Override
-    public Observable<HttpObject> preInvoke(final Context ctx) {
+    public Observable<? extends Object> preInvoke(final Context ctx) {
         return null;
     }
 
     @Override
-    public Observable<HttpObject> postInvoke(final Context ctx) {
+    public Observable<? extends Object> postInvoke(final Context ctx) {
         if (!HttpUtil.is100ContinueExpected(ctx.request())) {
             return null;
         }
