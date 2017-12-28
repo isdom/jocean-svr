@@ -85,6 +85,7 @@ import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder;
 import io.netty.util.CharsetUtil;
@@ -552,7 +553,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 } else if (obj instanceof FullMessage) {
                     final FullMessage fulmsg = (FullMessage)obj;
                     return Observable.concat(Observable.<HttpResponse>just(fulmsg.message()), 
-                            fulmsg.body().concatMap(body -> body.content()));
+                            fulmsg.body().concatMap(body -> body.content()),
+                            Observable.just(LastHttpContent.EMPTY_LAST_CONTENT));
                 } else {
                     return Observable.just(new DefaultHttpContent(Unpooled.copiedBuffer(obj.toString(), CharsetUtil.UTF_8)));
                 }
