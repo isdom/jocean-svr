@@ -6,6 +6,7 @@ package org.jocean.svr;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
@@ -804,9 +805,21 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     private Object buildBeanParam(final HttpRequest request, final Class<?> argType) {
         try {
-            final Object bean = argType.newInstance();
-            ParamUtil.request2HeaderParams(request, bean);
-            ParamUtil.request2QueryParams(request, bean);
+            Object bean = null;
+            
+            final Constructor<?>[] constructors = argType.getDeclaredConstructors();
+            for (Constructor<?> c : constructors) {
+                if (c.getParameterTypes().length == 0) {
+                    c.setAccessible(true);
+                    bean = c.newInstance();
+                }
+            }
+            if (null != bean) {
+                ParamUtil.request2HeaderParams(request, bean);
+                ParamUtil.request2QueryParams(request, bean);
+            } else {
+                LOG.warn("buildBeanParam: failed to newInstance for type {}", argType);
+            }
             return bean;
         } catch (Exception e) {
             LOG.warn("exception when buildBeanParam for type {}, detail: {}", ExceptionUtils.exception2detail(e));
