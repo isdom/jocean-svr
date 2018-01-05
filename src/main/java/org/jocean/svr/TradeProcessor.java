@@ -3,9 +3,6 @@
  */
 package org.jocean.svr;
 
-import java.util.concurrent.atomic.AtomicReference;
-
-import org.jocean.http.WritePolicy;
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
 import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.ExceptionUtils;
@@ -68,13 +65,8 @@ public class TradeProcessor extends Subscriber<HttpTrade>
             public void onNext(final HttpObject msg) {
                 if (msg instanceof HttpRequest) {
                     try {
-                        final AtomicReference<WritePolicy> _ref = new AtomicReference<>(null);
-                        final Observable<? extends Object> outbound = _registrar.buildResource((HttpRequest)msg, trade, new WritePolicyAware() {
-                            @Override
-                            public void setWritePolicy(final WritePolicy writePolicy) {
-                                _ref.set(writePolicy);
-                            }});
-                        trade.outbound(outbound, _ref.get());
+                        final Observable<? extends Object> outbound = _registrar.buildResource((HttpRequest)msg, trade);
+                        trade.outbound(outbound);
                     } catch (Exception e) {
                         LOG.warn("exception when buildResource, detail:{}",
                                 ExceptionUtils.exception2detail(e));
