@@ -799,15 +799,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     private Object buildBeanParam(final HttpRequest request, final Class<?> argType) {
         try {
-            Object bean = null;
+            final Object bean = ReflectUtils.newInstance(argType);
             
-            final Constructor<?>[] constructors = argType.getDeclaredConstructors();
-            for (Constructor<?> c : constructors) {
-                if (c.getParameterTypes().length == 0) {
-                    c.setAccessible(true);
-                    bean = c.newInstance();
-                }
-            }
             if (null != bean) {
                 ParamUtil.request2HeaderParams(request, bean);
                 ParamUtil.request2QueryParams(request, bean);
