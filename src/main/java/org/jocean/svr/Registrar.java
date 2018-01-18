@@ -24,10 +24,12 @@ import java.util.regex.Pattern;
 import javax.inject.Inject;
 import javax.inject.Named;
 import javax.ws.rs.BeanParam;
+import javax.ws.rs.DELETE;
 import javax.ws.rs.GET;
 import javax.ws.rs.HEAD;
 import javax.ws.rs.HeaderParam;
 import javax.ws.rs.OPTIONS;
+import javax.ws.rs.PATCH;
 import javax.ws.rs.POST;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
@@ -197,6 +199,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     if (registerProcessorWithHttpMethod(resourceCls, m, methodPath, pathMatcher, GET.class)
                             + registerProcessorWithHttpMethod(resourceCls, m, methodPath, pathMatcher, POST.class)
                             + registerProcessorWithHttpMethod(resourceCls, m, methodPath, pathMatcher, PUT.class)
+                            + registerProcessorWithHttpMethod(resourceCls, m, methodPath, pathMatcher, DELETE.class)
+                            + registerProcessorWithHttpMethod(resourceCls, m, methodPath, pathMatcher, PATCH.class)
                             + registerProcessorWithHttpMethod(resourceCls, m, methodPath, pathMatcher, HEAD.class)
                             + registerProcessorWithHttpMethod(resourceCls, m, methodPath, pathMatcher, OPTIONS.class) == 0) {
                         // NO HttpMethod annotation exist
@@ -205,6 +209,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         this._pathMatchers.put("GET", Pair.of(pathMatcher, resctx));
                         this._pathMatchers.put("POST", Pair.of(pathMatcher, resctx));
                         this._pathMatchers.put("PUT", Pair.of(pathMatcher, resctx));
+                        this._pathMatchers.put("DELETE", Pair.of(pathMatcher, resctx));
+                        this._pathMatchers.put("PATCH", Pair.of(pathMatcher, resctx));
                         this._pathMatchers.put("HEAD", Pair.of(pathMatcher, resctx));
                         this._pathMatchers.put("OPTIONS", Pair.of(pathMatcher, resctx));
                     }
@@ -241,6 +247,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         if (registerProcessorWithHttpMethod(resourceCls, method, path, GET.class)
             + registerProcessorWithHttpMethod(resourceCls, method, path, POST.class)
             + registerProcessorWithHttpMethod(resourceCls, method, path, PUT.class)
+            + registerProcessorWithHttpMethod(resourceCls, method, path, DELETE.class)
+            + registerProcessorWithHttpMethod(resourceCls, method, path, PATCH.class)
             + registerProcessorWithHttpMethod(resourceCls, method, path, HEAD.class)
             + registerProcessorWithHttpMethod(resourceCls, method, path, OPTIONS.class) == 0) {
             // NO HttpMethod annotation exist
