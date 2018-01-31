@@ -28,7 +28,7 @@ import rx.subscriptions.Subscriptions;
 
 class MultipartBody implements Observable.OnSubscribe<MessageBody> {
     private static final Logger LOG =
-            LoggerFactory.getLogger(MultipartOMD.class);
+            LoggerFactory.getLogger(MultipartBody.class);
 
     private final class ToBody implements Func1<DisposableWrapper<HttpObject>, Observable<MessageBody>> {
         private final HttpDataFactory _httpDataFactory = 

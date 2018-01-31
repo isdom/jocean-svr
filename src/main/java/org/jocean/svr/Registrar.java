@@ -41,12 +41,10 @@ import org.jocean.http.MessageBody;
 import org.jocean.http.MessageUtil;
 import org.jocean.http.WriteCtrl;
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
-import org.jocean.http.util.Nettys;
 import org.jocean.http.util.RxNettys;
 import org.jocean.idiom.BeanHolder;
 import org.jocean.idiom.BeanHolderAware;
 import org.jocean.idiom.Beans;
-import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Pair;
@@ -93,10 +91,8 @@ import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder;
 import io.netty.util.CharsetUtil;
-import io.netty.util.ReferenceCountUtil;
 import rx.Observable;
 import rx.functions.Func1;
-import rx.functions.Func2;
 
 /**
  * @author isdom
@@ -728,9 +724,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 final Type gt1st = getGenericTypeOf(argType, 0);
                 if (HttpObject.class.equals(gt1st)) {
                     return trade.inbound().map(DisposableWrapperUtil.unwrap());
-                } else if (MessageDecoder.class.equals(gt1st)) {
-                    return buildOMD(trade, request).doOnNext(md->trade.doOnTerminate(()->md.unsubscribe()));
-                }else if (MessageBody.class.equals(gt1st)) {
+                } else if (MessageBody.class.equals(gt1st)) {
                     return buildMessageBody(trade, request);
                 }
             } else if (UntilRequestCompleted.class.equals(getParameterizedRawType(argType))) {
@@ -768,91 +762,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         } else {
             return trade.inbound().compose(MessageUtil.asBody());
         }
-    }
-
-    private Observable<MessageDecoder> buildOMD(final HttpTrade trade, final HttpRequest request) {
-        if (request.method().equals(HttpMethod.POST) && HttpPostRequestDecoder.isMultipart(request)) {
-            return Observable.unsafeCreate(new MultipartOMD(trade, request));
-        } else {
-            return Observable.just(new MessageDecoder() {
-                @Override
-                public void unsubscribe() {
-                }
-
-                @Override
-                public boolean isUnsubscribed() {
-                    return false;
-                }
-
-                @Override
-                public String contentType() {
-                    return request.headers().get(HttpHeaderNames.CONTENT_TYPE);
-                }
-
-                @Override
-                public int contentLength() {
-                    return HttpUtil.getContentLength(request, -1);
-                }
-
-                @Override
-                public Observable<? extends DisposableWrapper<ByteBuf>> content() {
-                    return trade.inbound().flatMap(RxNettys.message2body());
-                }
-
-                public <T> Observable<? extends T> decodeAs(final Class<T> type) {
-                    if (request.method().equals(HttpMethod.GET)) {
-                        // try decoder query string
-                        try {
-                            final T bean = (T)type.newInstance();
-                            ParamUtil.request2QueryParams(request, bean);
-                            return Observable.just(bean);
-                        } catch (Exception e) {
-                            return Observable.error(e);
-                        }
-                    }
-                    if (null != contentType()) {
-                        if (contentType().startsWith(HttpHeaderValues.APPLICATION_JSON.toString())) {
-                            return decodeJsonAs(type);
-                        } else if (contentType().startsWith("application/xml")
-                            || contentType().startsWith("text/xml")) {
-                            return decodeXmlAs(type);
-                        }
-                    }
-                    return Observable.error(new RuntimeException("can't decodeAs type:" + type));
-                }
-                
-                @Override
-                public <T> Observable<? extends T> decodeJsonAs(final Class<T> type) {
-                    return decodeContentAs(content(), ParamUtil::parseContentAsJson, type);
-                }
-
-                @Override
-                public <T> Observable<? extends T> decodeXmlAs(final Class<T> type) {
-                    return decodeContentAs(content(), ParamUtil::parseContentAsXml, type);
-                }
-
-                @Override
-                public <T> Observable<? extends T> decodeFormAs(final Class<T> type) {
-                    return Observable.error(new UnsupportedOperationException());
-                }
-            });
-        }
-    }
-
-    private static <T> Observable<? extends T> decodeContentAs(
-            final Observable<? extends DisposableWrapper<ByteBuf>> content, 
-            final Func2<ByteBuf, Class<T>, T> func, 
-            final Class<T> type) {
-        return content.map(DisposableWrapperUtil.unwrap())
-                .toList()
-                .map( bufs -> { 
-                    final ByteBuf buf = Nettys.composite(bufs);
-                    try {
-                        return func.call(buf, type);
-                    } finally {
-                        ReferenceCountUtil.release(buf);
-                    }
-                 });
     }
 
     @SuppressWarnings("unchecked")
