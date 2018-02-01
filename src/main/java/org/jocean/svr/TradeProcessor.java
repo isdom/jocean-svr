@@ -66,7 +66,7 @@ public class TradeProcessor extends Subscriber<HttpTrade>
                 if (msg instanceof HttpRequest) {
                     try {
                         final Observable<? extends Object> outbound = _registrar.buildResource((HttpRequest)msg, trade);
-                        trade.outbound(outbound);
+                        trade.outbound(outbound.doOnNext(DisposableWrapperUtil.disposeOnForAny(trade)));
                     } catch (Exception e) {
                         LOG.warn("exception when buildResource, detail:{}",
                                 ExceptionUtils.exception2detail(e));

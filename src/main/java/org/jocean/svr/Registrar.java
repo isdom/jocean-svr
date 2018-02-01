@@ -45,6 +45,7 @@ import org.jocean.http.util.RxNettys;
 import org.jocean.idiom.BeanHolder;
 import org.jocean.idiom.BeanHolderAware;
 import org.jocean.idiom.Beans;
+import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Pair;
@@ -600,6 +601,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private Observable<? extends Object> objs2Response(final Observable<Object> objs, final HttpRequest request) {
         return objs.flatMap(obj -> {
                 if (obj instanceof HttpObject) {
+                    return Observable.just(obj);
+                } else if (obj instanceof DisposableWrapper) {
                     return Observable.just(obj);
                 } else if (obj instanceof MessageResponse) {
                     return Observable.just(buildResponse((MessageResponse)obj, request.protocolVersion()));

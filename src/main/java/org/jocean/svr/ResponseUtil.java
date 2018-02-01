@@ -16,9 +16,13 @@ import com.google.common.base.Charsets;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpUtil;
+import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.codec.http.LastHttpContent;
 import rx.Observable;
 import rx.Observable.Transformer;
 import rx.functions.Func1;
@@ -230,5 +234,10 @@ public class ResponseUtil {
         }
         
         private final int _status;
+    }
+    
+    public static Observable<Object> response(final int status) {
+        return Observable.<Object>just(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(status)), 
+                LastHttpContent.EMPTY_LAST_CONTENT);
     }
 }
