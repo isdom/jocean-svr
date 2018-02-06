@@ -319,7 +319,7 @@ public class ResponseUtil {
         };
     }
     
-    public static Observable.Transformer<? super HttpObject, ? extends Object> zipped(
+    public static Observable.Transformer<HttpObject, Object> toZip(
             final String zippedName,
             final String contentName,
             final Terminable terminable,
