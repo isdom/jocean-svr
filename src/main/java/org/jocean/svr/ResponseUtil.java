@@ -328,7 +328,7 @@ public class ResponseUtil {
         return new Observable.Transformer<HttpObject, Object>() {
             @Override
             public Observable<Object> call(final Observable<HttpObject> obsResponse) {
-                final ByteBufArrayOutputStream bbaos = new ByteBufArrayOutputStream(allocator, pageSize);
+                final ByteBufArrayOutputStream bbaos = new ByteBufArrayOutputStream(() -> allocator.buffer(pageSize, pageSize));
                 final ZipOutputStream zipos = new ZipOutputStream(bbaos, CharsetUtil.UTF_8);
                 zipos.setLevel(Deflater.BEST_COMPRESSION);
                 terminable.doOnTerminate(() -> {
