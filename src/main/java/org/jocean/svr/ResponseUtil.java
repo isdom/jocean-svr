@@ -17,7 +17,7 @@ import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Terminable;
-import org.jocean.netty.util.ByteBufArrayOutputStream;
+import org.jocean.netty.util.ByteBufsOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,7 +28,6 @@ import com.google.common.base.Charsets;
 import com.google.common.io.ByteStreams;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultHttpResponse;
@@ -45,7 +44,9 @@ import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.util.CharsetUtil;
 import rx.Observable;
 import rx.Observable.Transformer;
+import rx.functions.Action0;
 import rx.functions.Action2;
+import rx.functions.Func0;
 import rx.functions.Func1;
 
 public class ResponseUtil {
@@ -323,14 +324,15 @@ public class ResponseUtil {
             final String zippedName,
             final String contentName,
             final Terminable terminable,
-            final ByteBufAllocator allocator, 
-            final int pageSize) {
+            final Func0<ByteBuf> newBuffer) {
         return new Observable.Transformer<HttpObject, Object>() {
             @Override
             public Observable<Object> call(final Observable<HttpObject> obsResponse) {
-                final ByteBufArrayOutputStream bbaos = new ByteBufArrayOutputStream(() -> allocator.buffer(pageSize, pageSize));
-                final ZipOutputStream zipos = new ZipOutputStream(bbaos, CharsetUtil.UTF_8);
+                
+                final ByteBufsOutputStream bufout = new ByteBufsOutputStream(newBuffer, null);
+                final ZipOutputStream zipos = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
                 zipos.setLevel(Deflater.BEST_COMPRESSION);
+                
                 terminable.doOnTerminate(() -> {
                     try {
                         zipos.close();
@@ -341,75 +343,90 @@ public class ResponseUtil {
                 return obsResponse.flatMap(RxNettys.splitFullHttpMessage())
                 .flatMap(httpobj -> {
                     if (httpobj instanceof HttpResponse) {
-                        return processResponse(zipos, (HttpResponse)httpobj, zippedName, contentName);
+                        return Observable.concat(onResponse((HttpResponse)httpobj, zippedName), 
+                                bufout2bufs(bufout, addZipEntry(zipos, contentName)).map(todwb(terminable)));
                     } else if (httpobj instanceof HttpContent) {
-                        return zipContent(zipos, bbaos, (HttpContent)httpobj, terminable);
+                        return zipContent(zipos, bufout, (HttpContent)httpobj).map(todwb(terminable));
                     } else {
                         return Observable.just(httpobj);
                     }},
                     e -> Observable.error(e),
-                    () -> finishZip(zipos, bbaos, terminable)
+                    () -> Observable.concat(bufout2bufs(bufout, finishZip(zipos)).map(todwb(terminable)), 
+                            Observable.just(LastHttpContent.EMPTY_LAST_CONTENT))
                 );
             }
         };
     }
 
-    private static Observable<? extends Object> finishZip(final ZipOutputStream zipos, 
-            final ByteBufArrayOutputStream bbaos,
-            final Terminable terminable) {
-        try {
-            zipos.closeEntry();
-            zipos.finish();
-            return Observable.concat(bbaos2dwbs(bbaos, terminable), Observable.just(LastHttpContent.EMPTY_LAST_CONTENT));
-        } catch (Exception e) {
-            return Observable.error(e);
-        } finally {
-            try {
-                zipos.close();
-            } catch (IOException e1) {
-            }
-        }
-    }
-
-    private static Observable<? extends Object> zipContent(final ZipOutputStream zipos, 
-            final ByteBufArrayOutputStream bbaos,
-            HttpContent content, 
-            final Terminable terminable) {
-        if (content.content().readableBytes() == 0) {
-            return Observable.empty();
-        }
-        final ByteBufInputStream is = new ByteBufInputStream(content.content());
-        try {
-            final byte[] bytes = ByteStreams.toByteArray(is);
-            zipos.write(bytes);
-            zipos.flush();
-            return bbaos2dwbs(bbaos, terminable);
-        } catch (Exception e) {
-            return Observable.error(e);
-        }
-    }
-
-    private static Observable<DisposableWrapper<ByteBuf>> bbaos2dwbs(
-            final ByteBufArrayOutputStream bbaos,
-            final Terminable terminable) {
-        return Observable.from(bbaos.buffers())
-                .map(DisposableWrapperUtil.<ByteBuf>wrap(RxNettys.<ByteBuf>disposerOf(), terminable));
-    }
-
-    private static Observable<? extends Object> processResponse(final ZipOutputStream zipos, 
-            final HttpResponse resp, 
-            final String zipedName,
-            final String contentName) {
+    private static Observable<? extends Object> onResponse(final HttpResponse resp,  final String zipedName) {
         HttpUtil.setTransferEncodingChunked(resp, true);
         resp.headers().set(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.APPLICATION_OCTET_STREAM);
         resp.headers().set(HttpHeaderNames.CONTENT_DISPOSITION, "attachment; filename=" + zipedName);
-        try {
-            final ZipEntry entry = new ZipEntry(contentName);
-            zipos.putNextEntry(entry);
-        } catch (Exception e) {
-            return Observable.error(e);
-        }
         return Observable.just(resp);
     }
     
+    private static Action0 addZipEntry(final ZipOutputStream zipos, final String contentName) {
+        return ()-> {
+            try {
+                final ZipEntry entry = new ZipEntry(contentName);
+                zipos.putNextEntry(entry);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        };
+    }
+    
+    private static Observable<? extends ByteBuf> zipContent(final ZipOutputStream zipos, 
+            final ByteBufsOutputStream bufout,
+            final HttpContent content) {
+        if (content.content().readableBytes() == 0) {
+            return Observable.empty();
+        }
+        
+        return bufout2bufs(bufout, zipContent(zipos, content));
+    }
+
+    private static Action0 zipContent(final ZipOutputStream zipos, final HttpContent content) {
+        return ()->{
+            final ByteBufInputStream is = new ByteBufInputStream(content.content());
+            try {
+                final byte[] bytes = ByteStreams.toByteArray(is);
+                zipos.write(bytes);
+                zipos.flush();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        };
+    }
+
+    private static Action0 finishZip(final ZipOutputStream zipos) {
+        return ()->{
+            try {
+                zipos.closeEntry();
+                zipos.finish();
+                zipos.close();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        };
+    }
+
+    private static Observable<ByteBuf> bufout2bufs(final ByteBufsOutputStream bufout, final Action0 fillcontent) {
+        return Observable.unsafeCreate(subscriber -> {
+            if (!subscriber.isUnsubscribed()) {
+                bufout.setOnBuffer(buf->subscriber.onNext(buf));
+                try {
+                    fillcontent.call();
+                } catch (Exception e) {
+                    subscriber.onError(e);
+                } finally {
+                    subscriber.onCompleted();
+                }
+            }
+        });
+    }
+
+    private static Func1<ByteBuf, DisposableWrapper<ByteBuf>> todwb(final Terminable terminable) {
+        return DisposableWrapperUtil.<ByteBuf>wrap(RxNettys.<ByteBuf>disposerOf(), terminable);
+    }
 }
