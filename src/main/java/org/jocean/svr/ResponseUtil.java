@@ -330,12 +330,12 @@ public class ResponseUtil {
             public Observable<Object> call(final Observable<HttpObject> obsResponse) {
                 
                 final ByteBufsOutputStream bufout = new ByteBufsOutputStream(newBuffer, null);
-                final ZipOutputStream zipos = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
-                zipos.setLevel(Deflater.BEST_COMPRESSION);
+                final ZipOutputStream zipout = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
+                zipout.setLevel(Deflater.BEST_COMPRESSION);
                 
                 terminable.doOnTerminate(() -> {
                     try {
-                        zipos.close();
+                        zipout.close();
                     } catch (IOException e1) {
                     }
                 });
@@ -344,14 +344,19 @@ public class ResponseUtil {
                 .flatMap(httpobj -> {
                     if (httpobj instanceof HttpResponse) {
                         return Observable.concat(onResponse((HttpResponse)httpobj, zippedName), 
-                                bufout2bufs(bufout, addZipEntry(zipos, contentName)).map(todwb(terminable)));
+                                bufout2bufs(bufout, addZipEntry(zipout, contentName)).map(todwb(terminable)));
                     } else if (httpobj instanceof HttpContent) {
-                        return zipContent(zipos, bufout, (HttpContent)httpobj).map(todwb(terminable));
+                        final HttpContent content = (HttpContent)httpobj;
+                        if (content.content().readableBytes() == 0) {
+                            return Observable.empty();
+                        } else {
+                            return bufout2bufs(bufout, zipContent(zipout, content)).map(todwb(terminable));
+                        }
                     } else {
                         return Observable.just(httpobj);
                     }},
                     e -> Observable.error(e),
-                    () -> Observable.concat(bufout2bufs(bufout, finishZip(zipos)).map(todwb(terminable)), 
+                    () -> Observable.concat(bufout2bufs(bufout, finishZip(zipout)).map(todwb(terminable)), 
                             Observable.just(LastHttpContent.EMPTY_LAST_CONTENT))
                 );
             }
@@ -365,46 +370,36 @@ public class ResponseUtil {
         return Observable.just(resp);
     }
     
-    private static Action0 addZipEntry(final ZipOutputStream zipos, final String contentName) {
+    private static Action0 addZipEntry(final ZipOutputStream zipout, final String contentName) {
         return ()-> {
             try {
                 final ZipEntry entry = new ZipEntry(contentName);
-                zipos.putNextEntry(entry);
+                zipout.putNextEntry(entry);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
         };
     }
     
-    private static Observable<? extends ByteBuf> zipContent(final ZipOutputStream zipos, 
-            final ByteBufsOutputStream bufout,
-            final HttpContent content) {
-        if (content.content().readableBytes() == 0) {
-            return Observable.empty();
-        }
-        
-        return bufout2bufs(bufout, zipContent(zipos, content));
-    }
-
-    private static Action0 zipContent(final ZipOutputStream zipos, final HttpContent content) {
+    private static Action0 zipContent(final ZipOutputStream zipout, final HttpContent content) {
         return ()->{
             final ByteBufInputStream is = new ByteBufInputStream(content.content());
             try {
                 final byte[] bytes = ByteStreams.toByteArray(is);
-                zipos.write(bytes);
-                zipos.flush();
+                zipout.write(bytes);
+                zipout.flush();
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
         };
     }
 
-    private static Action0 finishZip(final ZipOutputStream zipos) {
+    private static Action0 finishZip(final ZipOutputStream zipout) {
         return ()->{
             try {
-                zipos.closeEntry();
-                zipos.finish();
-                zipos.close();
+                zipout.closeEntry();
+                zipout.finish();
+                zipout.close();
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -417,10 +412,11 @@ public class ResponseUtil {
                 bufout.setOnBuffer(buf->subscriber.onNext(buf));
                 try {
                     fillcontent.call();
+                    subscriber.onCompleted();
                 } catch (Exception e) {
                     subscriber.onError(e);
                 } finally {
-                    subscriber.onCompleted();
+                    bufout.setOnBuffer(null);
                 }
             }
         });
