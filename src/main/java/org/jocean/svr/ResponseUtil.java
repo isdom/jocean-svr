@@ -25,7 +25,6 @@ import com.alibaba.fastjson.JSON;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.google.common.base.Charsets;
-import com.google.common.io.ByteStreams;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
@@ -333,6 +332,8 @@ public class ResponseUtil {
                 final ZipOutputStream zipout = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
                 zipout.setLevel(Deflater.BEST_COMPRESSION);
                 
+                final byte[] readbuf = new byte[512];
+                
                 terminable.doOnTerminate(() -> {
                     try {
                         zipout.close();
@@ -350,7 +351,7 @@ public class ResponseUtil {
                         if (content.content().readableBytes() == 0) {
                             return Observable.empty();
                         } else {
-                            return bufout2bufs(bufout, zipContent(zipout, content)).map(todwb(terminable));
+                            return bufout2bufs(bufout, zipContent(zipout, content, readbuf)).map(todwb(terminable));
                         }
                     } else {
                         return Observable.just(httpobj);
@@ -381,12 +382,13 @@ public class ResponseUtil {
         };
     }
     
-    private static Action0 zipContent(final ZipOutputStream zipout, final HttpContent content) {
+    private static Action0 zipContent(final ZipOutputStream zipout, final HttpContent content, final byte[] readbuf) {
         return ()->{
-            final ByteBufInputStream is = new ByteBufInputStream(content.content());
-            try {
-                final byte[] bytes = ByteStreams.toByteArray(is);
-                zipout.write(bytes);
+            try (final ByteBufInputStream is = new ByteBufInputStream(content.content())) {
+                int readed;
+                while ((readed = is.read(readbuf)) > 0) {
+                    zipout.write(readbuf, 0, readed);
+                }
                 zipout.flush();
             } catch (Exception e) {
                 throw new RuntimeException(e);
