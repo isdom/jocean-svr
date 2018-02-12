@@ -323,7 +323,8 @@ public class ResponseUtil {
             final String zippedName,
             final String contentName,
             final Terminable terminable,
-            final Func0<ByteBuf> newBuffer) {
+            final Func0<ByteBuf> newBuffer,
+            final int bufsize) {
         return new Observable.Transformer<HttpObject, Object>() {
             @Override
             public Observable<Object> call(final Observable<HttpObject> obsResponse) {
@@ -332,7 +333,7 @@ public class ResponseUtil {
                 final ZipOutputStream zipout = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
                 zipout.setLevel(Deflater.BEST_COMPRESSION);
                 
-                final byte[] readbuf = new byte[512];
+                final byte[] readbuf = new byte[bufsize];
                 
                 terminable.doOnTerminate(() -> {
                     try {
