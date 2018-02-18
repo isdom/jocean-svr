@@ -9,6 +9,7 @@ import org.jocean.http.util.RxNettys;
 import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.Terminable;
+import org.jocean.netty.util.AsBufsOutputStream;
 import org.jocean.netty.util.ByteBufsOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -159,5 +160,67 @@ public class ZipUtil {
 
     private static Func1<ByteBuf, DisposableWrapper<ByteBuf>> todwb(final Terminable terminable) {
         return DisposableWrapperUtil.<ByteBuf>wrap(RxNettys.<ByteBuf>disposerOf(), terminable);
+    }
+
+    public static Observable.Transformer<HttpObject, Object> toZip2(
+            final String zippedName,
+            final String contentName,
+            final Terminable terminable,
+            final Func0<DisposableWrapper<ByteBuf>> allocator,
+            final int bufsize) {
+        return new Observable.Transformer<HttpObject, Object>() {
+            @Override
+            public Observable<Object> call(final Observable<HttpObject> obsResponse) {
+                
+                final AsBufsOutputStream<DisposableWrapper<ByteBuf>> bufout = 
+                        new AsBufsOutputStream<>(allocator, dwb->dwb.unwrap());
+                final ZipOutputStream zipout = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
+                zipout.setLevel(Deflater.BEST_COMPRESSION);
+                final byte[] readbuf = new byte[bufsize];
+                
+                terminable.doOnTerminate(() -> {
+                    try {
+                        zipout.close();
+                    } catch (IOException e1) {
+                    }
+                });
+                
+                return obsResponse.flatMap(RxNettys.splitFullHttpMessage())
+                .flatMap(httpobj -> {
+                    if (httpobj instanceof HttpResponse) {
+                        return Observable.concat(onResponse((HttpResponse)httpobj, zippedName), 
+                                fromBufout(bufout, addEntry(zipout, contentName)));
+                    } else if (httpobj instanceof HttpContent) {
+                        final HttpContent content = (HttpContent)httpobj;
+                        if (content.content().readableBytes() == 0) {
+                            return Observable.empty();
+                        } else {
+                            return fromBufout(bufout, addContent(zipout, content, readbuf));
+                        }
+                    } else {
+                        return Observable.just(httpobj);
+                    }},
+                    e -> Observable.error(e),
+                    () -> Observable.concat(fromBufout(bufout, finish(zipout)), 
+                            Observable.just(LastHttpContent.EMPTY_LAST_CONTENT))
+                );
+            }
+        };
+    }
+    
+    private static <T> Observable<T> fromBufout(final AsBufsOutputStream<T> bufout, final Action0 out) {
+        return Observable.unsafeCreate(subscriber -> {
+            if (!subscriber.isUnsubscribed()) {
+                bufout.setOutput(t->subscriber.onNext(t));
+                try {
+                    out.call();
+                    subscriber.onCompleted();
+                } catch (Exception e) {
+                    subscriber.onError(e);
+                } finally {
+                    bufout.setOutput(null);
+                }
+            }
+        });
     }
 }
