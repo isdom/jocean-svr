@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
+import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
@@ -222,5 +223,56 @@ public class ZipUtil {
                 }
             }
         });
+    }
+    
+    public static class ZipCtx {
+        final AsBufsOutputStream<DisposableWrapper<ByteBuf>> _bufout;
+        final ZipOutputStream _zipout;
+        final byte[] _readbuf;
+        
+        public ZipCtx(AsBufsOutputStream<DisposableWrapper<ByteBuf>> out, final int bufsize) {
+            this._bufout = out;
+            this._zipout = new ZipOutputStream(this._bufout, CharsetUtil.UTF_8);
+            this._zipout.setLevel(Deflater.BEST_COMPRESSION);
+            this._readbuf = new byte[bufsize];
+        }
+        
+        public Action0 closer() {
+            return () -> {
+                try {
+                    _zipout.close();
+                } catch (IOException e) {
+                }
+            };
+        }
+    }
+    
+    public static Func0<DisposableWrapper<ByteBuf>> allocator(final Terminable terminable, final int pageSize) {
+        return () -> DisposableWrapperUtil.disposeOn(terminable,
+                RxNettys.wrap4release(PooledByteBufAllocator.DEFAULT.buffer(pageSize, pageSize)));
+    }
+    
+    public static Observable<? extends DisposableWrapper<ByteBuf>> zip(
+            final ZipCtx ctx,
+            final String name, 
+            final Observable<ByteBuf> content) {
+        
+        return Observable.concat(fromBufout(ctx._bufout, addEntry(ctx._zipout, name)),
+                content.flatMap(buf -> fromBufout(ctx._bufout, addBuf(ctx._zipout, buf, ctx._readbuf))),
+                fromBufout(ctx._bufout, finish(ctx._zipout)));
+    }
+    
+    private static Action0 addBuf(final ZipOutputStream zipout, final ByteBuf buf, final byte[] readbuf) {
+        return ()->{
+            try (final ByteBufInputStream is = new ByteBufInputStream(buf)) {
+                int readed;
+                while ((readed = is.read(readbuf)) > 0) {
+                    zipout.write(readbuf, 0, readed);
+                }
+                zipout.flush();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        };
     }
 }
