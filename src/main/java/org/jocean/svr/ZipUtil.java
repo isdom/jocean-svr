@@ -27,8 +27,8 @@ import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.util.CharsetUtil;
 import rx.Observable;
-import rx.Observable.Transformer;
 import rx.functions.Action0;
+import rx.functions.Action1;
 import rx.functions.Func0;
 import rx.functions.Func1;
 
@@ -39,19 +39,6 @@ public class ZipUtil {
     
     private ZipUtil() {
         throw new IllegalStateException("No instances!");
-    }
-    
-    public interface ZipBuilder {
-        
-        public ZipBuilder newbuf(final Func0<ByteBuf> newBuffer);
-        
-        public ZipBuilder bufsize(final int bufsize);
-        
-        public ZipBuilder terminable(final Terminable terminable);
-        
-        public ZipBuilder entryname(final String entryname);
-        
-        public Transformer<HttpObject, Object> build();
     }
     
     public static Observable.Transformer<HttpObject, Object> toZip(
@@ -230,28 +217,6 @@ public class ZipUtil {
                 RxNettys.wrap4release(PooledByteBufAllocator.DEFAULT.buffer(pageSize, pageSize)));
     }
     
-    public static class ZipCtx {
-        final AsBufsOutputStream<DisposableWrapper<ByteBuf>> _bufout;
-        final ZipOutputStream _zipout;
-        final byte[] _readbuf;
-        
-        public ZipCtx(final Func0<DisposableWrapper<ByteBuf>> allocator, final int bufsize) {
-            this._bufout = new AsBufsOutputStream<>(allocator, dwb->dwb.unwrap());
-            this._zipout = new ZipOutputStream(this._bufout, CharsetUtil.UTF_8);
-            this._zipout.setLevel(Deflater.BEST_COMPRESSION);
-            this._readbuf = new byte[bufsize];
-        }
-        
-        public Action0 closer() {
-            return () -> {
-                try {
-                    _zipout.close();
-                } catch (IOException e) {
-                }
-            };
-        }
-    }
-    
     public static interface Entry {
         public String name();
         public Observable<ByteBuf> content();
@@ -296,32 +261,100 @@ public class ZipUtil {
         };
     }
     
-    public static Observable<? extends DisposableWrapper<ByteBuf>> zip(
-            final ZipCtx ctx,
-            final Observable<? extends Entry> entries) {
+    public static interface ZipBuilder {
+        public ZipBuilder allocator(final Func0<DisposableWrapper<ByteBuf>> allocator);
+        public ZipBuilder entries(final Observable<? extends Entry> entries);
+        public ZipBuilder bufsize(final int bufsize);
+        public ZipBuilder hookcloser(final Action1<Action0> hookcloser);
+        public Observable<? extends DisposableWrapper<ByteBuf>> build();
+    }
+    
+    public static ZipBuilder zip() {
+        final AtomicReference<Func0<DisposableWrapper<ByteBuf>>> allocatorRef = new AtomicReference<>();
+        final AtomicReference<Observable<? extends Entry>> entriesRef = new AtomicReference<>();
+        final AtomicReference<Integer> bufsizeRef = new AtomicReference<>(512);
+        final AtomicReference<Action1<Action0>> hookcloserRef = new AtomicReference<>(null);
+        return new ZipBuilder() {
+
+            @Override
+            public ZipBuilder allocator(final Func0<DisposableWrapper<ByteBuf>> allocator) {
+                allocatorRef.set(allocator);
+                return this;
+            }
+
+            @Override
+            public ZipBuilder entries(final Observable<? extends Entry> entries) {
+                entriesRef.set(entries);
+                return this;
+            }
+
+            @Override
+            public ZipBuilder bufsize(final int bufsize) {
+                bufsizeRef.set(bufsize);
+                return this;
+            }
+
+            @Override
+            public ZipBuilder hookcloser(final Action1<Action0> hookcloser) {
+                hookcloserRef.set(hookcloser);
+                return this;
+            }
+
+            @Override
+            public Observable<? extends DisposableWrapper<ByteBuf>> build() {
+                if (null == allocatorRef.get()) {
+                    throw new NullPointerException("allocator");
+                }
+                if (null == entriesRef.get()) {
+                    throw new NullPointerException("entries");
+                }
+                return doZip(allocatorRef.get(), bufsizeRef.get(), entriesRef.get(), hookcloserRef.get());
+            }};
+    }
+
+    private static Observable<? extends DisposableWrapper<ByteBuf>> doZip(
+            final Func0<DisposableWrapper<ByteBuf>> allocator, 
+            final int bufsize,
+            final Observable<? extends Entry> entries,
+            final Action1<Action0> hookcloser) {
+        final AsBufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new AsBufsOutputStream<>(allocator, dwb->dwb.unwrap());
+        final ZipOutputStream zipout = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
+        
+        if (null != hookcloser) {
+            hookcloser.call(() -> {
+                try {
+                    zipout.close();
+                } catch (IOException e) {
+                }
+            });
+        }
+        
+        zipout.setLevel(Deflater.BEST_COMPRESSION);
+        final byte[] readbuf = new byte[bufsize];
+        
         return Observable.concat(
             // for each entry
             entries.flatMap(entry -> Observable.concat(
-                    fromBufout(ctx._bufout, ()-> {
+                    fromBufout(bufout, ()-> {
                         try {
-                            ctx._zipout.putNextEntry(new ZipEntry(entry.name()));
+                            zipout.putNextEntry(new ZipEntry(entry.name()));
                         } catch (Exception e) {
                             throw new RuntimeException(e);
                         }
                     }),
-                    entry.content().flatMap(buf->fromBufout(ctx._bufout, addBuf(ctx._zipout, buf, ctx._readbuf))),
-                    fromBufout(ctx._bufout, ()->{
+                    entry.content().flatMap(buf->fromBufout(bufout, addBuf(zipout, buf, readbuf))),
+                    fromBufout(bufout, ()->{
                         try {
-                            ctx._zipout.closeEntry();
+                            zipout.closeEntry();
                         } catch (Exception e) {
                             throw new RuntimeException(e);
                         }
                     }))),
             // finish zip stream
-            fromBufout(ctx._bufout, ()->{
+            fromBufout(bufout, ()->{
                 try {
-                    ctx._zipout.finish();
-                    ctx._zipout.close();
+                    zipout.finish();
+                    zipout.close();
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
