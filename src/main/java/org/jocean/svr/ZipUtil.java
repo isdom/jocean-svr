@@ -6,6 +6,7 @@ import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import org.jocean.http.MessageUtil;
 import org.jocean.http.util.RxNettys;
 import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.DisposableWrapperUtil;
@@ -150,22 +151,6 @@ public class ZipUtil {
         return DisposableWrapperUtil.<ByteBuf>wrap(RxNettys.<ByteBuf>disposerOf(), terminable);
     }
     
-    private static <T> Observable<T> fromBufout(final AsBufsOutputStream<T> bufout, final Action0 out) {
-        return Observable.unsafeCreate(subscriber -> {
-            if (!subscriber.isUnsubscribed()) {
-                bufout.setOutput(t->subscriber.onNext(t));
-                try {
-                    out.call();
-                    subscriber.onCompleted();
-                } catch (Exception e) {
-                    subscriber.onError(e);
-                } finally {
-                    bufout.setOutput(null);
-                }
-            }
-        });
-    }
-    
     public static Func0<DisposableWrapper<ByteBuf>> pooledAllocator(final Terminable terminable, final int pageSize) {
         return () -> DisposableWrapperUtil.disposeOn(terminable,
                 RxNettys.wrap4release(PooledByteBufAllocator.DEFAULT.buffer(pageSize, pageSize)));
@@ -289,15 +274,15 @@ public class ZipUtil {
         return Observable.concat(
             // for each entry
             entries.flatMap(entry -> Observable.concat(
-                    fromBufout(bufout, ()-> {
+                    MessageUtil.fromBufout(bufout, ()-> {
                         try {
                             zipout.putNextEntry(new ZipEntry(entry.name()));
                         } catch (Exception e) {
                             throw new RuntimeException(e);
                         }
                     }),
-                    entry.content().flatMap(buf->fromBufout(bufout, addBuf(zipout, buf, readbuf))),
-                    fromBufout(bufout, ()->{
+                    entry.content().flatMap(buf->MessageUtil.fromBufout(bufout, addBuf(zipout, buf, readbuf))),
+                    MessageUtil.fromBufout(bufout, ()->{
                         try {
                             zipout.closeEntry();
                         } catch (Exception e) {
@@ -305,7 +290,7 @@ public class ZipUtil {
                         }
                     }))),
             // finish zip stream
-            fromBufout(bufout, ()->{
+            MessageUtil.fromBufout(bufout, ()->{
                 try {
                     zipout.finish();
                     zipout.close();
