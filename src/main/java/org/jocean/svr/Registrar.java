@@ -93,6 +93,7 @@ import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder;
 import io.netty.util.CharsetUtil;
 import rx.Observable;
+import rx.functions.Func0;
 import rx.functions.Func1;
 
 /**
@@ -745,6 +746,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return this._beanHolder;
         } else if (argType.equals(WriteCtrl.class)) {
             return trade.writeCtrl();
+        } else if (argType.equals(AllocatorBuilder.class)) {
+            return buildAllocatorBuilder(trade);
         } else {
             for (MethodInterceptor interceptor : interceptors) {
                 if (interceptor instanceof ArgumentBuilder) {
@@ -757,6 +760,14 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
         
         return null;
+    }
+
+    private AllocatorBuilder buildAllocatorBuilder(final HttpTrade trade) {
+        return new AllocatorBuilder() {
+            @Override
+            public Func0<DisposableWrapper<ByteBuf>> build(final int pageSize) {
+                return MessageUtil.pooledAllocator(trade, pageSize);
+            }};
     }
 
     private Observable<MessageBody> buildMessageBody(final HttpTrade trade, final HttpRequest request) {
