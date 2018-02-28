@@ -10,7 +10,7 @@ import org.jocean.http.MessageUtil;
 import org.jocean.http.util.RxNettys;
 import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.Terminable;
-import org.jocean.netty.util.AsBufsOutputStream;
+import org.jocean.netty.util.BufsOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,7 +47,7 @@ public class ZipUtil {
             @Override
             public Observable<Object> call(final Observable<HttpObject> obsResponse) {
                 
-                final AsBufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new AsBufsOutputStream<>(
+                final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(
                         MessageUtil.pooledAllocator(terminable, 8192), dwb->dwb.unwrap());
                 final ZipOutputStream zipout = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
                 zipout.setLevel(Deflater.BEST_COMPRESSION);
@@ -227,7 +227,7 @@ public class ZipUtil {
             final int bufsize,
             final Observable<? extends Entry> entries,
             final Action1<Action0> hookcloser) {
-        final AsBufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new AsBufsOutputStream<>(allocator, dwb->dwb.unwrap());
+        final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
         final ZipOutputStream zipout = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
         
         if (null != hookcloser) {
