@@ -5,6 +5,7 @@ package org.jocean.svr;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
+import java.io.OutputStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -36,6 +37,8 @@ import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.QueryParam;
 
+import org.jocean.http.BodyBuilder;
+import org.jocean.http.ContentEncoder;
 import org.jocean.http.FullMessage;
 import org.jocean.http.MessageBody;
 import org.jocean.http.MessageUtil;
@@ -58,6 +61,7 @@ import org.jocean.j2se.spring.SpringBeanHolder;
 import org.jocean.j2se.unit.UnitAgent;
 import org.jocean.j2se.unit.UnitListener;
 import org.jocean.j2se.util.BeanHolders;
+import org.jocean.netty.util.BufsOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -93,6 +97,7 @@ import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder;
 import io.netty.util.CharsetUtil;
 import rx.Observable;
+import rx.functions.Action2;
 import rx.functions.Func0;
 import rx.functions.Func1;
 
@@ -748,6 +753,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return trade.writeCtrl();
         } else if (argType.equals(AllocatorBuilder.class)) {
             return buildAllocatorBuilder(trade);
+        } else if (argType.equals(BodyBuilder.class)) {
+            return buildBodyBuilder(trade);
         } else {
             for (MethodInterceptor interceptor : interceptors) {
                 if (interceptor instanceof ArgumentBuilder) {
@@ -770,6 +777,33 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }};
     }
 
+    private BodyBuilder buildBodyBuilder(final HttpTrade trade) {
+        return new BodyBuilder() {
+            @Override
+            public Observable<? extends MessageBody> build(final Object bean, final ContentEncoder contentEncoder) {
+                return Observable.just(new MessageBody() {
+                    @Override
+                    public String contentType() {
+                        return contentEncoder.contentType();
+                    }
+                    @Override
+                    public int contentLength() {
+                        return -1;
+                    }
+                    @Override
+                    public Observable<? extends DisposableWrapper<ByteBuf>> content() {
+                        return bean2dwbs(trade, bean, contentEncoder.encoder());
+                    }});
+            }};
+    }
+    
+    private static Observable<DisposableWrapper<ByteBuf>> bean2dwbs(final HttpTrade trade, final Object bean, 
+            final Action2<Object, OutputStream> encoder) {
+        final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = 
+                new BufsOutputStream<>(MessageUtil.pooledAllocator(trade, 8192), dwb->dwb.unwrap());
+        return MessageUtil.fromBufout(bufout, ()->encoder.call(bean, bufout));
+    }
+    
     private Observable<MessageBody> buildMessageBody(final HttpTrade trade, final HttpRequest request) {
         if (request.method().equals(HttpMethod.POST) && HttpPostRequestDecoder.isMultipart(request)) {
             return Observable.unsafeCreate(new MultipartBody(trade, request));
