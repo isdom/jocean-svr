@@ -1,12 +1,12 @@
 package org.jocean.svr;
 
-import java.io.OutputStream;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.ws.rs.HeaderParam;
 import javax.ws.rs.core.MediaType;
 
 import org.jocean.http.DoFlush;
+import org.jocean.http.MessageBody;
 import org.jocean.http.MessageUtil;
 import org.jocean.http.util.RxNettys;
 import org.jocean.idiom.ExceptionUtils;
@@ -30,7 +30,6 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
 import rx.Observable;
 import rx.Observable.Transformer;
-import rx.functions.Action2;
 import rx.functions.Func1;
 
 public class ResponseUtil {
@@ -247,26 +246,11 @@ public class ResponseUtil {
                 LastHttpContent.EMPTY_LAST_CONTENT);
     }
     
-    public static class Serializer {
-        public String contentType;
-        public Action2<Object, OutputStream> encoder;
-        
-        Serializer(final String contentType, final Action2<Object, OutputStream> encoder) {
-            this.contentType = contentType;
-            this.encoder = encoder;
-        }
-    }
-    
-    public static final Serializer TOXML = new Serializer(MediaType.APPLICATION_XML, MessageUtil::serializeToXml);
-    public static final Serializer TOJSON = new Serializer(MediaType.APPLICATION_JSON, MessageUtil::serializeToJson);
-    
     public interface ResponseBuilder {
         
         public ResponseBuilder status(final int status);
         
-        public ResponseBuilder body(final Object bodyPojo, final Serializer serializer);
-        
-        public ResponseBuilder disposeBodyOnTerminate(final boolean doDispose);
+        public ResponseBuilder body(final Observable<? extends MessageBody> body);
         
         public Observable<Object> build();
     }
@@ -286,14 +270,8 @@ public class ResponseUtil {
             }
 
             @Override
-            public ResponseBuilder body(final Object bodyPojo, final Serializer serializer) {
-                responseRef.set(responseRef.get().compose(MessageUtil.addBody(MessageUtil.toBody(
-                        bodyPojo, serializer.contentType, serializer.encoder))));
-                return this;
-            }
-
-            @Override
-            public ResponseBuilder disposeBodyOnTerminate(boolean doDispose) {
+            public ResponseBuilder body(final Observable<? extends MessageBody> body) {
+                responseRef.set(responseRef.get().compose(MessageUtil.addBody(body)));
                 return this;
             }
 
