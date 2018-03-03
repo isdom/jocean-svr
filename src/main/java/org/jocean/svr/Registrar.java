@@ -97,7 +97,7 @@ import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder;
 import io.netty.util.CharsetUtil;
 import rx.Observable;
-import rx.functions.Action2;
+import rx.functions.Action1;
 import rx.functions.Func0;
 import rx.functions.Func1;
 
@@ -781,6 +781,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return new BodyBuilder() {
             @Override
             public Observable<? extends MessageBody> build(final Object bean, final ContentEncoder contentEncoder) {
+                final Func0<BufsOutputStream<DisposableWrapper<ByteBuf>>> creator = 
+                        ()->new BufsOutputStream<>(MessageUtil.pooledAllocator(trade, 8192), dwb->dwb.unwrap());
+                final Action1<OutputStream> fillout = (out)->contentEncoder.encoder().call(bean, out);
                 return Observable.just(new MessageBody() {
                     @Override
                     public String contentType() {
@@ -792,16 +795,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     }
                     @Override
                     public Observable<? extends DisposableWrapper<ByteBuf>> content() {
-                        return bean2dwbs(trade, bean, contentEncoder.encoder());
+                        return MessageUtil.fromBufout(creator, fillout);
                     }});
             }};
-    }
-    
-    private static Observable<DisposableWrapper<ByteBuf>> bean2dwbs(final HttpTrade trade, final Object bean, 
-            final Action2<Object, OutputStream> encoder) {
-        final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = 
-                new BufsOutputStream<>(MessageUtil.pooledAllocator(trade, 8192), dwb->dwb.unwrap());
-        return MessageUtil.fromBufout(bufout, ()->encoder.call(bean, bufout));
     }
     
     private Observable<MessageBody> buildMessageBody(final HttpTrade trade, final HttpRequest request) {
