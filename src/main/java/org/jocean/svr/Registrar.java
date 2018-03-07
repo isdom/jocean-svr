@@ -40,6 +40,7 @@ import javax.ws.rs.QueryParam;
 import org.jocean.http.BodyBuilder;
 import org.jocean.http.ContentEncoder;
 import org.jocean.http.FullMessage;
+import org.jocean.http.InteractionBuilder;
 import org.jocean.http.MessageBody;
 import org.jocean.http.MessageUtil;
 import org.jocean.http.WriteCtrl;
@@ -755,6 +756,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return buildAllocatorBuilder(trade);
         } else if (argType.equals(BodyBuilder.class)) {
             return buildBodyBuilder(trade);
+        } else if (argType.equals(InteractionBuilder.class)) {
+            return buildInteractionBuilder(trade);
         } else {
             for (MethodInterceptor interceptor : interceptors) {
                 if (interceptor instanceof ArgumentBuilder) {
@@ -798,6 +801,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         return MessageUtil.fromBufout(creator, fillout);
                     }});
             }};
+    }
+    
+    private InteractionBuilder buildInteractionBuilder(final HttpTrade trade) {
+        return new InteractionBuilderImpl(trade);
     }
     
     private Observable<MessageBody> buildMessageBody(final HttpTrade trade, final HttpRequest request) {
