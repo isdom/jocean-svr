@@ -1,5 +1,6 @@
 package org.jocean.svr;
 
+import java.io.OutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -23,15 +24,18 @@ import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Terminable;
+import org.jocean.netty.util.BufsOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.ssl.SslContextBuilder;
 import rx.Observable;
 import rx.functions.Action1;
+import rx.functions.Func0;
 
 public class InteractBuilderImpl implements InteractBuilder {
     
@@ -159,6 +163,11 @@ public class InteractBuilderImpl implements InteractBuilder {
                 return this;
             }
             
+            @Override
+            public Interact body(final Object bean, final ContentEncoder contentEncoder) {
+                return body(tobody(bean, contentEncoder));
+            }
+            
 //            @Override
 //            public Interact disposeBodyOnTerminate(final boolean doDispose) {
 //                _doDisposeBody.set(doDispose);
@@ -212,14 +221,28 @@ public class InteractBuilderImpl implements InteractBuilder {
                         }
                     );
             }
-
-            @Override
-            public Interact body(final Object bean, final ContentEncoder contentEncoder) {
-                throw new RuntimeException("NOT IMPL");
-            }
         };
     }
     
+    private Observable<? extends MessageBody> tobody(final Object bean, final ContentEncoder contentEncoder) {
+        final Func0<BufsOutputStream<DisposableWrapper<ByteBuf>>> creator = 
+                ()->new BufsOutputStream<>(MessageUtil.pooledAllocator(this._terminable, 8192), dwb->dwb.unwrap());
+        final Action1<OutputStream> fillout = (out)->contentEncoder.encoder().call(bean, out);
+        return Observable.just(new MessageBody() {
+            @Override
+            public String contentType() {
+                return contentEncoder.contentType();
+            }
+            @Override
+            public int contentLength() {
+                return -1;
+            }
+            @Override
+            public Observable<? extends DisposableWrapper<ByteBuf>> content() {
+                return MessageUtil.fromBufout(creator, fillout);
+            }});
+    }
+
     private static boolean isSSLEnabled(final Feature... features) {
         for (Feature f : features) {
             if (f instanceof Feature.ENABLE_SSL) {
