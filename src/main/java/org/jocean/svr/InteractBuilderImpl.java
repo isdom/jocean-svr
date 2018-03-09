@@ -29,11 +29,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpMessage;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.ssl.SslContextBuilder;
 import rx.Observable;
+import rx.Observable.Transformer;
 import rx.functions.Action1;
 import rx.functions.Func0;
 
@@ -165,7 +168,8 @@ public class InteractBuilderImpl implements InteractBuilder {
             
             @Override
             public Interact body(final Object bean, final ContentEncoder contentEncoder) {
-                return body(tobody(bean, contentEncoder));
+                _obsreqRef.set(_obsreqRef.get().compose(addBody(tobody(bean, contentEncoder))));
+                return this;
             }
             
 //            @Override
@@ -243,6 +247,31 @@ public class InteractBuilderImpl implements InteractBuilder {
             }});
     }
 
+    public static Transformer<Object, Object> addBody(final Observable<? extends MessageBody> obsbody) {
+        return new Transformer<Object, Object>() {
+            @Override
+            public Observable<Object> call(final Observable<Object> msg) {
+                return msg.concatMap(obj -> {
+                        if (obj instanceof HttpMessage) {
+                            final HttpMessage httpmsg = (HttpMessage)obj;
+                            return obsbody.flatMap(body->body.content().toList().map(dwbs -> {
+                                int length = 0;
+                                for (DisposableWrapper<ByteBuf> dwb : dwbs) {
+                                    length +=dwb.unwrap().readableBytes();
+                                }
+                                httpmsg.headers().set(HttpHeaderNames.CONTENT_TYPE, body.contentType());
+                                // set content-length
+                                httpmsg.headers().set(HttpHeaderNames.CONTENT_LENGTH, length);
+                                return Observable.concat(Observable.just(httpmsg), Observable.from(dwbs));
+                            }));
+                        } else {
+                            return Observable.just(obj);
+                        }
+                    });
+            }
+        };
+    }
+    
     private static boolean isSSLEnabled(final Feature... features) {
         for (Feature f : features) {
             if (f instanceof Feature.ENABLE_SSL) {
