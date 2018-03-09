@@ -254,7 +254,7 @@ public class InteractBuilderImpl implements InteractBuilder {
                 return msg.concatMap(obj -> {
                         if (obj instanceof HttpMessage) {
                             final HttpMessage httpmsg = (HttpMessage)obj;
-                            return obsbody.flatMap(body->body.content().toList().map(dwbs -> {
+                            return obsbody.flatMap(body->body.content().toList().flatMap(dwbs -> {
                                 int length = 0;
                                 for (DisposableWrapper<ByteBuf> dwb : dwbs) {
                                     length +=dwb.unwrap().readableBytes();
