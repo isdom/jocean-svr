@@ -129,18 +129,18 @@ public class ZipUtil {
 
     public static interface Entry {
         public String name();
-        public Observable<? extends ByteBuf> content();
+        public Observable<? extends DisposableWrapper<ByteBuf>> content();
     }
     
     public static interface EntryBuilder {
         public EntryBuilder name(final String name);
-        public EntryBuilder content(final Observable<? extends ByteBuf> content);
+        public EntryBuilder content(final Observable<? extends DisposableWrapper<ByteBuf>> content);
         public Entry build();
     }
     
     public static EntryBuilder entry(final String name) {
         final AtomicReference<String> _nameRef = new AtomicReference<>(name);
-        final AtomicReference<Observable<? extends ByteBuf>> _contentRef = new AtomicReference<>(null);
+        final AtomicReference<Observable<? extends DisposableWrapper<ByteBuf>>> _contentRef = new AtomicReference<>(null);
         
         return new EntryBuilder() {
             @Override
@@ -150,7 +150,7 @@ public class ZipUtil {
             }
 
             @Override
-            public EntryBuilder content(final Observable<? extends ByteBuf> content) {
+            public EntryBuilder content(final Observable<? extends DisposableWrapper<ByteBuf>> content) {
                 _contentRef.set(content);
                 return this;
             }
@@ -164,7 +164,7 @@ public class ZipUtil {
                     }
 
                     @Override
-                    public Observable<? extends ByteBuf> content() {
+                    public Observable<? extends DisposableWrapper<ByteBuf>> content() {
                         return _contentRef.get();
                     }};
             }
@@ -176,6 +176,7 @@ public class ZipUtil {
         public ZipBuilder entries(final Observable<? extends Entry> entries);
         public ZipBuilder bufsize(final int bufsize);
         public ZipBuilder hookcloser(final Action1<Action0> hookcloser);
+        public ZipBuilder doOnZipped(final Action1<DisposableWrapper<ByteBuf>> onzipped);
         public Observable<? extends DisposableWrapper<ByteBuf>> build();
     }
     
@@ -184,6 +185,7 @@ public class ZipUtil {
         final AtomicReference<Observable<? extends Entry>> entriesRef = new AtomicReference<>();
         final AtomicReference<Integer> bufsizeRef = new AtomicReference<>(512);
         final AtomicReference<Action1<Action0>> hookcloserRef = new AtomicReference<>(null);
+        final AtomicReference<Action1<DisposableWrapper<ByteBuf>>> onzippedRef = new AtomicReference<>(null);
         return new ZipBuilder() {
 
             @Override
@@ -209,6 +211,12 @@ public class ZipUtil {
                 hookcloserRef.set(hookcloser);
                 return this;
             }
+            
+            @Override
+            public ZipBuilder doOnZipped(final Action1<DisposableWrapper<ByteBuf>> onzipped) {
+                onzippedRef.set(onzipped);
+                return this;
+            }
 
             @Override
             public Observable<? extends DisposableWrapper<ByteBuf>> build() {
@@ -218,7 +226,7 @@ public class ZipUtil {
                 if (null == entriesRef.get()) {
                     throw new NullPointerException("entries");
                 }
-                return doZip(allocatorRef.get(), bufsizeRef.get(), entriesRef.get(), hookcloserRef.get());
+                return doZip(allocatorRef.get(), bufsizeRef.get(), entriesRef.get(), hookcloserRef.get(), onzippedRef.get());
             }};
     }
 
@@ -226,7 +234,8 @@ public class ZipUtil {
             final Func0<DisposableWrapper<ByteBuf>> allocator, 
             final int bufsize,
             final Observable<? extends Entry> entries,
-            final Action1<Action0> hookcloser) {
+            final Action1<Action0> hookcloser, 
+            final Action1<DisposableWrapper<ByteBuf>> onzipped) {
         final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
         final ZipOutputStream zipout = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
         
@@ -252,7 +261,7 @@ public class ZipUtil {
                             throw new RuntimeException(e);
                         }
                     }),
-                    entry.content().flatMap(buf->MessageUtil.fromBufout(bufout, addBuf(zipout, buf, readbuf))),
+                    entry.content().flatMap(dwb->MessageUtil.fromBufout(bufout, addBuf(zipout, dwb, readbuf, onzipped))),
                     MessageUtil.fromBufout(bufout, ()->{
                         try {
                             zipout.closeEntry();
@@ -271,9 +280,10 @@ public class ZipUtil {
             }));
     }
     
-    private static Action0 addBuf(final ZipOutputStream zipout, final ByteBuf buf, final byte[] readbuf) {
+    private static Action0 addBuf(final ZipOutputStream zipout, final DisposableWrapper<ByteBuf> dwb, 
+            final byte[] readbuf, final Action1<DisposableWrapper<ByteBuf>> onzipped) {
         return ()->{
-            try (final ByteBufInputStream is = new ByteBufInputStream(buf)) {
+            try (final ByteBufInputStream is = new ByteBufInputStream(dwb.unwrap())) {
                 int readed;
                 while ((readed = is.read(readbuf)) > 0) {
                     zipout.write(readbuf, 0, readed);
@@ -281,6 +291,10 @@ public class ZipUtil {
                 zipout.flush();
             } catch (Exception e) {
                 throw new RuntimeException(e);
+            } finally {
+                if (null != onzipped) {
+                    onzipped.call(dwb);
+                }
             }
         };
     }
