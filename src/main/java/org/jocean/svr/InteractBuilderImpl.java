@@ -21,7 +21,6 @@ import org.jocean.http.client.HttpClient;
 import org.jocean.http.client.HttpClient.HttpInitiator;
 import org.jocean.http.client.HttpClient.InitiatorBuilder;
 import org.jocean.idiom.DisposableWrapper;
-import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Terminable;
 import org.jocean.netty.util.BufsOutputStream;
@@ -67,7 +66,6 @@ public class InteractBuilderImpl implements InteractBuilder {
     public Interact interact(final HttpClient client) {
         final InitiatorBuilder _initiatorBuilder = client.initiator();
         final AtomicBoolean _isSSLEnabled = new AtomicBoolean(false);
-        final AtomicBoolean _doDisposeBody = new AtomicBoolean(true);
         final AtomicReference<Observable<Object>> _obsreqRef = new AtomicReference<>(
                 MessageUtil.fullRequestWithoutBody(HttpVersion.HTTP_1_1, HttpMethod.GET));
         
@@ -171,19 +169,13 @@ public class InteractBuilderImpl implements InteractBuilder {
                 _obsreqRef.set(_obsreqRef.get().compose(addBody(tobody(bean, contentEncoder))));
                 return this;
             }
-            
-//            @Override
-//            public Interact disposeBodyOnTerminate(final boolean doDispose) {
-//                _doDisposeBody.set(doDispose);
-//                return this;
-//            }
-            
+
             @Override
             public Interact onrequest(final Action1<Object> action) {
                 updateObsRequest(action);
                 return this;
             }
-            
+
             @Override
             public Interact feature(final Feature... features) {
                 _initiatorBuilder.feature(features);
@@ -193,13 +185,8 @@ public class InteractBuilderImpl implements InteractBuilder {
                 return this;
             }
 
-            private Observable<? extends Object> hookDisposeBody(final Observable<Object> obsreq, final HttpInitiator initiator) {
-                return _doDisposeBody.get() ? obsreq.doOnNext(DisposableWrapperUtil.disposeOnForAny(initiator))
-                        : obsreq;
-            }
-            
             private Observable<? extends DisposableWrapper<HttpObject>> defineInteraction(final HttpInitiator initiator) {
-                return initiator.defineInteraction(hookDisposeBody(_obsreqRef.get(), initiator));
+                return initiator.defineInteraction(_obsreqRef.get());
             }
             
             @Override
