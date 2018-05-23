@@ -5,17 +5,19 @@ import org.jocean.http.InteractBuilder;
 import org.jocean.http.MessageUtil;
 import org.jocean.http.client.HttpClient;
 import org.jocean.idiom.BeanFinder;
+import org.jocean.idiom.rx.RxFunctions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import rx.Observable;
+import rx.Observable.Transformer;
 
-public class ControllerUtil {
+public class FinderUtil {
     @SuppressWarnings("unused")
     private static final Logger LOG
-        = LoggerFactory.getLogger(ControllerUtil.class);
-    
-    private ControllerUtil() {
+        = LoggerFactory.getLogger(FinderUtil.class);
+
+    private FinderUtil() {
         throw new IllegalStateException("No instances!");
     }
 
@@ -25,5 +27,14 @@ public class ControllerUtil {
 
     public static Observable<Interact> interacts(final BeanFinder finder) {
         return finder.find(HttpClient.class).map(client-> MessageUtil.interact(client));
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <T> Transformer<T, T> processor(final BeanFinder finder, final String name) {
+        if (null != name) {
+            return RxFunctions.transformBy((Observable<? extends Transformer<T, T>>) finder.find(name, Transformer.class));
+        } else {
+            return obs->obs;
+        }
     }
 }
