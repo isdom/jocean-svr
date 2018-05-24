@@ -5,7 +5,6 @@ import org.jocean.http.InteractBuilder;
 import org.jocean.http.MessageUtil;
 import org.jocean.http.client.HttpClient;
 import org.jocean.idiom.BeanFinder;
-import org.jocean.idiom.rx.RxFunctions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,12 +28,12 @@ public class FinderUtil {
         return finder.find(HttpClient.class).map(client-> MessageUtil.interact(client));
     }
 
-    @SuppressWarnings("unchecked")
     public static <T> Transformer<T, T> processor(final BeanFinder finder, final String name) {
         if (null != name) {
-            return RxFunctions.transformBy((Observable<? extends Transformer<T, T>>) finder.find(name, Transformer.class));
+            return source -> finder.find(name, Transformer.class)
+                    .flatMap(transformer -> (Observable<T>) source.compose(transformer)).onErrorResumeNext(source);
         } else {
-            return obs->obs;
+            return obs -> obs;
         }
     }
 }
