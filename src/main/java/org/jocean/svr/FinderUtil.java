@@ -28,6 +28,7 @@ public class FinderUtil {
         return finder.find(HttpClient.class).map(client-> MessageUtil.interact(client));
     }
 
+    @SuppressWarnings("unchecked")
     public static <T> Transformer<T, T> processor(final BeanFinder finder, final String name) {
         if (null != name) {
             return source -> finder.find(name, Transformer.class)
