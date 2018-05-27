@@ -112,7 +112,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     public void start() {
         final ConfigurableListableBeanFactory[] factorys = this._beanHolder.allBeanFactory();
-        for (ConfigurableListableBeanFactory factory : factorys) {
+        for (final ConfigurableListableBeanFactory factory : factorys) {
             scanAndRegisterResource(factory);
         }
         if (this._beanHolder instanceof UnitAgent) {
@@ -120,7 +120,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             agent.addUnitListener(_unitListener);
         }
     }
-    
+
     public void stop() {
         if (this._beanHolder instanceof UnitAgent) {
             final UnitAgent agent = (UnitAgent)this._beanHolder;
@@ -129,14 +129,14 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         this._resCtxs.clear();
         this._pathMatchers.clear();
     }
-    
+
     @Override
     public void setBeanHolder(final BeanHolder beanHolder) {
         this._beanHolder = (SpringBeanHolder) beanHolder;
     }
-    
+
     private void scanAndRegisterResource(final ConfigurableListableBeanFactory factory) {
-        for ( String name : factory.getBeanDefinitionNames() ) {
+        for ( final String name : factory.getBeanDefinitionNames() ) {
             final BeanDefinition def = factory.getBeanDefinition(name);
             if (null!=def && null != def.getBeanClassName()) {
                 try {
@@ -144,8 +144,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     if ( null!= cls.getAnnotation(Controller.class)) {
                         register(cls);
                     }
-                } catch (Exception e) {
-                    LOG.warn("exception when scanAndRegisterResource, detail: {}", 
+                } catch (final Exception e) {
+                    LOG.warn("exception when scanAndRegisterResource, detail: {}",
                             ExceptionUtils.exception2detail(e));
                 }
             } else {
@@ -155,7 +155,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private void unregisterAllResource(final ConfigurableListableBeanFactory factory) {
-        for ( String name : factory.getBeanDefinitionNames() ) {
+        for ( final String name : factory.getBeanDefinitionNames() ) {
             final BeanDefinition def = factory.getBeanDefinition(name);
             if (null!=def && null != def.getBeanClassName()) {
                 try {
@@ -163,8 +163,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     if ( null!= cls.getAnnotation(Controller.class)) {
                         unregister(cls);
                     }
-                } catch (Exception e) {
-                    LOG.warn("exception when unregisterAllResource, detail: {}", 
+                } catch (final Exception e) {
+                    LOG.warn("exception when unregisterAllResource, detail: {}",
                             ExceptionUtils.exception2detail(e));
                 }
             } else {
@@ -176,7 +176,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     public void setClasses(final Set<Class<?>> classes) {
         this._resCtxs.clear();
         this._pathMatchers.clear();
-        for (Class<?> cls : classes) {
+        for (final Class<?> cls : classes) {
             this.register(cls);
         }
     }
@@ -184,18 +184,18 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     public void setPathPattern(final String pathPattern) {
         this._pathPattern = Regexs.safeCompilePattern(pathPattern);;
     }
-    
+
     public Registrar register(final Class<?> cls) {
 
         final Class<?> resourceCls = checkNotNull(cls);
 
         // maybe ""
-        final String rootPath = getPathOfClass(resourceCls);
+        final String rootPath = SvrUtil.getPathOfClass(resourceCls);
 
         final Method[] restMethods = ReflectUtils.getAnnotationMethodsOf(resourceCls, Path.class);
 
-        for (Method m : restMethods) {
-            final String methodPath = genMethodPathOf(rootPath, m);
+        for (final Method m : restMethods) {
+            final String methodPath = SvrUtil.genMethodPathOf(rootPath, m);
             if (Regexs.isMatched(this._pathPattern, methodPath)) {
                 final PathMatcher pathMatcher = PathMatcher.create(methodPath);
                 if (null != pathMatcher) {
@@ -227,13 +227,13 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return this;
     }
 
-    private int registerProcessorWithHttpMethod(final Class<?> resourceCls, 
-            final Method m, 
-            final String methodPath, 
-            final PathMatcher pathMatcher, 
+    private int registerProcessorWithHttpMethod(final Class<?> resourceCls,
+            final Method m,
+            final String methodPath,
+            final PathMatcher pathMatcher,
             final Class<? extends Annotation> hmtype) {
         if (null!=m.getAnnotation(hmtype)) {
-            final javax.ws.rs.HttpMethod rsHttpMethod = 
+            final javax.ws.rs.HttpMethod rsHttpMethod =
                     hmtype.getAnnotation(javax.ws.rs.HttpMethod.class);
             final ResContext resctx = new ResContext(resourceCls, m);
             this._pathMatchers.put(rsHttpMethod.value(), Pair.of(pathMatcher, resctx));
@@ -246,8 +246,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return 0;
         }
     }
-    
-    private void registerProcessorWithFullpath(final Class<?> resourceCls, Method method, final String path) {
+
+    private void registerProcessorWithFullpath(final Class<?> resourceCls, final Method method, final String path) {
         if (registerProcessorWithHttpMethod(resourceCls, method, path, GET.class)
             + registerProcessorWithHttpMethod(resourceCls, method, path, POST.class)
             + registerProcessorWithHttpMethod(resourceCls, method, path, PUT.class)
@@ -264,17 +264,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
-    private String getPathOfClass(final Class<?> resourceCls) {
-        final Path path = resourceCls.getAnnotation(Path.class);
-        return null != path ? path.value() : "";
-    }
-
-    private int registerProcessorWithHttpMethod(final Class<?> resourceCls, 
-            final Method m, 
-            final String methodPath, 
+    private int registerProcessorWithHttpMethod(final Class<?> resourceCls,
+            final Method m,
+            final String methodPath,
             final Class<? extends Annotation> hmtype) {
         if (null!=m.getAnnotation(hmtype)) {
-            final javax.ws.rs.HttpMethod rsHttpMethod = 
+            final javax.ws.rs.HttpMethod rsHttpMethod =
                     hmtype.getAnnotation(javax.ws.rs.HttpMethod.class);
             this._resCtxs.put(rsHttpMethod.value() + ":" + methodPath, new ResContext(resourceCls, m));
             if (LOG.isDebugEnabled()) {
@@ -289,7 +284,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     public Registrar unregister(final Class<?> cls) {
         LOG.info("unregister {}'s entry.", cls);
         {
-            final Iterator<Map.Entry<String, ResContext>> itr = 
+            final Iterator<Map.Entry<String, ResContext>> itr =
                     this._resCtxs.entrySet().iterator();
             while ( itr.hasNext()) {
                 final Map.Entry<String, ResContext> entry = itr.next();
@@ -299,9 +294,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 }
             }
         }
-        
+
         {
-            Iterator<Map.Entry<String, Pair<PathMatcher, ResContext>>> itr = 
+            final Iterator<Map.Entry<String, Pair<PathMatcher, ResContext>>> itr =
                     this._pathMatchers.entries().iterator();
             while ( itr.hasNext()) {
                 final Map.Entry<String, Pair<PathMatcher, ResContext>> entry = itr.next();
@@ -313,7 +308,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
         return this;
     }
-    
+
     static class ArgsCtx {
         public Type[] genericParameterTypes;
         public Annotation[][] parameterAnnotations;
@@ -322,11 +317,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         public Map<String, String> pathParams;
         public MethodInterceptor[] interceptors;
 
-        public ArgsCtx(final Type[] genericParameterTypes, 
-                final Annotation[][] parameterAnnotations, 
+        public ArgsCtx(final Type[] genericParameterTypes,
+                final Annotation[][] parameterAnnotations,
                 final HttpTrade trade,
-                final HttpRequest request, 
-                final Map<String, String> pathParams, 
+                final HttpRequest request,
+                final Map<String, String> pathParams,
                 final MethodInterceptor[] interceptors) {
             this.genericParameterTypes = genericParameterTypes;
             this.parameterAnnotations = parameterAnnotations;
@@ -336,19 +331,19 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             this.interceptors = interceptors;
         }
     }
-    
+
     public Observable<? extends Object> buildResource(
             final HttpRequest request,
             final HttpTrade trade) throws Exception {
 
         // try direct path match
         final Pair<ResContext, Map<String, String>> pair = findResourceCtx(request);
-        
+
         if (null != pair) {
             final Method processor = selectProcessor(pair.first, request.method());
-            
+
             final Object resource = this._beanHolder.getBean(pair.first._cls);
-            
+
             if (null!=resource) {
                 final Deque<MethodInterceptor> interceptors = new LinkedList<>();
                 final MethodInterceptor.Context interceptorCtx = new MethodInterceptor.Context() {
@@ -376,21 +371,21 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 final Observable<? extends Object> aheadObsResponse = doPreInvoke(interceptorCtx, interceptors);
                 if (null != aheadObsResponse) {
                     //  interceptor 直接响应
-                    return doPostInvoke(interceptors, 
+                    return doPostInvoke(interceptors,
                             copyCtxOverrideResponse(interceptorCtx, aheadObsResponse));
                 } else {
-                    final ArgsCtx argctx = new ArgsCtx(processor.getGenericParameterTypes(), 
-                            processor.getParameterAnnotations(), 
-                            trade, 
+                    final ArgsCtx argctx = new ArgsCtx(processor.getGenericParameterTypes(),
+                            processor.getParameterAnnotations(),
+                            trade,
                             request,
                             pair.second,
                             interceptors.toArray(new MethodInterceptor[0]));
-                    final Observable<? extends Object> obsResponse = invokeProcessor(request, 
+                    final Observable<? extends Object> obsResponse = invokeProcessor(request,
                             trade.inbound().map(DisposableWrapperUtil.unwrap()),
                             resource,
-                            processor, 
+                            processor,
                             argctx);
-                    return doPostInvoke(interceptors, 
+                    return doPostInvoke(interceptors,
                         copyCtxOverrideResponse(interceptorCtx, obsResponse));
                 }
             }
@@ -400,8 +395,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Observable<? extends Object> invokeProcessor(
-            final HttpRequest request, 
-            final Observable<? extends HttpObject> obsRequest, 
+            final HttpRequest request,
+            final Observable<? extends HttpObject> obsRequest,
             final Object resource,
             final Method processor,
             final ArgsCtx argsctx
@@ -409,15 +404,15 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         try {
             final Object returnValue = processor.invoke(resource, buildArgs(resource, argsctx));
             if (null!=returnValue) {
-                final Observable<? extends Object> obsResponse = returnValue2ObsResponse(request, 
-                        processor.getGenericReturnType(), 
+                final Observable<? extends Object> obsResponse = returnValue2ObsResponse(request,
+                        processor.getGenericReturnType(),
                         returnValue);
                 if (null!=obsResponse) {
                     return obsResponse;
                 }
             }
-        } catch (Exception e) {
-            LOG.warn("exception when invoke process {}, detail{}", 
+        } catch (final Exception e) {
+            LOG.warn("exception when invoke process {}, detail{}",
                     processor,
                     ExceptionUtils.exception2detail(e));
         }
@@ -427,8 +422,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     @SuppressWarnings("unchecked")
     private Observable<? extends Object> returnValue2ObsResponse(
-            final HttpRequest request, 
-            final Type returnType, 
+            final HttpRequest request,
+            final Type returnType,
             final Object returnValue) {
         if (isObservableType(returnType)) {
             //  return type is Observable<XXX>
@@ -457,11 +452,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Observable<? extends Object> doPreInvoke(
-            final MethodInterceptor.Context ctx, 
+            final MethodInterceptor.Context ctx,
             final Deque<MethodInterceptor> interceptors) {
         final Class<? extends MethodInterceptor>[] types = interceptorTypesOf(ctx.resource().getClass());
         if (null != types && types.length > 0) {
-            for (Class<? extends MethodInterceptor> type : types) {
+            for (final Class<? extends MethodInterceptor> type : types) {
                 try {
                     final MethodInterceptor interceptor = this._beanHolder.getBean(type);
                     if (null!=interceptor) {
@@ -471,8 +466,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             return obsResponse;
                         }
                     }
-                } catch (Exception e) {
-                    LOG.warn("exception when preInvoke by interceptor type {}, detail: {}", 
+                } catch (final Exception e) {
+                    LOG.warn("exception when preInvoke by interceptor type {}, detail: {}",
                             type, ExceptionUtils.exception2detail(e));
                 }
             }
@@ -493,7 +488,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return Sets.union(ImmutableSet.copyOf(inters4rt), ImmutableSet.copyOf(inters4anno))
                     .toArray(new Class[0]);
         } else {
-            for (Map.Entry<String, Class<? extends MethodInterceptor>[]> entry :  this._pkg2interceptors.entrySet()) {
+            for (final Map.Entry<String, Class<? extends MethodInterceptor>[]> entry :  this._pkg2interceptors.entrySet()) {
                 if (cls.getPackage().getName().startsWith(entry.getKey())) {
                     return entry.getValue();
                 }
@@ -512,23 +507,23 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Observable<? extends Object> doPostInvoke(
-            final Collection<MethodInterceptor> interceptors, 
+            final Collection<MethodInterceptor> interceptors,
             MethodInterceptor.Context ctx) {
-        for (MethodInterceptor interceptor : interceptors) {
+        for (final MethodInterceptor interceptor : interceptors) {
             try {
                 final Observable<? extends Object> obsResponse = interceptor.postInvoke(ctx);
                 if (null != obsResponse) {
                     ctx = copyCtxOverrideResponse(ctx, obsResponse);
                 }
-            } catch (Exception e) {
-                LOG.warn("exception when get do {}.postInvoke, detail: {}", 
+            } catch (final Exception e) {
+                LOG.warn("exception when get do {}.postInvoke, detail: {}",
                         interceptor, ExceptionUtils.exception2detail(e));
             }
         }
         return ctx.obsResponse();
     }
 
-    private MethodInterceptor.Context copyCtxOverrideResponse(final MethodInterceptor.Context ctx, 
+    private MethodInterceptor.Context copyCtxOverrideResponse(final MethodInterceptor.Context ctx,
             final Observable<? extends Object> obsResponse) {
         return new MethodInterceptor.Context() {
             @Override
@@ -573,7 +568,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private Pair<ResContext, Map<String, String>> findByParamsPath(final String method, final String rawPath) {
         final Collection<Pair<PathMatcher, ResContext>> matchers = this._pathMatchers.get(method);
         if (null != matchers) {
-            for (Pair<PathMatcher, ResContext> matcher : matchers) {
+            for (final Pair<PathMatcher, ResContext> matcher : matchers) {
                 final Map<String, String> paramValues = matcher.getFirst().match(rawPath);
                 if (null != paramValues) {
                     return Pair.of(matcher.getSecond(), paramValues);
@@ -592,7 +587,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private static Type getGenericTypeOf(final Type type, final int idx) {
-        return type instanceof ParameterizedType 
+        return type instanceof ParameterizedType
                 ? ((ParameterizedType)type).getActualTypeArguments()[idx]
                 : null;
     }
@@ -617,7 +612,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     return Observable.just(new DefaultLastHttpContent(body2content((ResponseBody)obj)));
                 } else if (obj instanceof FullMessage) {
                     final FullMessage fulmsg = (FullMessage)obj;
-                    return Observable.concat(Observable.<HttpResponse>just(fulmsg.message()), 
+                    return Observable.concat(Observable.<HttpResponse>just(fulmsg.message()),
                             fulmsg.body().concatMap(body -> body.content()),
                             Observable.just(LastHttpContent.EMPTY_LAST_CONTENT));
                 } else {
@@ -630,7 +625,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         HttpResponse resp = null;
         if (msgresp instanceof ResponseBody) {
             final ByteBuf content = body2content((ResponseBody)msgresp);
-            resp = new DefaultFullHttpResponse(version, HttpResponseStatus.valueOf(msgresp.status()), 
+            resp = new DefaultFullHttpResponse(version, HttpResponseStatus.valueOf(msgresp.status()),
                     content);
             HttpUtil.setContentLength(resp, content.readableBytes());
         } else {
@@ -642,17 +637,17 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private void fillParams(final Object obj, final HttpResponse resp) {
-        final Field[] headerFields = 
+        final Field[] headerFields =
             ReflectUtils.getAnnotationFieldsOf(obj.getClass(), HeaderParam.class);
-        for ( Field field : headerFields ) {
+        for ( final Field field : headerFields ) {
             try {
                 final Object value = field.get(obj);
                 if ( null != value ) {
-                    final String headername = 
+                    final String headername =
                         field.getAnnotation(HeaderParam.class).value();
                     resp.headers().set(headername, value);
                 }
-            } catch (Exception e) {
+            } catch (final Exception e) {
                 LOG.warn("exception when get value from headerparam field:[{}], detail:{}",
                         field, ExceptionUtils.exception2detail(e));
             }
@@ -665,19 +660,19 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             @Override
             public Observable<HttpObject> call(final List<String> contents) {
                 final StringBuilder sb = new StringBuilder();
-                for (String s : contents) {
+                for (final String s : contents) {
                     sb.append(s);
                 }
                 final FullHttpResponse response = new DefaultFullHttpResponse(
-                        request.protocolVersion(), 
+                        request.protocolVersion(),
                         HttpResponseStatus.OK,
                         (sb.length() > 0 ? Unpooled.copiedBuffer(sb.toString(), CharsetUtil.UTF_8) : Unpooled.buffer(0)));
-                
+
                 response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain");
-                
+
                 // Add 'Content-Length' header only for a keep-alive connection.
                 response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
-                
+
                 response.headers().set(HttpHeaderNames.CACHE_CONTROL, HttpHeaderValues.NO_STORE);
                 response.headers().set(HttpHeaderNames.PRAGMA, HttpHeaderValues.NO_CACHE);
                 return Observable.<HttpObject>just(response);
@@ -687,12 +682,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private Object[] buildArgs(final Object resource, final ArgsCtx argCtx) {
         final List<Object> args = new ArrayList<>();
         int idx = 0;
-        for (Type argType : argCtx.genericParameterTypes) {
+        for (final Type argType : argCtx.genericParameterTypes) {
             args.add(buildArgByType(resource,
-                    argType, 
-                    argCtx.parameterAnnotations[idx], 
-                    argCtx.trade, 
-                    argCtx.request, 
+                    argType,
+                    argCtx.parameterAnnotations[idx],
+                    argCtx.trade,
+                    argCtx.request,
                     argCtx.pathParams,
                     argCtx.interceptors));
             idx++;
@@ -701,12 +696,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     //  TBD: 查表实现
-    private Object buildArgByType(final Object resource, 
-            final Type argType, 
-            final Annotation[] argAnnotations, 
-            final HttpTrade trade, 
-            final HttpRequest request, 
-            final Map<String, String> pathParams, 
+    private Object buildArgByType(final Object resource,
+            final Type argType,
+            final Annotation[] argAnnotations,
+            final HttpTrade trade,
+            final HttpRequest request,
+            final Map<String, String> pathParams,
             final MethodInterceptor[] interceptors) {
         if (argType instanceof Class<?>) {
             if (null != getAnnotation(argAnnotations, BeanParam.class)) {
@@ -728,7 +723,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 return BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Qualifier.class), resource);
             }
         }
-        if (argType instanceof ParameterizedType){  
+        if (argType instanceof ParameterizedType){
             //参数化类型
             if (isObservableType(argType)) {
                 final Type gt1st = getGenericTypeOf(argType, 0);
@@ -759,7 +754,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         } else if (argType.equals(InteractBuilder.class)) {
             return buildInteractBuilder(trade);
         } else {
-            for (MethodInterceptor interceptor : interceptors) {
+            for (final MethodInterceptor interceptor : interceptors) {
                 if (interceptor instanceof ArgumentBuilder) {
                     final Object arg = ((ArgumentBuilder)interceptor).buildArg(argType);
                     if (null != arg) {
@@ -768,7 +763,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 }
             }
         }
-        
+
         return null;
     }
 
@@ -784,7 +779,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return new BodyBuilder() {
             @Override
             public Observable<? extends MessageBody> build(final Object bean, final ContentEncoder contentEncoder) {
-                final Func0<BufsOutputStream<DisposableWrapper<ByteBuf>>> creator = 
+                final Func0<BufsOutputStream<DisposableWrapper<ByteBuf>>> creator =
                         ()->new BufsOutputStream<>(MessageUtil.pooledAllocator(trade, 8192), dwb->dwb.unwrap());
                 final Action1<OutputStream> fillout = (out)->contentEncoder.encoder().call(bean, out);
                 return Observable.just(new MessageBody() {
@@ -802,11 +797,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     }});
             }};
     }
-    
+
     private InteractBuilder buildInteractBuilder(final HttpTrade trade) {
         return new InteractBuilderImpl(trade);
     }
-    
+
     private Observable<MessageBody> buildMessageBody(final HttpTrade trade, final HttpRequest request) {
         if (request.method().equals(HttpMethod.POST) && HttpPostRequestDecoder.isMultipart(request)) {
             return Observable.unsafeCreate(new MultipartBody(trade, request));
@@ -817,7 +812,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     @SuppressWarnings("unchecked")
     private static <T extends Annotation> T getAnnotation(final Annotation[] annotations, final Class<T> type) {
-        for (Annotation annotation : annotations) {
+        for (final Annotation annotation : annotations) {
             if (annotation.annotationType().equals(type)) {
                 return (T)annotation;
             }
@@ -828,7 +823,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private Object buildBeanParam(final HttpRequest request, final Class<?> argType) {
         try {
             final Object bean = ReflectUtils.newInstance(argType);
-            
+
             if (null != bean) {
                 ParamUtil.request2HeaderParams(request, bean);
                 ParamUtil.request2QueryParams(request, bean);
@@ -836,7 +831,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 LOG.warn("buildBeanParam: failed to newInstance for type {}", argType);
             }
             return bean;
-        } catch (Exception e) {
+        } catch (final Exception e) {
             LOG.warn("exception when buildBeanParam for type {}, detail: {}", ExceptionUtils.exception2detail(e));
             throw new RuntimeException(e);
         }
@@ -853,26 +848,26 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             // for case: QueryParam("demo")
             return ParamUtil.getAsType(decoder.parameters().get(name), argType);
         }
-        
+
         if ("".equals(name)) {
             // for case: QueryParam(""), means fill with entire query string
             return Beans.fromString(ParamUtil.rawQuery(request.uri()), argType);
         }
-        
+
         return null;
     }
 
     private Object buildPathParam(final Map<String, String> pathParams, final String name, final Class<?> argType) {
         return Beans.fromString(pathParams.get(name), argType);
     }
-    
+
     private UntilRequestCompleted<Object> buildURC(final Observable<HttpObject> inbound) {
         return new UntilRequestCompleted<Object>() {
             @Override
             public Observable<Object> call(final Observable<Object> any) {
                 return any.delay(new Func1<Object, Observable<HttpObject>>() {
                     @Override
-                    public Observable<HttpObject> call(Object t) {
+                    public Observable<HttpObject> call(final Object t) {
                         return inbound.last();
                     }
                 });
@@ -892,16 +887,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
-    private String genMethodPathOf(final String rootPath, final Method method) {
-        final Path methodPath = method.getAnnotation(Path.class);
-
-        if (null != methodPath) {
-            return rootPath + methodPath.value();
-        } else {
-            return rootPath;
-        }
-    }
-
     private static class ResContext {
         ResContext(final Class<?> cls, final Method processor) {
             this._cls = cls;
@@ -916,7 +901,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     public void setMBeanRegister(final MBeanRegister register) {
 //        this._register = register;
     }
-    
+
     private ByteBuf body2content(final ResponseBody body) {
         return null != body.content() ? body.content() : Unpooled.EMPTY_BUFFER;
     }
@@ -924,12 +909,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private final Map<String, ResContext> _resCtxs =
             new HashMap<String, ResContext>();
 
-    private final Multimap<String, Pair<PathMatcher, ResContext>> _pathMatchers = 
+    private final Multimap<String, Pair<PathMatcher, ResContext>> _pathMatchers =
             ArrayListMultimap.create();
 
     private final UnitListener _unitListener = new UnitListener() {
         @Override
-        public void postUnitCreated(final String unitPath, 
+        public void postUnitCreated(final String unitPath,
                 final ConfigurableApplicationContext appctx) {
             scanAndRegisterResource(appctx.getBeanFactory());
         }
@@ -939,7 +924,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             unregisterAllResource(appctx.getBeanFactory());
         }
     };
-    
+
     @Inject
     @Named("type2interceptors")
     Map<Class<?>, Class<? extends MethodInterceptor>[]> _type2interceptors;
@@ -947,7 +932,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     @Inject
     @Named("pkg2interceptors")
     Map<String, Class<? extends MethodInterceptor>[]> _pkg2interceptors;
-    
+
     private SpringBeanHolder _beanHolder;
     private Pattern _pathPattern;
 }
