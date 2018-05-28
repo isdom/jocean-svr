@@ -37,4 +37,13 @@ public class FinderUtil {
             return obs -> obs;
         }
     }
+
+    public static <T> Transformer<T, T> processors(final BeanFinder finder, final String ...names) {
+        return obs -> {
+            for (final String name : names) {
+                obs = obs.compose(processor(finder, name));
+            }
+            return obs;
+        };
+    }
 }
