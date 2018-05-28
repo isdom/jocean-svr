@@ -117,7 +117,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
         if (this._beanHolder instanceof UnitAgent) {
             final UnitAgent agent = (UnitAgent)this._beanHolder;
-            agent.addUnitListener(_unitListener);
+            agent.addUnitListener(this._unitListener);
         }
     }
 
