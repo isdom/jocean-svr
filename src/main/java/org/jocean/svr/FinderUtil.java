@@ -32,7 +32,8 @@ public class FinderUtil {
     public static <T> Transformer<T, T> processor(final BeanFinder finder, final String name) {
         if (null != name) {
             return source -> finder.find(name, Transformer.class)
-                    .flatMap(transformer -> (Observable<T>) source.compose(transformer)).onErrorResumeNext(source);
+                    .flatMap(transformer -> (Observable<T>) source.compose(transformer),
+                            e -> source, () -> Observable.empty());
         } else {
             return obs -> obs;
         }
