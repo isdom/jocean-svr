@@ -3,7 +3,9 @@ package org.jocean.svr;
 import org.jocean.http.Interact;
 import org.jocean.http.InteractBuilder;
 import org.jocean.http.MessageUtil;
+import org.jocean.http.TypedSPI;
 import org.jocean.http.client.HttpClient;
+import org.jocean.http.endpoint.EndpointSet;
 import org.jocean.idiom.BeanFinder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,5 +48,9 @@ public class FinderUtil {
             }
             return obs;
         };
+    }
+
+    public static Transformer<Interact, Interact> endpoint(final BeanFinder finder, final TypedSPI spi) {
+        return interacts -> finder.find(EndpointSet.class).flatMap(eps -> interacts.compose(eps.of(spi)));
     }
 }
