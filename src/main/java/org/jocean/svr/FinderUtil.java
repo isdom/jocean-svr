@@ -1,5 +1,9 @@
 package org.jocean.svr;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
 import org.jocean.http.Interact;
 import org.jocean.http.InteractBuilder;
 import org.jocean.http.MessageUtil;
@@ -12,6 +16,7 @@ import org.slf4j.LoggerFactory;
 
 import rx.Observable;
 import rx.Observable.Transformer;
+import rx.functions.Func1;
 
 public class FinderUtil {
     @SuppressWarnings("unused")
@@ -52,5 +57,38 @@ public class FinderUtil {
 
     public static Transformer<Interact, Interact> endpoint(final BeanFinder finder, final TypedSPI spi) {
         return interacts -> finder.find(EndpointSet.class).flatMap(eps -> interacts.compose(eps.of(spi)));
+    }
+
+    public interface SpiInvoker {
+        public SpiInvoker pre(final String ...processors);
+        public SpiInvoker post(final String ...processors);
+        public <T> Transformer<Interact, T> attach(final Func1<Interact, Observable<T>> invoker);
+    }
+
+    private static final String[] EMPTY_STRS = new String[0];
+
+    public static SpiInvoker invoker(final BeanFinder finder, final TypedSPI spi) {
+        final List<String> pres = new ArrayList<>();
+        final List<String> posts = new ArrayList<>();
+        return new SpiInvoker() {
+            @Override
+            public SpiInvoker pre(final String... processors) {
+                pres.addAll(Arrays.asList(processors));
+                return this;
+            }
+            @Override
+            public SpiInvoker post(final String... processors) {
+                posts.addAll(Arrays.asList(processors));
+                return this;
+            }
+            @Override
+            public <T> Transformer<Interact, T> attach(final Func1<Interact, Observable<T>> invoker) {
+                return interacts->
+                    interacts.compose(FinderUtil.endpoint(finder, spi))
+                    .compose(processors(finder, pres.toArray(EMPTY_STRS)))
+                    .flatMap(invoker)
+                    .compose(processors(finder, posts.toArray(EMPTY_STRS)));
+            }
+        };
     }
 }
