@@ -3,6 +3,7 @@ package org.jocean.svr;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.jocean.http.Interact;
 import org.jocean.http.InteractBuilder;
@@ -59,35 +60,51 @@ public class FinderUtil {
         return interacts -> finder.find(EndpointSet.class).flatMap(eps -> interacts.compose(eps.of(spi)));
     }
 
-    public interface SpiInvoker {
-        public SpiInvoker pre(final String ...processors);
-        public SpiInvoker post(final String ...processors);
+    public interface RpcBuilder {
+        public RpcBuilder spi(final TypedSPI spi);
+        public RpcBuilder pre(final String ...processors);
+        public RpcBuilder post(final String ...processors);
         public <T> Transformer<Interact, T> attach(final Func1<Interact, Observable<T>> invoker);
     }
 
     private static final String[] EMPTY_STRS = new String[0];
 
-    public static SpiInvoker invoker(final BeanFinder finder, final TypedSPI spi) {
+    public static RpcBuilder rpc(final BeanFinder finder) {
         final List<String> pres = new ArrayList<>();
         final List<String> posts = new ArrayList<>();
-        return new SpiInvoker() {
+        final AtomicReference<TypedSPI> spiRef = new AtomicReference<>(null);
+
+        return new RpcBuilder() {
             @Override
-            public SpiInvoker pre(final String... processors) {
+            public RpcBuilder spi(final TypedSPI spi) {
+                spiRef.set(spi);
+                return this;
+            }
+            @Override
+            public RpcBuilder pre(final String... processors) {
                 pres.addAll(Arrays.asList(processors));
                 return this;
             }
             @Override
-            public SpiInvoker post(final String... processors) {
+            public RpcBuilder post(final String... processors) {
                 posts.addAll(Arrays.asList(processors));
                 return this;
             }
             @Override
             public <T> Transformer<Interact, T> attach(final Func1<Interact, Observable<T>> invoker) {
-                return interacts->
-                    interacts.compose(FinderUtil.endpoint(finder, spi))
-                    .compose(processors(finder, pres.toArray(EMPTY_STRS)))
-                    .flatMap(invoker)
-                    .compose(processors(finder, posts.toArray(EMPTY_STRS)));
+                return interacts-> {
+                    if (null != spiRef.get()) {
+                        interacts = interacts.compose(FinderUtil.endpoint(finder, spiRef.get()));
+                    }
+
+                    if (!pres.isEmpty()) {
+                        interacts = interacts.compose(processors(finder, pres.toArray(EMPTY_STRS)));
+                    }
+
+                    final Observable<T> response = interacts.flatMap(invoker);
+
+                    return posts.isEmpty() ? response : response.compose(processors(finder, posts.toArray(EMPTY_STRS)));
+                };
             }
         };
     }
