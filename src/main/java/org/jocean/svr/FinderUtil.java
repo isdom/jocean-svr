@@ -20,7 +20,6 @@ import rx.Observable.Transformer;
 import rx.functions.Func1;
 
 public class FinderUtil {
-    @SuppressWarnings("unused")
     private static final Logger LOG
         = LoggerFactory.getLogger(FinderUtil.class);
 
@@ -28,12 +27,39 @@ public class FinderUtil {
         throw new IllegalStateException("No instances!");
     }
 
+    private static Transformer<? super Interact, ? extends Interact> findAndApplyRpcConfig(
+            final BeanFinder finder,
+            final StackTraceElement ste) {
+        final String callerClassName = ste.getClassName();
+        final String callerMethodName = ste.getMethodName();
+        return interacts-> {
+            return finder.find("rpccfg_" + callerClassName, RpcConfig.class).flatMap(cfg -> {
+                final RpcConfig childcfg = cfg.child(callerMethodName);
+                if (null != childcfg) {
+                    LOG.info("using {}:{}'s RpcConfig", callerClassName, callerMethodName);
+                    return interacts.compose(childcfg.before());
+                } else {
+                    LOG.info("using {}'s RpcConfig", callerClassName);
+                    return interacts.compose(cfg.before());
+                }
+            }, e -> {
+                LOG.info("Non-Matched RpcConfig for {}:{}", callerClassName, callerMethodName);
+                return interacts;
+            },
+            () -> Observable.empty());
+        };
+    }
+
     public static Observable<Interact> interacts(final BeanFinder finder, final InteractBuilder ib) {
-        return finder.find(HttpClient.class).map(client-> ib.interact(client));
+        final StackTraceElement[] stes = Thread.currentThread().getStackTrace();
+        return finder.find(HttpClient.class).map(client -> ib.interact(client))
+                .compose(findAndApplyRpcConfig(finder, stes[2]));
     }
 
     public static Observable<Interact> interacts(final BeanFinder finder) {
-        return finder.find(HttpClient.class).map(client-> MessageUtil.interact(client));
+        final StackTraceElement[] stes = Thread.currentThread().getStackTrace();
+        return finder.find(HttpClient.class).map(client-> MessageUtil.interact(client))
+                .compose(findAndApplyRpcConfig(finder, stes[2]));
     }
 
     @SuppressWarnings("unchecked")
