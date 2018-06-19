@@ -7,7 +7,7 @@
     <bean id="children" class="java.util.concurrent.ConcurrentHashMap"/>
 
     <bean id="rpccfg" class="org.jocean.svr.DefaultRpcConfig" 
-        name="rpccfg_${name}">
+        name="rpccfg_${name:global}">
         <constructor-arg ref="children"/>
     </bean>
 
