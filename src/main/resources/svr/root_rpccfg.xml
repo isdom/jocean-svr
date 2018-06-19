@@ -4,11 +4,11 @@
        xsi:schemaLocation="http://www.springframework.org/schema/beans
         http://www.springframework.org/schema/beans/spring-beans.xsd">
     
-    <bean id="child" class="java.util.concurrent.ConcurrentHashMap"/>
+    <bean id="children" class="java.util.concurrent.ConcurrentHashMap"/>
 
     <bean id="rpccfg" class="org.jocean.svr.DefaultRpcConfig" 
         name="rpccfg_${cfg.name}">
-        <constructor-arg ref="child"/>
+        <constructor-arg ref="children"/>
     </bean>
 
 </beans>
