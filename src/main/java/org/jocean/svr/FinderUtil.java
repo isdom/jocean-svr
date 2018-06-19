@@ -31,18 +31,18 @@ public class FinderUtil {
             return finder.find("rpccfg_" + callerClassName, RpcConfig.class).flatMap(cfg -> {
                 final RpcConfig childcfg = cfg.child(callerMethodName);
                 if (null != childcfg) {
-                    LOG.info("using {}:{}'s RpcConfig.before", callerClassName, callerMethodName);
+                    LOG.info("using {}:{}-{}'s before", callerClassName, callerMethodName, childcfg);
                     return interacts.compose(childcfg.before());
                 } else {
-                    LOG.info("using {}'s RpcConfig.before", callerClassName);
+                    LOG.info("using {}-{}'s before", callerClassName, cfg);
                     return interacts.compose(cfg.before());
                 }
             }, e -> {
                 return finder.find("rpccfg_global", RpcConfig.class).flatMap(cfg -> {
-                    LOG.info("using rpccfg_global's RpcConfig.before");
+                    LOG.info("using rpccfg_global-{}'s before", cfg);
                     return interacts.compose(cfg.before());
                 }, e1 -> {
-                    LOG.info("Non-Matched RpcConfig.before for {}:{}", callerClassName, callerMethodName);
+                    LOG.info("Non-Matched RpcConfig for {}:{}", callerClassName, callerMethodName);
                     return interacts;
                 }, () -> Observable.empty());
             },
@@ -122,18 +122,18 @@ public class FinderUtil {
         return response -> finder.find("rpccfg_" + callerClassName, RpcConfig.class).flatMap(cfg -> {
             final RpcConfig childcfg = cfg.child(callerMethodName);
             if (null != childcfg) {
-                LOG.info("using {}:{}'s RpcConfig.after", callerClassName, callerMethodName);
+                LOG.info("using {}:{}-{}'s after", callerClassName, callerMethodName, childcfg);
                 return response.compose(childcfg.after());
             } else {
-                LOG.info("using {}'s RpcConfig.after", callerClassName);
+                LOG.info("using {}-{}'s after", callerClassName, cfg);
                 return response.compose(cfg.after());
             }
         }, e -> {
             return finder.find("rpccfg_global", RpcConfig.class).flatMap(cfg -> {
-                LOG.info("using rpccfg_global's RpcConfig.after");
+                LOG.info("using rpccfg_global-{}'s after", cfg);
                 return response.compose(cfg.after());
             }, e1 -> {
-                LOG.info("Non-Matched RpcConfig.after for {}:{}", callerClassName, callerMethodName);
+                LOG.info("Non-Matched RpcConfig for {}:{}", callerClassName, callerMethodName);
                 return response;
             }, () -> Observable.empty());
         },

@@ -1,5 +1,6 @@
 package org.jocean.svr;
 
+import java.util.Arrays;
 import java.util.Map;
 
 import javax.inject.Inject;
@@ -12,6 +13,14 @@ import org.springframework.util.StringUtils;
 import rx.Observable.Transformer;
 
 public class DefaultRpcConfig implements RpcConfig {
+
+    @Override
+    public String toString() {
+        final StringBuilder builder = new StringBuilder();
+        builder.append("rpc config [before=").append(Arrays.toString(_before)).append(", after=")
+                .append(Arrays.toString(_after)).append("]");
+        return builder.toString();
+    }
 
     public DefaultRpcConfig() {
         this._children = null;
