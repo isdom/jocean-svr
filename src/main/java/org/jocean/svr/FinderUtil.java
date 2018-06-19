@@ -1,7 +1,5 @@
 package org.jocean.svr;
 
-import java.util.concurrent.atomic.AtomicReference;
-
 import org.jocean.http.Interact;
 import org.jocean.http.InteractBuilder;
 import org.jocean.http.MessageUtil;
@@ -95,46 +93,50 @@ public class FinderUtil {
 
     public static RpcBuilder rpc(final BeanFinder finder) {
         final StackTraceElement[] stes = Thread.currentThread().getStackTrace();
-        final AtomicReference<TypedSPI> spiRef = new AtomicReference<>(null);
-        final String callerClassName = stes[2].getClassName();
-        final String callerMethodName = stes[2].getMethodName();
 
         return new RpcBuilder() {
             @Override
             public RpcBuilder spi(final TypedSPI spi) {
-                spiRef.set(spi);
-                return this;
+                return new RpcBuilder() {
+                    @Override
+                    public RpcBuilder spi(final TypedSPI otherSpi) {
+                        throw new RuntimeException("spi has already set to " + spi.type());
+                    }
+                    @Override
+                    public <T> Transformer<Interact, T> attach(final Func1<Interact, Observable<T>> invoker) {
+                        return interacts -> interacts.compose(FinderUtil.endpoint(finder, spi)).flatMap(invoker)
+                                .compose(withAfter(finder, stes[2]));
+                    }};
             }
+
             @Override
             public <T> Transformer<Interact, T> attach(final Func1<Interact, Observable<T>> invoker) {
-                return interacts-> {
-                    if (null != spiRef.get()) {
-                        interacts = interacts.compose(FinderUtil.endpoint(finder, spiRef.get()));
-                    }
-
-                    final Observable<T> response = interacts.flatMap(invoker);
-
-                    return finder.find("rpccfg_" + callerClassName, RpcConfig.class).flatMap(cfg -> {
-                        final RpcConfig childcfg = cfg.child(callerMethodName);
-                        if (null != childcfg) {
-                            LOG.info("using {}:{}'s RpcConfig.after", callerClassName, callerMethodName);
-                            return response.compose(childcfg.after());
-                        } else {
-                            LOG.info("using {}'s RpcConfig.after", callerClassName);
-                            return response.compose(cfg.after());
-                        }
-                    }, e -> {
-                        return finder.find("rpccfg_global", RpcConfig.class).flatMap(cfg -> {
-                            LOG.info("using rpccfg_global's RpcConfig.after");
-                            return response.compose(cfg.after());
-                        }, e1 -> {
-                            LOG.info("Non-Matched RpcConfig.after for {}:{}", callerClassName, callerMethodName);
-                            return response;
-                        }, () -> Observable.empty());
-                    },
-                    () -> Observable.empty());
-                };
+                return interacts -> interacts.flatMap(invoker).compose(withAfter(finder, stes[2]));
             }
         };
+    }
+
+    private static <T> Transformer<T, T> withAfter(final BeanFinder finder, final StackTraceElement ste) {
+        final String callerClassName = ste.getClassName();
+        final String callerMethodName = ste.getMethodName();
+        return response -> finder.find("rpccfg_" + callerClassName, RpcConfig.class).flatMap(cfg -> {
+            final RpcConfig childcfg = cfg.child(callerMethodName);
+            if (null != childcfg) {
+                LOG.info("using {}:{}'s RpcConfig.after", callerClassName, callerMethodName);
+                return response.compose(childcfg.after());
+            } else {
+                LOG.info("using {}'s RpcConfig.after", callerClassName);
+                return response.compose(cfg.after());
+            }
+        }, e -> {
+            return finder.find("rpccfg_global", RpcConfig.class).flatMap(cfg -> {
+                LOG.info("using rpccfg_global's RpcConfig.after");
+                return response.compose(cfg.after());
+            }, e1 -> {
+                LOG.info("Non-Matched RpcConfig.after for {}:{}", callerClassName, callerMethodName);
+                return response;
+            }, () -> Observable.empty());
+        },
+        () -> Observable.empty());
     }
 }
