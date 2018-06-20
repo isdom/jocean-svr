@@ -86,6 +86,64 @@ public class FinderUtil {
         return interacts -> finder.find(EndpointSet.class).flatMap(eps -> interacts.compose(eps.of(spi)));
     }
 
+    public interface RpcRunnerBuilder {
+        public RpcRunnerBuilder ib(final InteractBuilder ib);
+        public Observable<RpcRunner> runner();
+    }
+
+    public static RpcRunnerBuilder rpc(final BeanFinder finder) {
+        final StackTraceElement ste = Thread.currentThread().getStackTrace()[2];
+        return new RpcRunnerBuilder() {
+            @Override
+            public RpcRunnerBuilder ib(final InteractBuilder ib) {
+                return new RpcRunnerBuilder() {
+                    @Override
+                    public RpcRunnerBuilder ib(final InteractBuilder otherib) {
+                        throw new RuntimeException("InteractBuilder has already set to " + ib);
+                    }
+
+                    @Override
+                    public Observable<RpcRunner> runner() {
+                        return finder.find(HttpClient.class).map(client-> ib.interact(client))
+                                .compose(findAndApplyRpcConfig(finder, ste))
+                                .compose(interacts-> Observable.just(buildRunner(interacts, finder, ste)));
+                    }};
+            }
+
+            @Override
+            public Observable<RpcRunner> runner() {
+                return finder.find(HttpClient.class).map(client-> MessageUtil.interact(client))
+                        .compose(findAndApplyRpcConfig(finder, ste))
+                        .compose(interacts-> Observable.just(buildRunner(interacts, finder, ste)));
+            }};
+    }
+
+    private static RpcRunner buildRunner(final Observable<? extends Interact> interacts,
+            final BeanFinder finder,
+            final StackTraceElement ste) {
+        return new RpcRunner() {
+            @Override
+            public RpcRunner spi(final TypedSPI spi) {
+                return new RpcRunner() {
+                    @Override
+                    public RpcRunner spi(final TypedSPI otherSpi) {
+                        throw new RuntimeException("spi has already set to " + spi.type());
+                    }
+                    @Override
+                    public <T> Observable<T> execute(final Func1<Interact, Observable<T>> invoker) {
+                        return interacts.compose(FinderUtil.endpoint(finder, spi)).flatMap(invoker)
+                                .compose(withAfter(finder, ste));
+                    }};
+            }
+
+            @Override
+            public <T> Observable<T> execute(final Func1<Interact, Observable<T>> invoker) {
+                return interacts.flatMap(invoker).compose(withAfter(finder, ste));
+            }
+        };
+    }
+
+    /*
     public interface RpcBuilder {
         public RpcBuilder spi(final TypedSPI spi);
         public <T> Transformer<Interact, T> attach(final Func1<Interact, Observable<T>> invoker);
@@ -115,6 +173,7 @@ public class FinderUtil {
             }
         };
     }
+    */
 
     private static <T> Transformer<T, T> withAfter(final BeanFinder finder, final StackTraceElement ste) {
         final String callerClassName = ste.getClassName();
