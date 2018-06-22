@@ -23,6 +23,9 @@ dependencies {
     compile "org.springframework:spring-context:${springVersion}"
     compile "com.google.guava:guava:${guavaVersion}"
     
+    compile 'com.netflix.hystrix:hystrix-core:1.5.12'
+    compile 'com.netflix.hystrix:hystrix-serialization:1.5.12'
+    
     compile 'javax.ws.rs:javax.ws.rs-api:2.1'
     
     /* jocean */
