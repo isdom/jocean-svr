@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd">
+        
+    <bean id="initiators" factory-bean="httpClient" factory-method="onInitiator"/>
+    
+    <bean factory-bean="initiators" 
+        factory-method="subscribe"
+        destroy-method="unsubscribe">
+        <constructor-arg>
+            <bean class="org.jocean.svr.HttpClientDashboard" />
+        </constructor-arg>
+    </bean>
+    
+</beans>
