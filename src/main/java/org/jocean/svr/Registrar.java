@@ -100,7 +100,6 @@ import io.netty.util.CharsetUtil;
 import rx.Observable;
 import rx.functions.Action1;
 import rx.functions.Func0;
-import rx.functions.Func1;
 
 /**
  * @author isdom
@@ -655,10 +654,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Observable<HttpObject> strings2Response(final Observable<String> strings, final HttpRequest request) {
-        return strings.toList()
-        .flatMap(new Func1<List<String>, Observable<HttpObject>>() {
-            @Override
-            public Observable<HttpObject> call(final List<String> contents) {
+        return strings.toList().flatMap(contents -> {
                 final StringBuilder sb = new StringBuilder();
                 for (final String s : contents) {
                     sb.append(s);
@@ -676,7 +672,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 response.headers().set(HttpHeaderNames.CACHE_CONTROL, HttpHeaderValues.NO_STORE);
                 response.headers().set(HttpHeaderNames.PRAGMA, HttpHeaderValues.NO_CACHE);
                 return Observable.<HttpObject>just(response);
-            }});
+            });
     }
 
     private Object[] buildArgs(final Object resource, final ArgsCtx argCtx) {
@@ -862,17 +858,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private UntilRequestCompleted<Object> buildURC(final Observable<HttpObject> inbound) {
-        return new UntilRequestCompleted<Object>() {
-            @Override
-            public Observable<Object> call(final Observable<Object> any) {
-                return any.delay(new Func1<Object, Observable<HttpObject>>() {
-                    @Override
-                    public Observable<HttpObject> call(final Object t) {
-                        return inbound.last();
-                    }
-                });
-            }
-        };
+        return any -> any.delay(obj -> inbound.last());
     }
 
     private String getRawPath(final String path) {
