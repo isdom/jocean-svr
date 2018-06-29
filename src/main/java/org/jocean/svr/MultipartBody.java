@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.jocean.http.MessageBody;
+import org.jocean.http.MessageUtil;
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
 import org.jocean.http.util.Nettys;
 import org.jocean.idiom.DisposableWrapper;
@@ -31,11 +32,11 @@ class MultipartBody implements Observable.OnSubscribe<MessageBody> {
             LoggerFactory.getLogger(MultipartBody.class);
 
     private final class ToBody implements Func1<DisposableWrapper<HttpObject>, Observable<MessageBody>> {
-        private final HttpDataFactory _httpDataFactory = 
+        private final HttpDataFactory _httpDataFactory =
                 new DefaultHttpDataFactory(false);  // DO NOT use Disk;
-        
+
         private final HttpPostMultipartRequestDecoder _decoder;
-        
+
         ToBody(final HttpRequest request, final Subscriber<?> subscriber) {
             this._decoder = new HttpPostMultipartRequestDecoder(
                     _httpDataFactory, request);
@@ -58,7 +59,7 @@ class MultipartBody implements Observable.OnSubscribe<MessageBody> {
                 _httpDataFactory.cleanAllHttpData();
             }));
         }
-        
+
         @Override
         public Observable<MessageBody> call(final DisposableWrapper<HttpObject> msg) {
             if (msg.unwrap() instanceof HttpContent) {
@@ -70,11 +71,11 @@ class MultipartBody implements Observable.OnSubscribe<MessageBody> {
 
         private Observable<MessageBody> content2Body(final HttpContent content) {
             try {
-                LOG.info("content2MD: before offer content {} with size {}", 
+                LOG.info("content2MD: before offer content {} with size {}",
                         content, content.content().readableBytes());
                 this._decoder.offer(content);
-            } catch (ErrorDataDecoderException e) {
-                LOG.warn("exception when postDecoder.offer, detail: {}", 
+            } catch (final ErrorDataDecoderException e) {
+                LOG.warn("exception when postDecoder.offer, detail: {}",
                         ExceptionUtils.exception2detail(e));
             }
 //            finally {
@@ -98,13 +99,13 @@ class MultipartBody implements Observable.OnSubscribe<MessageBody> {
                         }
                     }
                 }
-            } catch (EndOfDataDecoderException e) {
-                LOG.warn("exception when postDecoder.hasNext, detail: {}", 
+            } catch (final EndOfDataDecoderException e) {
+                LOG.warn("exception when postDecoder.hasNext, detail: {}",
                         ExceptionUtils.exception2detail(e));
             }
             return mbs.isEmpty() ? Observable.<MessageBody>empty() : Observable.from(mbs);
         }
-        
+
         private MessageBody processHttpData(final InterfaceHttpData data) {
             if (data.getHttpDataType().equals(
                 InterfaceHttpData.HttpDataType.FileUpload)) {
@@ -127,9 +128,10 @@ class MultipartBody implements Observable.OnSubscribe<MessageBody> {
     public void call(final Subscriber<? super MessageBody> subscriber) {
         if (!subscriber.isUnsubscribed()) {
             this._trade.doOnTerminate(()->subscriber.unsubscribe());
-            
+
             // TBD: release toblob and release subscriber within trade
             this._trade.inbound()
+            .compose(MessageUtil.dwhWithAutoread())
             .flatMap(new ToBody(this._request, subscriber))
             .subscribe(subscriber);
         }

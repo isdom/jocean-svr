@@ -1,8 +1,9 @@
 /**
- * 
+ *
  */
 package org.jocean.svr;
 
+import org.jocean.http.MessageUtil;
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
 import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.ExceptionUtils;
@@ -20,7 +21,7 @@ import rx.Subscriber;
  * @author isdom
  *
  */
-public class TradeProcessor extends Subscriber<HttpTrade> 
+public class TradeProcessor extends Subscriber<HttpTrade>
     implements MBeanRegisterAware {
 
     private static final Logger LOG =
@@ -30,11 +31,11 @@ public class TradeProcessor extends Subscriber<HttpTrade>
             final Registrar  registrar) {
         this._registrar = registrar;
     }
-    
+
     @Override
     public void onCompleted() {
         // TODO Auto-generated method stub
-        
+
     }
 
     @Override
@@ -44,7 +45,9 @@ public class TradeProcessor extends Subscriber<HttpTrade>
 
     @Override
     public void onNext(final HttpTrade trade) {
-        trade.inbound().map(DisposableWrapperUtil.unwrap()).subscribe(
+        trade.inbound()
+            .compose(MessageUtil.dwhWithAutoread())
+            .map(DisposableWrapperUtil.unwrap()).subscribe(
             buildInboundSubscriber(trade));
     }
 
@@ -57,17 +60,17 @@ public class TradeProcessor extends Subscriber<HttpTrade>
 
             @Override
             public void onError(final Throwable e) {
-                LOG.warn("SOURCE_CANCELED\nfor cause:[{}]", 
+                LOG.warn("SOURCE_CANCELED\nfor cause:[{}]",
                     ExceptionUtils.exception2detail(e));
             }
-            
+
             @Override
             public void onNext(final HttpObject msg) {
                 if (msg instanceof HttpRequest) {
                     try {
                         final Observable<? extends Object> outbound = _registrar.buildResource((HttpRequest)msg, trade);
                         trade.outbound(outbound.doOnNext(DisposableWrapperUtil.disposeOnForAny(trade)));
-                    } catch (Exception e) {
+                    } catch (final Exception e) {
                         LOG.warn("exception when buildResource, detail:{}",
                                 ExceptionUtils.exception2detail(e));
                     }
@@ -77,7 +80,7 @@ public class TradeProcessor extends Subscriber<HttpTrade>
     }
 
     private final Registrar _registrar;
-    
+
     @Override
     public void setMBeanRegister(final MBeanRegister register) {
 //        register.registerMBean("name=tradeProcessor", this);

@@ -360,7 +360,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     }
                     @Override
                     public Observable<? extends HttpObject> obsRequest() {
-                        return trade.inbound().map(DisposableWrapperUtil.unwrap());
+                        return trade.inbound()
+                                .compose(MessageUtil.dwhWithAutoread())
+                                .map(DisposableWrapperUtil.unwrap());
                     }
                     @Override
                     public Observable<HttpObject> obsResponse() {
@@ -380,7 +382,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             pair.second,
                             interceptors.toArray(new MethodInterceptor[0]));
                     final Observable<? extends Object> obsResponse = invokeProcessor(request,
-                            trade.inbound().map(DisposableWrapperUtil.unwrap()),
+                            trade.inbound()
+                            .compose(MessageUtil.dwhWithAutoread())
+                            .map(DisposableWrapperUtil.unwrap()),
                             resource,
                             processor,
                             argctx);
@@ -724,12 +728,14 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (isObservableType(argType)) {
                 final Type gt1st = getGenericTypeOf(argType, 0);
                 if (HttpObject.class.equals(gt1st)) {
-                    return trade.inbound().map(DisposableWrapperUtil.unwrap());
+                    return trade.inbound()
+                            .compose(MessageUtil.dwhWithAutoread())
+                            .map(DisposableWrapperUtil.unwrap());
                 } else if (MessageBody.class.equals(gt1st)) {
                     return buildMessageBody(trade, request);
                 }
             } else if (UntilRequestCompleted.class.equals(getParameterizedRawType(argType))) {
-                return buildURC(trade.inbound().map(DisposableWrapperUtil.unwrap()));
+                return buildURC(trade.inbound());
             }
         } else if (argType.equals(io.netty.handler.codec.http.HttpMethod.class)) {
             return request.method();
@@ -802,7 +808,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         if (request.method().equals(HttpMethod.POST) && HttpPostRequestDecoder.isMultipart(request)) {
             return Observable.unsafeCreate(new MultipartBody(trade, request));
         } else {
-            return trade.inbound().compose(MessageUtil.asBody());
+            return trade.inbound()
+                    .compose(MessageUtil.dwhWithAutoread())
+                    .compose(MessageUtil.asBody());
         }
     }
 
@@ -857,7 +865,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return Beans.fromString(pathParams.get(name), argType);
     }
 
-    private UntilRequestCompleted<Object> buildURC(final Observable<HttpObject> inbound) {
+    private UntilRequestCompleted<Object> buildURC(final Observable<?> inbound) {
         return any -> any.delay(obj -> inbound.last());
     }
 
