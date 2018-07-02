@@ -1,5 +1,6 @@
 package org.jocean.svr.interceptor;
 
+import org.jocean.http.MessageUtil;
 import org.jocean.svr.MethodInterceptor;
 
 import io.netty.buffer.Unpooled;
@@ -17,15 +18,15 @@ public class EnableCORS implements MethodInterceptor {
     @Override
     public Observable<? extends Object> preInvoke(final Context ctx) {
         if (ctx.request().method().equals(HttpMethod.OPTIONS)) {
-            final String headers = 
+            final String headers =
                 ctx.request().headers().get(HttpHeaderNames.ACCESS_CONTROL_REQUEST_HEADERS);
-            final String methods = 
+            final String methods =
                     ctx.request().headers().get(HttpHeaderNames.ACCESS_CONTROL_REQUEST_METHOD);
-            final String origin = 
+            final String origin =
                     ctx.request().headers().get(HttpHeaderNames.ORIGIN);
             if (null != headers || null != methods || null != origin) {
-                final DefaultFullHttpResponse corsresp = 
-                        new DefaultFullHttpResponse(ctx.request().protocolVersion(), 
+                final DefaultFullHttpResponse corsresp =
+                        new DefaultFullHttpResponse(ctx.request().protocolVersion(),
                                 HttpResponseStatus.ACCEPTED, Unpooled.EMPTY_BUFFER);
                 HttpUtil.setContentLength(corsresp, 0);
                 if (null != headers) {
@@ -39,7 +40,7 @@ public class EnableCORS implements MethodInterceptor {
                 }
                 corsresp.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_CREDENTIALS, true);
                 return Observable.<HttpObject>just(corsresp)
-                    .delaySubscription(ctx.obsRequest().last());
+                    .delaySubscription(ctx.obsRequest().compose(MessageUtil.dwhWithAutoread()).last());
             }
         }
         return null;
@@ -54,7 +55,7 @@ public class EnableCORS implements MethodInterceptor {
                         final HttpResponse response = (HttpResponse)obj;
                         if (!response.headers().contains(HttpHeaderNames.ACCESS_CONTROL_ALLOW_ORIGIN)) {
                             response.headers().set(
-                                HttpHeaderNames.ACCESS_CONTROL_ALLOW_ORIGIN, origin); 
+                                HttpHeaderNames.ACCESS_CONTROL_ALLOW_ORIGIN, origin);
                             response.headers().set(
                                 HttpHeaderNames.ACCESS_CONTROL_ALLOW_CREDENTIALS, true);
                         }

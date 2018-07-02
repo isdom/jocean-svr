@@ -36,7 +36,6 @@ public class StatRest implements MethodInterceptor, ArgumentBuilder {
     @Override
     public Observable<? extends Object> preInvoke(final Context ctx) {
         if (null != this._stats) {
-            // getRawPath(new QueryStringDecoder(ctx.request().uri()).path());
             this._path = SvrUtil.genMethodPathOf(SvrUtil.getPathOfClass(ctx.resource().getClass()), ctx.processor());
             ctx.obsRequest().subscribe(RxSubscribers.ignoreNext(), RxSubscribers.ignoreError(),
                     () -> _stats.recordExecutedInterval(this._path, "__req", _clock.pauseAndContinue()));
