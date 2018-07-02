@@ -732,7 +732,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     return buildMessageBody(trade, request);
                 }
             } else if (UntilRequestCompleted.class.equals(getParameterizedRawType(argType))) {
-                return buildURC(trade.inbound().compose(MessageUtil.dwhWithAutoread()));
+                return buildURC(trade.inboundCompleted());
             }
         } else if (argType.equals(io.netty.handler.codec.http.HttpMethod.class)) {
             return request.method();
@@ -860,8 +860,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return Beans.fromString(pathParams.get(name), argType);
     }
 
-    private UntilRequestCompleted<Object> buildURC(final Observable<?> inbound) {
-        return any -> any.delay(obj -> inbound.last());
+    private UntilRequestCompleted<Object> buildURC(final Observable<?> inboundComplete) {
+        return any -> any.delay(obj -> inboundComplete.last());
     }
 
     private String getRawPath(final String path) {
