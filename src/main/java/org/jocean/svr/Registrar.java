@@ -366,6 +366,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     public Observable<HttpObject> obsResponse() {
                         return null;
                     }
+                    @Override
+                    public Observable<? extends Object> requestCompleted() {
+                        return trade.inboundCompleted();
+                    }
                 };
                 final Observable<? extends Object> aheadObsResponse = doPreInvoke(interceptorCtx, interceptors);
                 if (null != aheadObsResponse) {
@@ -550,6 +554,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             @Override
             public Observable<? extends Object> obsResponse() {
                 return obsResponse;
+            }
+            @Override
+            public Observable<? extends Object> requestCompleted() {
+                return ctx.requestCompleted();
             }};
     }
 
