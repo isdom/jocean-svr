@@ -97,6 +97,7 @@ import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder;
 import io.netty.util.CharsetUtil;
+import rx.Completable;
 import rx.Observable;
 import rx.functions.Action1;
 import rx.functions.Func0;
@@ -367,7 +368,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         return null;
                     }
                     @Override
-                    public Observable<? extends Object> requestCompleted() {
+                    public Completable requestCompleted() {
                         return trade.inboundCompleted();
                     }
                 };
@@ -556,7 +557,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 return obsResponse;
             }
             @Override
-            public Observable<? extends Object> requestCompleted() {
+            public Completable requestCompleted() {
                 return ctx.requestCompleted();
             }};
     }
@@ -868,8 +869,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return Beans.fromString(pathParams.get(name), argType);
     }
 
-    private UntilRequestCompleted<Object> buildURC(final Observable<?> inboundComplete) {
-        return any -> any.delay(obj -> inboundComplete.last());
+    private UntilRequestCompleted<Object> buildURC(final Completable inboundComplete) {
+        return any -> any.delay(obj -> inboundComplete.toObservable());
     }
 
     private String getRawPath(final String path) {

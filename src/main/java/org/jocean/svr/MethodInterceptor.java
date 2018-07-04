@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.netty.handler.codec.http.HttpRequest;
+import rx.Completable;
 import rx.Observable;
 
 public interface MethodInterceptor {
@@ -16,7 +17,7 @@ public interface MethodInterceptor {
         public Object resource();
         public Method processor();
         public HttpRequest request();
-        public Observable<? extends Object> requestCompleted();
+        public Completable requestCompleted();
         public Observable<? extends Object> obsRequest();
         public Observable<? extends Object> obsResponse();
     }

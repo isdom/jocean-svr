@@ -5,7 +5,6 @@ import java.lang.reflect.Type;
 import javax.inject.Inject;
 
 import org.jocean.idiom.StopWatch;
-import org.jocean.idiom.rx.RxSubscribers;
 import org.jocean.j2se.stats.ApiStats;
 import org.jocean.svr.ArgumentBuilder;
 import org.jocean.svr.MethodInterceptor;
@@ -37,8 +36,7 @@ public class StatRest implements MethodInterceptor, ArgumentBuilder {
     public Observable<? extends Object> preInvoke(final Context ctx) {
         if (null != this._stats) {
             this._path = SvrUtil.genMethodPathOf(SvrUtil.getPathOfClass(ctx.resource().getClass()), ctx.processor());
-            ctx.requestCompleted().subscribe(RxSubscribers.ignoreNext(), RxSubscribers.ignoreError(),
-                    () -> _stats.recordExecutedInterval(this._path, "__req", _clock.pauseAndContinue()));
+            ctx.requestCompleted().subscribe(() -> _stats.recordExecutedInterval(this._path, "__req", _clock.pauseAndContinue()));
         }
 
         return null;
