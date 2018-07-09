@@ -31,7 +31,7 @@ class MultipartBody implements Observable.OnSubscribe<MessageBody> {
     private static final Logger LOG =
             LoggerFactory.getLogger(MultipartBody.class);
 
-    private final class ToBody implements Func1<DisposableWrapper<HttpObject>, Observable<MessageBody>> {
+    private final class ToBody implements Func1<DisposableWrapper<? extends HttpObject>, Observable<MessageBody>> {
         private final HttpDataFactory _httpDataFactory =
                 new DefaultHttpDataFactory(false);  // DO NOT use Disk;
 
@@ -61,7 +61,7 @@ class MultipartBody implements Observable.OnSubscribe<MessageBody> {
         }
 
         @Override
-        public Observable<MessageBody> call(final DisposableWrapper<HttpObject> msg) {
+        public Observable<MessageBody> call(final DisposableWrapper<? extends HttpObject> msg) {
             if (msg.unwrap() instanceof HttpContent) {
                 return content2Body((HttpContent)msg.unwrap());
             } else {
@@ -130,10 +130,8 @@ class MultipartBody implements Observable.OnSubscribe<MessageBody> {
             this._trade.doOnTerminate(()->subscriber.unsubscribe());
 
             // TBD: release toblob and release subscriber within trade
-            this._trade.inbound()
-            .compose(MessageUtil.dwhWithAutoread())
-            .flatMap(new ToBody(this._request, subscriber))
-            .subscribe(subscriber);
+            this._trade.inbound().compose(MessageUtil.rollout2dwhs()).flatMap(new ToBody(this._request, subscriber))
+                .subscribe(subscriber);
         }
     }
 

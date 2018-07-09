@@ -40,6 +40,7 @@ import javax.ws.rs.QueryParam;
 import org.jocean.http.BodyBuilder;
 import org.jocean.http.ContentEncoder;
 import org.jocean.http.FullMessage;
+import org.jocean.http.HttpSlice;
 import org.jocean.http.InteractBuilder;
 import org.jocean.http.MessageBody;
 import org.jocean.http.MessageUtil;
@@ -360,7 +361,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         return processor;
                     }
                     @Override
-                    public Observable<? extends Object> obsRequest() {
+                    public Observable<? extends HttpSlice> obsRequest() {
                         return trade.inbound();
                     }
                     @Override
@@ -386,7 +387,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             interceptors.toArray(new MethodInterceptor[0]));
                     final Observable<? extends Object> obsResponse = invokeProcessor(request,
 //                            trade.inbound()
-//                            .compose(MessageUtil.dwhWithAutoread())
+//                            .compose(MessageUtil.rollout2dwhs())
 //                            .map(DisposableWrapperUtil.unwrap()),
                             resource,
                             processor,
@@ -397,7 +398,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
         }
         return RxNettys.response404NOTFOUND(request.protocolVersion())
-                .delaySubscription(trade.inbound().compose(MessageUtil.dwhWithAutoread()).last());
+                .delaySubscription(trade.inbound().compose(MessageUtil.rollout2dwhs()).last());
     }
 
     private Observable<? extends Object> invokeProcessor(
@@ -548,7 +549,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
 
             @Override
-            public Observable<? extends Object> obsRequest() {
+            public Observable<? extends HttpSlice> obsRequest() {
                 return ctx.obsRequest();
             }
 
@@ -736,7 +737,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (isObservableType(argType)) {
                 final Type gt1st = getGenericTypeOf(argType, 0);
                 if (HttpObject.class.equals(gt1st)) {
-                    return trade.inbound().compose(MessageUtil.dwhWithAutoread()).map(DisposableWrapperUtil.unwrap());
+                    return trade.inbound().compose(MessageUtil.rollout2dwhs()).map(DisposableWrapperUtil.unwrap());
                 } else if (MessageBody.class.equals(gt1st)) {
                     return buildMessageBody(trade, request);
                 }
@@ -814,7 +815,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         if (request.method().equals(HttpMethod.POST) && HttpPostRequestDecoder.isMultipart(request)) {
             return Observable.unsafeCreate(new MultipartBody(trade, request));
         } else {
-            return trade.inbound().compose(MessageUtil.dwhWithAutoread()).compose(MessageUtil.asBody());
+            return trade.inbound().compose(MessageUtil.rollout2dwhs()).compose(MessageUtil.asBody());
         }
     }
 

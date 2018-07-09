@@ -13,7 +13,7 @@ public class LogRest implements MethodInterceptor {
 
     @Override
     public Observable<? extends Object> preInvoke(final Context ctx) {
-        LOG.debug("REST: PRE [{}]\r\n[{}]\r\n[ handle req ]:\r\n{}", 
+        LOG.debug("REST - Before Processor: [{}]\r\n[{}]\r\n[ handle req ]:\r\n{}",
                 ctx.resource(), ctx.processor(), ctx.request());
         return null;
     }
@@ -22,7 +22,7 @@ public class LogRest implements MethodInterceptor {
     public Observable<? extends Object> postInvoke(final Context ctx) {
         return ctx.obsResponse().doOnNext(obj -> {
                 if (obj instanceof HttpResponse) {
-                    LOG.debug("REST: POST [{}]\r\n[{}]\r\n[ handle req ]:\r\n{}\r\n[ and resp ]:\r\n{}", 
+                    LOG.debug("REST - After Processor: [{}]\r\n[{}]\r\n[ handle req ]:\r\n{}\r\n[ and resp ]:\r\n{}",
                             ctx.resource(), ctx.processor(), ctx.request(), obj);
                 }
             });

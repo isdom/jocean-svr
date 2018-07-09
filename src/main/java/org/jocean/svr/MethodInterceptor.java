@@ -4,6 +4,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.jocean.http.HttpSlice;
 import org.jocean.idiom.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,7 +19,7 @@ public interface MethodInterceptor {
         public Method processor();
         public HttpRequest request();
         public Completable requestCompleted();
-        public Observable<? extends Object> obsRequest();
+        public Observable<? extends HttpSlice> obsRequest();
         public Observable<? extends Object> obsResponse();
     }
 
