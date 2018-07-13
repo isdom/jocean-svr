@@ -59,6 +59,7 @@ import org.jocean.idiom.Regexs;
 import org.jocean.idiom.Terminable;
 import org.jocean.idiom.jmx.MBeanRegister;
 import org.jocean.idiom.jmx.MBeanRegisterAware;
+import org.jocean.idiom.rx.RxIterator;
 import org.jocean.j2se.spring.SpringBeanHolder;
 import org.jocean.j2se.unit.UnitAgent;
 import org.jocean.j2se.unit.UnitListener;
@@ -100,6 +101,7 @@ import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder;
 import io.netty.util.CharsetUtil;
 import rx.Completable;
 import rx.Observable;
+import rx.Single;
 import rx.functions.Action1;
 import rx.functions.Func0;
 
@@ -419,7 +421,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 }
             }
         } catch (final Exception e) {
-            LOG.warn("exception when invoke process {}, detail{}",
+            LOG.warn("exception when invoke process {}, detail: {}",
                     processor,
                     ExceptionUtils.exception2detail(e));
         }
@@ -627,10 +629,39 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     return Observable.concat(Observable.<HttpResponse>just(fulmsg.message()),
                             fulmsg.body().concatMap(body -> body.content()),
                             Observable.just(LastHttpContent.EMPTY_LAST_CONTENT));
+                } else if (obj instanceof RxIterator) {
+                    return handleRxIterator((RxIterator<Object>)obj, request.protocolVersion());
                 } else {
                     return Observable.just(new DefaultHttpContent(Unpooled.copiedBuffer(obj.toString(), CharsetUtil.UTF_8)));
                 }
             });
+    }
+
+    private Observable<? extends Object> handleRxIterator(final RxIterator<Object> rxiter, final HttpVersion version) {
+        if (rxiter.element() instanceof MessageResponse) {
+            return Observable.just(replaceElement(rxiter, buildResponse((MessageResponse)rxiter.element(), version)));
+        } else {
+            return Observable.just(rxiter);
+        }
+    }
+
+    private RxIterator<Object> replaceElement(final RxIterator<Object> rxiter, final Object element) {
+        return new RxIterator<Object>() {
+            @Override
+            public Single<Boolean> hasNext() {
+                return rxiter.hasNext();
+            }
+
+            @Override
+            public Observable<? extends RxIterator<Object>> next() {
+                return rxiter.next();
+            }
+
+            @Override
+            public Object element() {
+                return element;
+            }
+        };
     }
 
     private HttpResponse buildResponse(final MessageResponse msgresp, final HttpVersion version) {

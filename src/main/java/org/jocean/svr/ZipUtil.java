@@ -6,6 +6,7 @@ import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import org.jocean.http.ByteBufSlice;
 import org.jocean.http.MessageUtil;
 import org.jocean.http.util.RxNettys;
 import org.jocean.idiom.DisposableWrapper;
@@ -25,46 +26,156 @@ import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.util.CharsetUtil;
 import rx.Observable;
+import rx.Observable.Transformer;
+import rx.Single;
 import rx.functions.Action0;
 import rx.functions.Action1;
 import rx.functions.Func0;
+import rx.functions.Func1;
 
 public class ZipUtil {
     @SuppressWarnings("unused")
     private static final Logger LOG
         = LoggerFactory.getLogger(ZipUtil.class);
-    
+
     private ZipUtil() {
         throw new IllegalStateException("No instances!");
     }
-    
-    public static Observable.Transformer<HttpObject, Object> toZip(
+
+    public static Transformer<ByteBufSlice, ByteBufSlice> zipSlices(
+            final Func0<DisposableWrapper<ByteBuf>> allocator,
+            final String entryName,
+            final Terminable terminable,
+            final int bufsize,
+            final Action1<DisposableWrapper<ByteBuf>> onzipped) {
+        return bbses -> {
+            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
+            final ZipOutputStream zipout = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
+            zipout.setLevel(Deflater.BEST_COMPRESSION);
+
+            final byte[] readbuf = new byte[bufsize];
+
+            terminable.doOnTerminate(() -> {
+                try {
+                    zipout.close();
+                } catch (final IOException e1) {
+                }
+            });
+
+            return bbses.map(dozip(zipout, bufout, readbuf, onzipped)).map(insertEntryInfo(zipout, bufout, entryName));
+        };
+    }
+
+    private static Func1<? super ByteBufSlice, ? extends ByteBufSlice> insertEntryInfo(
+            final ZipOutputStream zipout,
+            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout,
+            final String entryName) {
+        return bbs-> {
+            return new ByteBufSlice() {
+                @Override
+                public Single<Boolean> hasNext() {
+                    return bbs.hasNext();
+                }
+
+                @Override
+                public Observable<? extends ByteBufSlice> next() {
+                    return bbs.next();
+                }
+
+                @Override
+                public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                    return Observable.concat(zipentry(zipout, bufout, entryName), bbs.element()).cache();
+                }};
+        };
+    }
+
+    private static Observable<? extends DisposableWrapper<ByteBuf>> zipentry(
+            final ZipOutputStream zipout,
+            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout,
+            final String entryName) {
+        return MessageUtil.fromBufout(bufout, ()-> {
+            try {
+                zipout.putNextEntry(new ZipEntry(entryName));
+            } catch (final Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    private static Func1<ByteBufSlice, ByteBufSlice> dozip(
+            final ZipOutputStream zipout,
+            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout,
+            final byte[] readbuf,
+            final Action1<DisposableWrapper<ByteBuf>> onzipped) {
+        return bbs -> new ByteBufSlice() {
+            @Override
+            public Single<Boolean> hasNext() {
+                return bbs.hasNext();
+            }
+
+            @Override
+            public Observable<? extends ByteBufSlice> next() {
+                return bbs.next().map(dozip(zipout, bufout, readbuf, onzipped));
+            }
+
+            @Override
+            public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                return bbs.hasNext().flatMapObservable(hasNext -> {
+                    final Observable<? extends DisposableWrapper<? extends ByteBuf>> zippedContent = bbs.element()
+                            .flatMap(zipcontent(zipout, bufout, readbuf, onzipped));
+                    return (hasNext ? zippedContent : Observable.concat(zippedContent, finishzip(zipout, bufout))).cache();
+                });
+            }
+        };
+    }
+
+    private static Func1<DisposableWrapper<? extends ByteBuf>, ? extends Observable<? extends DisposableWrapper<ByteBuf>>>
+        zipcontent(
+            final ZipOutputStream zipout,
+            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout,
+            final byte[] readbuf,
+            final Action1<DisposableWrapper<ByteBuf>> onzipped) {
+        return dwb -> MessageUtil.fromBufout(bufout, addBuf(zipout, (DisposableWrapper<ByteBuf>) dwb, readbuf, onzipped));
+    }
+
+    private static Observable<? extends DisposableWrapper<ByteBuf>> finishzip(final ZipOutputStream zipout,
+            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout) {
+        return MessageUtil.fromBufout(bufout, () -> {
+            try {
+                zipout.closeEntry();
+                zipout.finish();
+                zipout.close();
+            } catch (final Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    public static Transformer<HttpObject, Object> toZip(
             final String zippedName,
             final String contentName,
             final Terminable terminable,
             final int bufsize) {
-        return new Observable.Transformer<HttpObject, Object>() {
-            @Override
-            public Observable<Object> call(final Observable<HttpObject> obsResponse) {
-                
+        return obsResponse -> {
+
                 final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(
                         MessageUtil.pooledAllocator(terminable, 8192), dwb->dwb.unwrap());
                 final ZipOutputStream zipout = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
                 zipout.setLevel(Deflater.BEST_COMPRESSION);
-                
+
                 final byte[] readbuf = new byte[bufsize];
-                
+
                 terminable.doOnTerminate(() -> {
                     try {
                         zipout.close();
-                    } catch (IOException e1) {
+                    } catch (final IOException e1) {
                     }
                 });
-                
+
                 return obsResponse.flatMap(RxNettys.splitFullHttpMessage())
                 .flatMap(httpobj -> {
                     if (httpobj instanceof HttpResponse) {
-                        return Observable.concat(onResponse((HttpResponse)httpobj, zippedName), 
+                        return Observable.concat(onResponse((HttpResponse)httpobj, zippedName),
                                 MessageUtil.fromBufout(bufout, addEntry(zipout, contentName)));
                     } else if (httpobj instanceof HttpContent) {
                         final HttpContent content = (HttpContent)httpobj;
@@ -77,11 +188,10 @@ public class ZipUtil {
                         return Observable.just(httpobj);
                     }},
                     e -> Observable.error(e),
-                    () -> Observable.concat(MessageUtil.fromBufout(bufout, finish(zipout)), 
+                    () -> Observable.concat(MessageUtil.fromBufout(bufout, finish(zipout)),
                             Observable.just(LastHttpContent.EMPTY_LAST_CONTENT))
                 );
-            }
-        };
+            };
     }
 
     private static Observable<? extends Object> onResponse(final HttpResponse resp,  final String zipedName) {
@@ -90,17 +200,17 @@ public class ZipUtil {
         resp.headers().set(HttpHeaderNames.CONTENT_DISPOSITION, "attachment; filename=" + zipedName);
         return Observable.just(resp);
     }
-    
+
     private static Action0 addEntry(final ZipOutputStream zipout, final String name) {
         return ()-> {
             try {
                 zipout.putNextEntry(new ZipEntry(name));
-            } catch (Exception e) {
+            } catch (final Exception e) {
                 throw new RuntimeException(e);
             }
         };
     }
-    
+
     private static Action0 addContent(final ZipOutputStream zipout, final HttpContent content, final byte[] readbuf) {
         return ()->{
             try (final ByteBufInputStream is = new ByteBufInputStream(content.content())) {
@@ -109,7 +219,7 @@ public class ZipUtil {
                     zipout.write(readbuf, 0, readed);
                 }
                 zipout.flush();
-            } catch (Exception e) {
+            } catch (final Exception e) {
                 throw new RuntimeException(e);
             }
         };
@@ -121,7 +231,7 @@ public class ZipUtil {
                 zipout.closeEntry();
                 zipout.finish();
                 zipout.close();
-            } catch (Exception e) {
+            } catch (final Exception e) {
                 throw new RuntimeException(e);
             }
         };
@@ -131,17 +241,17 @@ public class ZipUtil {
         public String name();
         public Observable<? extends DisposableWrapper<ByteBuf>> content();
     }
-    
+
     public static interface EntryBuilder {
         public EntryBuilder name(final String name);
         public EntryBuilder content(final Observable<? extends DisposableWrapper<ByteBuf>> content);
         public Entry build();
     }
-    
+
     public static EntryBuilder entry(final String name) {
         final AtomicReference<String> _nameRef = new AtomicReference<>(name);
         final AtomicReference<Observable<? extends DisposableWrapper<ByteBuf>>> _contentRef = new AtomicReference<>(null);
-        
+
         return new EntryBuilder() {
             @Override
             public EntryBuilder name(final String name) {
@@ -170,7 +280,7 @@ public class ZipUtil {
             }
         };
     }
-    
+
     public static interface ZipBuilder {
         public ZipBuilder allocator(final Func0<DisposableWrapper<ByteBuf>> allocator);
         public ZipBuilder entries(final Observable<? extends Entry> entries);
@@ -179,7 +289,7 @@ public class ZipUtil {
         public ZipBuilder doOnZipped(final Action1<DisposableWrapper<ByteBuf>> onzipped);
         public Observable<? extends DisposableWrapper<ByteBuf>> build();
     }
-    
+
     public static ZipBuilder zip() {
         final AtomicReference<Func0<DisposableWrapper<ByteBuf>>> allocatorRef = new AtomicReference<>();
         final AtomicReference<Observable<? extends Entry>> entriesRef = new AtomicReference<>();
@@ -211,7 +321,7 @@ public class ZipUtil {
                 hookcloserRef.set(hookcloser);
                 return this;
             }
-            
+
             @Override
             public ZipBuilder doOnZipped(final Action1<DisposableWrapper<ByteBuf>> onzipped) {
                 onzippedRef.set(onzipped);
@@ -231,33 +341,33 @@ public class ZipUtil {
     }
 
     private static Observable<? extends DisposableWrapper<ByteBuf>> doZip(
-            final Func0<DisposableWrapper<ByteBuf>> allocator, 
+            final Func0<DisposableWrapper<ByteBuf>> allocator,
             final int bufsize,
             final Observable<? extends Entry> entries,
-            final Action1<Action0> hookcloser, 
+            final Action1<Action0> hookcloser,
             final Action1<DisposableWrapper<ByteBuf>> onzipped) {
         final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
         final ZipOutputStream zipout = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
-        
+
         if (null != hookcloser) {
             hookcloser.call(() -> {
                 try {
                     zipout.close();
-                } catch (IOException e) {
+                } catch (final IOException e) {
                 }
             });
         }
-        
+
         zipout.setLevel(Deflater.BEST_COMPRESSION);
         final byte[] readbuf = new byte[bufsize];
-        
+
         return Observable.concat(
             // for each entry
             entries.flatMap(entry -> Observable.concat(
                     MessageUtil.fromBufout(bufout, ()-> {
                         try {
                             zipout.putNextEntry(new ZipEntry(entry.name()));
-                        } catch (Exception e) {
+                        } catch (final Exception e) {
                             throw new RuntimeException(e);
                         }
                     }),
@@ -265,7 +375,7 @@ public class ZipUtil {
                     MessageUtil.fromBufout(bufout, ()->{
                         try {
                             zipout.closeEntry();
-                        } catch (Exception e) {
+                        } catch (final Exception e) {
                             throw new RuntimeException(e);
                         }
                     }))),
@@ -274,13 +384,13 @@ public class ZipUtil {
                 try {
                     zipout.finish();
                     zipout.close();
-                } catch (Exception e) {
+                } catch (final Exception e) {
                     throw new RuntimeException(e);
                 }
             }));
     }
-    
-    private static Action0 addBuf(final ZipOutputStream zipout, final DisposableWrapper<ByteBuf> dwb, 
+
+    private static Action0 addBuf(final ZipOutputStream zipout, final DisposableWrapper<ByteBuf> dwb,
             final byte[] readbuf, final Action1<DisposableWrapper<ByteBuf>> onzipped) {
         return ()->{
             try (final ByteBufInputStream is = new ByteBufInputStream(dwb.unwrap())) {
@@ -289,7 +399,7 @@ public class ZipUtil {
                     zipout.write(readbuf, 0, readed);
                 }
                 zipout.flush();
-            } catch (Exception e) {
+            } catch (final Exception e) {
                 throw new RuntimeException(e);
             } finally {
                 if (null != onzipped) {
