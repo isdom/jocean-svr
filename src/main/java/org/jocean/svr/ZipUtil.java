@@ -1,6 +1,7 @@
 package org.jocean.svr;
 
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
@@ -27,7 +28,6 @@ import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.util.CharsetUtil;
 import rx.Observable;
 import rx.Observable.Transformer;
-import rx.Single;
 import rx.functions.Action0;
 import rx.functions.Action1;
 import rx.functions.Func0;
@@ -62,30 +62,44 @@ public class ZipUtil {
                 }
             });
 
-            return bbses.map(dozip(zipout, bufout, readbuf, onzipped)).map(insertEntryInfo(zipout, bufout, entryName));
+            final AtomicBoolean first = new AtomicBoolean(true);
+            return Observable.concat(bbses.map(dozip(zipout, bufout, readbuf, onzipped))
+                    .map(insertEntryInfo(first, zipout, bufout, entryName)),
+                    Observable.defer(()-> Observable.<ByteBufSlice>just(new ByteBufSlice() {
+                        @Override
+                        public void next() {
+                        }
+
+                        @Override
+                        public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                            return finishzip(zipout, bufout);
+                        }})))
+                    ;
         };
     }
 
     private static Func1<? super ByteBufSlice, ? extends ByteBufSlice> insertEntryInfo(
+            final AtomicBoolean first,
             final ZipOutputStream zipout,
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout,
             final String entryName) {
+
         return bbs-> {
-            return new ByteBufSlice() {
-                @Override
-                public Single<Boolean> hasNext() {
-                    return bbs.hasNext();
-                }
+            if (!first.get()) {
+                return bbs;
+            } else {
+                first.set(false);
+                return new ByteBufSlice() {
+                    @Override
+                    public void next() {
+                        bbs.next();
+                    }
 
-                @Override
-                public Observable<? extends ByteBufSlice> next() {
-                    return bbs.next();
-                }
-
-                @Override
-                public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                    return Observable.concat(zipentry(zipout, bufout, entryName), bbs.element()).cache();
-                }};
+                    @Override
+                    public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                        return Observable.concat(zipentry(zipout, bufout, entryName), bbs.element()).cache();
+                    }};
+            }
         };
     }
 
@@ -109,22 +123,15 @@ public class ZipUtil {
             final Action1<DisposableWrapper<ByteBuf>> onzipped) {
         return bbs -> new ByteBufSlice() {
             @Override
-            public Single<Boolean> hasNext() {
-                return bbs.hasNext();
-            }
-
-            @Override
-            public Observable<? extends ByteBufSlice> next() {
-                return bbs.next().map(dozip(zipout, bufout, readbuf, onzipped));
+            public void next() {
+                bbs.next();
             }
 
             @Override
             public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                return bbs.hasNext().flatMapObservable(hasNext -> {
-                    final Observable<? extends DisposableWrapper<? extends ByteBuf>> zippedContent = bbs.element()
-                            .flatMap(zipcontent(zipout, bufout, readbuf, onzipped));
-                    return (hasNext ? zippedContent : Observable.concat(zippedContent, finishzip(zipout, bufout))).cache();
-                });
+                final Observable<? extends DisposableWrapper<? extends ByteBuf>> zippedContent = bbs.element()
+                        .flatMap(zipcontent(zipout, bufout, readbuf, onzipped));
+                return zippedContent.cache();
             }
         };
     }

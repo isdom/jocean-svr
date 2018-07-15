@@ -53,13 +53,13 @@ import org.jocean.idiom.Beans;
 import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.ExceptionUtils;
+import org.jocean.idiom.Nextable;
 import org.jocean.idiom.Pair;
 import org.jocean.idiom.ReflectUtils;
 import org.jocean.idiom.Regexs;
 import org.jocean.idiom.Terminable;
 import org.jocean.idiom.jmx.MBeanRegister;
 import org.jocean.idiom.jmx.MBeanRegisterAware;
-import org.jocean.idiom.rx.RxIterator;
 import org.jocean.j2se.spring.SpringBeanHolder;
 import org.jocean.j2se.unit.UnitAgent;
 import org.jocean.j2se.unit.UnitListener;
@@ -101,7 +101,6 @@ import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder;
 import io.netty.util.CharsetUtil;
 import rx.Completable;
 import rx.Observable;
-import rx.Single;
 import rx.functions.Action1;
 import rx.functions.Func0;
 
@@ -629,32 +628,27 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     return Observable.concat(Observable.<HttpResponse>just(fulmsg.message()),
                             fulmsg.body().concatMap(body -> body.content()),
                             Observable.just(LastHttpContent.EMPTY_LAST_CONTENT));
-                } else if (obj instanceof RxIterator) {
-                    return handleRxIterator((RxIterator<Object>)obj, request.protocolVersion());
+                } else if (obj instanceof Nextable) {
+                    return handleNextable((Nextable<Object>)obj, request.protocolVersion());
                 } else {
                     return Observable.just(new DefaultHttpContent(Unpooled.copiedBuffer(obj.toString(), CharsetUtil.UTF_8)));
                 }
             });
     }
 
-    private Observable<? extends Object> handleRxIterator(final RxIterator<Object> rxiter, final HttpVersion version) {
-        if (rxiter.element() instanceof MessageResponse) {
-            return Observable.just(replaceElement(rxiter, buildResponse((MessageResponse)rxiter.element(), version)));
+    private Observable<? extends Object> handleNextable(final Nextable<Object> nextable, final HttpVersion version) {
+        if (nextable.element() instanceof MessageResponse) {
+            return Observable.just(replaceElement(nextable, buildResponse((MessageResponse)nextable.element(), version)));
         } else {
-            return Observable.just(rxiter);
+            return Observable.just(nextable);
         }
     }
 
-    private RxIterator<Object> replaceElement(final RxIterator<Object> rxiter, final Object element) {
-        return new RxIterator<Object>() {
+    private Nextable<Object> replaceElement(final Nextable<Object> nextable, final Object element) {
+        return new Nextable<Object>() {
             @Override
-            public Single<Boolean> hasNext() {
-                return rxiter.hasNext();
-            }
-
-            @Override
-            public Observable<? extends RxIterator<Object>> next() {
-                return rxiter.next();
+            public void next() {
+                nextable.next();
             }
 
             @Override
