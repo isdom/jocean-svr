@@ -67,7 +67,7 @@ public class ZipUtil {
                     .map(insertEntryInfo(first, zipout, bufout, entryName)),
                     Observable.defer(()-> Observable.<ByteBufSlice>just(new ByteBufSlice() {
                         @Override
-                        public void next() {
+                        public void step() {
                         }
 
                         @Override
@@ -91,8 +91,8 @@ public class ZipUtil {
                 first.set(false);
                 return new ByteBufSlice() {
                     @Override
-                    public void next() {
-                        bbs.next();
+                    public void step() {
+                        bbs.step();
                     }
 
                     @Override
@@ -123,8 +123,8 @@ public class ZipUtil {
             final Action1<DisposableWrapper<ByteBuf>> onzipped) {
         return bbs -> new ByteBufSlice() {
             @Override
-            public void next() {
-                bbs.next();
+            public void step() {
+                bbs.step();
             }
 
             @Override

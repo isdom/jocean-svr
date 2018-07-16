@@ -53,10 +53,10 @@ import org.jocean.idiom.Beans;
 import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.ExceptionUtils;
-import org.jocean.idiom.Nextable;
 import org.jocean.idiom.Pair;
 import org.jocean.idiom.ReflectUtils;
 import org.jocean.idiom.Regexs;
+import org.jocean.idiom.Stepable;
 import org.jocean.idiom.Terminable;
 import org.jocean.idiom.jmx.MBeanRegister;
 import org.jocean.idiom.jmx.MBeanRegisterAware;
@@ -628,27 +628,27 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     return Observable.concat(Observable.<HttpResponse>just(fulmsg.message()),
                             fulmsg.body().concatMap(body -> body.content()),
                             Observable.just(LastHttpContent.EMPTY_LAST_CONTENT));
-                } else if (obj instanceof Nextable) {
-                    return handleNextable((Nextable<Object>)obj, request.protocolVersion());
+                } else if (obj instanceof Stepable) {
+                    return handleStepable((Stepable<Object>)obj, request.protocolVersion());
                 } else {
                     return Observable.just(new DefaultHttpContent(Unpooled.copiedBuffer(obj.toString(), CharsetUtil.UTF_8)));
                 }
             });
     }
 
-    private Observable<? extends Object> handleNextable(final Nextable<Object> nextable, final HttpVersion version) {
-        if (nextable.element() instanceof MessageResponse) {
-            return Observable.just(replaceElement(nextable, buildResponse((MessageResponse)nextable.element(), version)));
+    private Observable<? extends Object> handleStepable(final Stepable<Object> stepable, final HttpVersion version) {
+        if (stepable.element() instanceof MessageResponse) {
+            return Observable.just(replaceElement(stepable, buildResponse((MessageResponse)stepable.element(), version)));
         } else {
-            return Observable.just(nextable);
+            return Observable.just(stepable);
         }
     }
 
-    private Nextable<Object> replaceElement(final Nextable<Object> nextable, final Object element) {
-        return new Nextable<Object>() {
+    private Stepable<Object> replaceElement(final Stepable<Object> stepable, final Object element) {
+        return new Stepable<Object>() {
             @Override
-            public void next() {
-                nextable.next();
+            public void step() {
+                stepable.step();
             }
 
             @Override
