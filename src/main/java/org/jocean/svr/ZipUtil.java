@@ -8,7 +8,6 @@ import java.util.zip.ZipOutputStream;
 
 import org.jocean.http.ByteBufSlice;
 import org.jocean.http.MessageUtil;
-import org.jocean.http.util.RxNettys;
 import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.Terminable;
 import org.jocean.netty.util.BufsOutputStream;
@@ -17,13 +16,6 @@ import org.slf4j.LoggerFactory;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
-import io.netty.handler.codec.http.HttpContent;
-import io.netty.handler.codec.http.HttpHeaderNames;
-import io.netty.handler.codec.http.HttpHeaderValues;
-import io.netty.handler.codec.http.HttpObject;
-import io.netty.handler.codec.http.HttpResponse;
-import io.netty.handler.codec.http.HttpUtil;
-import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.util.CharsetUtil;
 import rx.Observable;
 import rx.Observable.Transformer;
@@ -141,92 +133,6 @@ public class ZipUtil {
                     }
                 }).cache();
             }});
-    }
-
-    public static Transformer<HttpObject, Object> toZip(
-            final String zippedName,
-            final String contentName,
-            final Terminable terminable,
-            final int bufsize) {
-        return obsResponse -> {
-
-                final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(
-                        MessageUtil.pooledAllocator(terminable, 8192), dwb->dwb.unwrap());
-                final ZipOutputStream zipout = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
-                zipout.setLevel(Deflater.BEST_COMPRESSION);
-
-                final byte[] readbuf = new byte[bufsize];
-
-                terminable.doOnTerminate(() -> {
-                    try {
-                        zipout.close();
-                    } catch (final IOException e1) {
-                    }
-                });
-
-                return obsResponse.flatMap(RxNettys.splitFullHttpMessage())
-                .flatMap(httpobj -> {
-                    if (httpobj instanceof HttpResponse) {
-                        return Observable.concat(onResponse((HttpResponse)httpobj, zippedName),
-                                MessageUtil.fromBufout(bufout, addEntry(zipout, contentName)));
-                    } else if (httpobj instanceof HttpContent) {
-                        final HttpContent content = (HttpContent)httpobj;
-                        if (content.content().readableBytes() == 0) {
-                            return Observable.empty();
-                        } else {
-                            return MessageUtil.fromBufout(bufout, addContent(zipout, content, readbuf));
-                        }
-                    } else {
-                        return Observable.just(httpobj);
-                    }},
-                    e -> Observable.error(e),
-                    () -> Observable.concat(MessageUtil.fromBufout(bufout, finish(zipout)),
-                            Observable.just(LastHttpContent.EMPTY_LAST_CONTENT))
-                );
-            };
-    }
-
-    private static Observable<? extends Object> onResponse(final HttpResponse resp,  final String zipedName) {
-        HttpUtil.setTransferEncodingChunked(resp, true);
-        resp.headers().set(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.APPLICATION_OCTET_STREAM);
-        resp.headers().set(HttpHeaderNames.CONTENT_DISPOSITION, "attachment; filename=" + zipedName);
-        return Observable.just(resp);
-    }
-
-    private static Action0 addEntry(final ZipOutputStream zipout, final String name) {
-        return ()-> {
-            try {
-                zipout.putNextEntry(new ZipEntry(name));
-            } catch (final Exception e) {
-                throw new RuntimeException(e);
-            }
-        };
-    }
-
-    private static Action0 addContent(final ZipOutputStream zipout, final HttpContent content, final byte[] readbuf) {
-        return ()->{
-            try (final ByteBufInputStream is = new ByteBufInputStream(content.content())) {
-                int readed;
-                while ((readed = is.read(readbuf)) > 0) {
-                    zipout.write(readbuf, 0, readed);
-                }
-                zipout.flush();
-            } catch (final Exception e) {
-                throw new RuntimeException(e);
-            }
-        };
-    }
-
-    private static Action0 finish(final ZipOutputStream zipout) {
-        return ()->{
-            try {
-                zipout.closeEntry();
-                zipout.finish();
-                zipout.close();
-            } catch (final Exception e) {
-                throw new RuntimeException(e);
-            }
-        };
     }
 
     public static interface Entry {
