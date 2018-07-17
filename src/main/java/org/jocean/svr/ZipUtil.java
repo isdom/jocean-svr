@@ -1,7 +1,6 @@
 package org.jocean.svr;
 
 import java.io.IOException;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
@@ -62,58 +61,36 @@ public class ZipUtil {
                 }
             });
 
-            final AtomicBoolean first = new AtomicBoolean(true);
-            return Observable.concat(bbses.map(dozip(zipout, bufout, readbuf, onzipped))
-                    .map(insertEntryInfo(first, zipout, bufout, entryName)),
-                    Observable.defer(()-> Observable.<ByteBufSlice>just(new ByteBufSlice() {
-                        @Override
-                        public void step() {
-                        }
-
-                        @Override
-                        public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                            return finishzip(zipout, bufout);
-                        }})))
+            return Observable.concat(
+                    // start zip: entry info
+                    Observable.defer(()->zipentry(entryName, zipout, bufout)),
+                    // zip content
+                    bbses.map(dozip(zipout, bufout, readbuf, onzipped)),
+                    // end of zip: finish all
+                    Observable.defer(()->finishzip(zipout, bufout)))
                     ;
         };
     }
 
-    private static Func1<? super ByteBufSlice, ? extends ByteBufSlice> insertEntryInfo(
-            final AtomicBoolean first,
+    private static Observable<ByteBufSlice> zipentry(
+            final String entryName,
             final ZipOutputStream zipout,
-            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout,
-            final String entryName) {
-
-        return bbs-> {
-            if (!first.get()) {
-                return bbs;
-            } else {
-                first.set(false);
-                return new ByteBufSlice() {
+            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout
+            ) {
+        return Observable.just(new ByteBufSlice() {
                     @Override
-                    public void step() {
-                        bbs.step();
-                    }
+                    public void step() {}
 
                     @Override
                     public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                        return Observable.concat(zipentry(zipout, bufout, entryName), bbs.element()).cache();
-                    }};
-            }
-        };
-    }
-
-    private static Observable<? extends DisposableWrapper<ByteBuf>> zipentry(
-            final ZipOutputStream zipout,
-            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout,
-            final String entryName) {
-        return MessageUtil.fromBufout(bufout, ()-> {
-            try {
-                zipout.putNextEntry(new ZipEntry(entryName));
-            } catch (final Exception e) {
-                throw new RuntimeException(e);
-            }
-        });
+                        return MessageUtil.fromBufout(bufout, ()-> {
+                            try {
+                                zipout.putNextEntry(new ZipEntry(entryName));
+                            } catch (final Exception e) {
+                                throw new RuntimeException(e);
+                            }
+                        }).cache();
+                    }});
     }
 
     private static Func1<ByteBufSlice, ByteBufSlice> dozip(
@@ -145,17 +122,25 @@ public class ZipUtil {
         return dwb -> MessageUtil.fromBufout(bufout, addBuf(zipout, (DisposableWrapper<ByteBuf>) dwb, readbuf, onzipped));
     }
 
-    private static Observable<? extends DisposableWrapper<ByteBuf>> finishzip(final ZipOutputStream zipout,
+    private static Observable<ByteBufSlice> finishzip(
+            final ZipOutputStream zipout,
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout) {
-        return MessageUtil.fromBufout(bufout, () -> {
-            try {
-                zipout.closeEntry();
-                zipout.finish();
-                zipout.close();
-            } catch (final Exception e) {
-                throw new RuntimeException(e);
-            }
-        });
+        return Observable.just(new ByteBufSlice() {
+            @Override
+            public void step() {}
+
+            @Override
+            public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                return MessageUtil.fromBufout(bufout, () -> {
+                    try {
+                        zipout.closeEntry();
+                        zipout.finish();
+                        zipout.close();
+                    } catch (final Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                }).cache();
+            }});
     }
 
     public static Transformer<HttpObject, Object> toZip(
