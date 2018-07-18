@@ -52,11 +52,10 @@ public class TradeProcessor extends Subscriber<HttpTrade>
         trade.request().subscribe(req-> {
             if ( this._maxContentLengthForAutoread <= 0) {
                 LOG.debug("disable autoread full request, handle raw {}.", trade);
-                handleTrade(trade, req);
+                handleTrade(req, trade);
             } else {
+                tryHandleTradeWithAutoread(req, trade);
             }
-            tryHandleTradeWithAutoread(req, trade);
-            handleTrade(trade, req);
         }, e -> LOG.warn("SOURCE_CANCELED\nfor cause:[{}]", ExceptionUtils.exception2detail(e)));
     }
 
@@ -65,23 +64,23 @@ public class TradeProcessor extends Subscriber<HttpTrade>
             // chunked
             // output log and using raw trade
             LOG.info("chunked request, handle raw {}.", trade);
-            handleTrade(trade, req);
+            handleTrade(req, trade);
         } else if (!HttpUtil.isContentLengthSet(req)) {
             LOG.debug("content-length not set, handle raw {}.", trade);
             // not set content-length and not chunked
-            handleTrade(trade, req);
+            handleTrade(req, trade);
         } else {
             final long contentLength = HttpUtil.getContentLength(req);
             if (contentLength <= this._maxContentLengthForAutoread) {
                 LOG.debug("content-length is {} <= {}, enable autoread full request for {}.",
                         contentLength, this._maxContentLengthForAutoread, trade);
                 // auto read all request
-                handleTrade(enableAutoread(trade), req);
+                handleTrade(req, enableAutoread(trade));
             } else {
                 // content-length > max content-length
                 LOG.debug("content-length is {} > {}, handle raw {}.",
                         contentLength, this._maxContentLengthForAutoread, trade);
-                handleTrade(trade, req);
+                handleTrade(req, trade);
             }
         }
     }
@@ -172,7 +171,7 @@ public class TradeProcessor extends Subscriber<HttpTrade>
             }};
     }
 
-    private void handleTrade(final HttpTrade trade, final HttpRequest req) {
+    private void handleTrade(final HttpRequest req, final HttpTrade trade) {
         try {
             final Observable<? extends Object> outbound = this._registrar.buildResource(req, trade);
             trade.outbound(outbound.doOnNext(DisposableWrapperUtil.disposeOnForAny(trade)));
