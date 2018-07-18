@@ -11,6 +11,7 @@ import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.jmx.MBeanRegister;
 import org.jocean.idiom.jmx.MBeanRegisterAware;
+import org.jocean.idiom.rx.RxSubscribers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -88,7 +89,7 @@ public class TradeProcessor extends Subscriber<HttpTrade>
     private HttpTrade enableAutoread(final HttpTrade trade) {
         final Observable<HttpSlice> cachedInbound = trade.inbound().doOnNext(slice -> slice.step()).cache();
         // start autoread
-        cachedInbound.subscribe();
+        cachedInbound.subscribe(RxSubscribers.ignoreNext(), RxSubscribers.ignoreError());
         return new HttpTrade() {
 
             @Override
