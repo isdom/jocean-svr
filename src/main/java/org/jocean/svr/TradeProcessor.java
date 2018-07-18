@@ -86,6 +86,9 @@ public class TradeProcessor extends Subscriber<HttpTrade>
     }
 
     private HttpTrade enableAutoread(final HttpTrade trade) {
+        final Observable<HttpSlice> cachedInbound = trade.inbound().doOnNext(slice -> slice.step()).cache();
+        // start autoread
+        cachedInbound.subscribe();
         return new HttpTrade() {
 
             @Override
@@ -120,9 +123,7 @@ public class TradeProcessor extends Subscriber<HttpTrade>
 
             @Override
             public Observable<HttpSlice> inbound() {
-                final Observable<HttpSlice> cached = trade.inbound().doOnNext(slice -> slice.step()).cache();
-                cached.subscribe();
-                return cached;
+                return cachedInbound;
             }
 
             @Override
