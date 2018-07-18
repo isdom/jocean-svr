@@ -366,7 +366,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         return trade.inbound();
                     }
                     @Override
-                    public Observable<HttpObject> obsResponse() {
+                    public Observable<Object> obsResponse() {
                         return null;
                     }
                     @Override
@@ -387,9 +387,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             pair.second,
                             interceptors.toArray(new MethodInterceptor[0]));
                     final Observable<? extends Object> obsResponse = invokeProcessor(request,
-//                            trade.inbound()
-//                            .compose(MessageUtil.rollout2dwhs())
-//                            .map(DisposableWrapperUtil.unwrap()),
                             resource,
                             processor,
                             argctx);
