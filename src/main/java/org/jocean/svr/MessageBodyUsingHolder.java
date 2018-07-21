@@ -1,5 +1,6 @@
 package org.jocean.svr;
 
+import org.jocean.http.ByteBufSlice;
 import org.jocean.http.MessageBody;
 import org.jocean.http.util.RxNettys;
 import org.jocean.idiom.DisposableWrapper;
@@ -15,15 +16,15 @@ import rx.Observable.OnSubscribe;
 import rx.Subscriber;
 
 class MessageBodyUsingHolder implements MessageBody {
-    
+
     @SuppressWarnings("unused")
     private static final Logger LOG
         = LoggerFactory.getLogger(MessageBodyUsingHolder.class);
-    
+
     public MessageBodyUsingHolder(
             final Terminable terminable,
-            final ByteBufHolder holder, 
-            final int contentLength, 
+            final ByteBufHolder holder,
+            final int contentLength,
             final String contentType,
             final String filename,
             final String name
@@ -34,7 +35,7 @@ class MessageBodyUsingHolder implements MessageBody {
         this._contentType = contentType;
         this._filename = filename;
         this._name = name;
-        
+
         terminable.doOnTerminate(() -> {
             if (null != holder) {
                 holder.release();
@@ -53,27 +54,36 @@ class MessageBodyUsingHolder implements MessageBody {
     }
 
     @Override
-    public Observable<? extends DisposableWrapper<ByteBuf>> content() {
-        return Observable.unsafeCreate(new OnSubscribe<DisposableWrapper<ByteBuf>>() {
+    public Observable<? extends ByteBufSlice> content() {
+        return Observable.just(new ByteBufSlice() {
+
             @Override
-            public void call(final Subscriber<? super DisposableWrapper<ByteBuf>> subscriber) {
-                if (!subscriber.isUnsubscribed()) {
-                    try {
-                        final ByteBuf buf = _holder.content().retainedSlice();
-                        if (null != buf) {
-                            subscriber.onNext(DisposableWrapperUtil.disposeOn(_terminable, RxNettys.wrap4release(buf)));
-                            subscriber.onCompleted();
-                        } else {
-                            subscriber.onError(new RuntimeException("invalid bytebuf"));
+            public void step() {}
+
+            @Override
+            public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                return Observable.unsafeCreate(new OnSubscribe<DisposableWrapper<ByteBuf>>() {
+                    @Override
+                    public void call(final Subscriber<? super DisposableWrapper<ByteBuf>> subscriber) {
+                        if (!subscriber.isUnsubscribed()) {
+                            try {
+                                final ByteBuf buf = _holder.content().retainedSlice();
+                                if (null != buf) {
+                                    subscriber.onNext(DisposableWrapperUtil.disposeOn(_terminable, RxNettys.wrap4release(buf)));
+                                    subscriber.onCompleted();
+                                } else {
+                                    subscriber.onError(new RuntimeException("invalid bytebuf"));
+                                }
+                            } catch (final Exception e) {
+                                subscriber.onError(e);
+                            }
                         }
-                    } catch (Exception e) {
-                        subscriber.onError(e);
                     }
-                }
-            }
-        });
+                });
+            }});
+
     }
-    
+
     private final Terminable _terminable;
     private final ByteBufHolder _holder;
     private final int    _contentLength;

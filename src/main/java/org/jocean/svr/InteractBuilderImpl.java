@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import javax.ws.rs.Path;
 
+import org.jocean.http.ByteBufSlice;
 import org.jocean.http.ContentEncoder;
 import org.jocean.http.Feature;
 import org.jocean.http.HttpSlice;
@@ -229,21 +230,28 @@ public class InteractBuilderImpl implements InteractBuilder {
                 return -1;
             }
             @Override
-            public Observable<? extends DisposableWrapper<ByteBuf>> content() {
-                return MessageUtil.fromBufout(creator, fillout);
+            public Observable<? extends ByteBufSlice> content() {
+                return Observable.just(new ByteBufSlice() {
+
+                    @Override
+                    public void step() {}
+
+                    @Override
+                    public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                        return MessageUtil.fromBufout(creator, fillout);
+                    }});
             }});
     }
 
     public static Transformer<Object, Object> addBody(final Observable<? extends MessageBody> obsbody) {
-        return new Transformer<Object, Object>() {
-            @Override
-            public Observable<Object> call(final Observable<Object> msg) {
+        return msg -> {
                 return msg.concatMap(obj -> {
                         if (obj instanceof HttpMessage) {
                             final HttpMessage httpmsg = (HttpMessage)obj;
-                            return obsbody.flatMap(body->body.content().toList().flatMap(dwbs -> {
+                            return obsbody.flatMap(body->body.content().compose(MessageUtil.AUTOSTEP2DWB)
+                                    .toList().flatMap(dwbs -> {
                                 int length = 0;
-                                for (final DisposableWrapper<ByteBuf> dwb : dwbs) {
+                                for (final DisposableWrapper<? extends ByteBuf> dwb : dwbs) {
                                     length +=dwb.unwrap().readableBytes();
                                 }
                                 httpmsg.headers().set(HttpHeaderNames.CONTENT_TYPE, body.contentType());
@@ -255,8 +263,7 @@ public class InteractBuilderImpl implements InteractBuilder {
                             return Observable.just(obj);
                         }
                     });
-            }
-        };
+            };
     }
 
     private static boolean isSSLEnabled(final Feature... features) {

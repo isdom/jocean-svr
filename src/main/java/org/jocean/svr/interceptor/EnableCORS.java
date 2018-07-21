@@ -40,7 +40,7 @@ public class EnableCORS implements MethodInterceptor {
                 }
                 corsresp.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_CREDENTIALS, true);
                 return Observable.<HttpObject>just(corsresp)
-                    .delaySubscription(ctx.obsRequest().compose(MessageUtil.rollout2dwhs()).last());
+                    .delaySubscription(ctx.obsRequest().compose(MessageUtil.AUTOSTEP2DWH).last());
             }
         }
         return null;

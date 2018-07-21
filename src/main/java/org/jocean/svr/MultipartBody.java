@@ -130,7 +130,7 @@ class MultipartBody implements Observable.OnSubscribe<MessageBody> {
             this._trade.doOnTerminate(()->subscriber.unsubscribe());
 
             // TBD: release toblob and release subscriber within trade
-            this._trade.inbound().compose(MessageUtil.rollout2dwhs()).flatMap(new ToBody(this._request, subscriber))
+            this._trade.inbound().compose(MessageUtil.AUTOSTEP2DWH).flatMap(new ToBody(this._request, subscriber))
                 .subscribe(subscriber);
         }
     }

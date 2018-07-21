@@ -38,9 +38,11 @@ import javax.ws.rs.PathParam;
 import javax.ws.rs.QueryParam;
 
 import org.jocean.http.BodyBuilder;
+import org.jocean.http.ByteBufSlice;
 import org.jocean.http.ContentEncoder;
 import org.jocean.http.FullMessage;
 import org.jocean.http.HttpSlice;
+import org.jocean.http.HttpSliceUtil;
 import org.jocean.http.InteractBuilder;
 import org.jocean.http.MessageBody;
 import org.jocean.http.MessageUtil;
@@ -396,7 +398,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
         }
         return RxNettys.response404NOTFOUND(request.protocolVersion())
-                .delaySubscription(trade.inbound().compose(MessageUtil.rollout2dwhs()).last());
+                .delaySubscription(trade.inbound().compose(MessageUtil.AUTOSTEP2DWH).last());
     }
 
     private Observable<? extends Object> invokeProcessor(
@@ -759,7 +761,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (isObservableType(argType)) {
                 final Type gt1st = getGenericTypeOf(argType, 0);
                 if (HttpObject.class.equals(gt1st)) {
-                    return trade.inbound().compose(MessageUtil.rollout2dwhs()).map(DisposableWrapperUtil.unwrap());
+                    return trade.inbound().compose(MessageUtil.AUTOSTEP2DWH).map(DisposableWrapperUtil.unwrap());
                 } else if (MessageBody.class.equals(gt1st)) {
                     return buildMessageBody(trade, request);
                 }
@@ -823,8 +825,15 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         return -1;
                     }
                     @Override
-                    public Observable<? extends DisposableWrapper<ByteBuf>> content() {
-                        return MessageUtil.fromBufout(creator, fillout);
+                    public Observable<? extends ByteBufSlice> content() {
+                        return Observable.just(new ByteBufSlice() {
+                            @Override
+                            public void step() {}
+
+                            @Override
+                            public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                                return MessageUtil.fromBufout(creator, fillout);
+                            }});
                     }});
             }};
     }
@@ -837,7 +846,22 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         if (request.method().equals(HttpMethod.POST) && HttpPostRequestDecoder.isMultipart(request)) {
             return Observable.unsafeCreate(new MultipartBody(trade, request));
         } else {
-            return trade.inbound().compose(MessageUtil.rollout2dwhs()).compose(MessageUtil.asBody());
+            return Observable.just(new MessageBody() {
+                @Override
+                public String contentType() {
+                    return request.headers().get(HttpHeaderNames.CONTENT_TYPE);
+                }
+
+                @Override
+                public int contentLength() {
+                    return HttpUtil.getContentLength(request, -1);
+                }
+
+                @Override
+                public Observable<? extends ByteBufSlice> content() {
+                    return trade.inbound().map(HttpSliceUtil.hs2bbs());
+                }
+            });
         }
     }
 
