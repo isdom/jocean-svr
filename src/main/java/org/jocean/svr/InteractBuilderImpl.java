@@ -13,7 +13,7 @@ import javax.ws.rs.Path;
 import org.jocean.http.ByteBufSlice;
 import org.jocean.http.ContentEncoder;
 import org.jocean.http.Feature;
-import org.jocean.http.HttpSlice;
+import org.jocean.http.FullMessage;
 import org.jocean.http.Interact;
 import org.jocean.http.InteractBuilder;
 import org.jocean.http.Interaction;
@@ -33,6 +33,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMessage;
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.ssl.SslContextBuilder;
 import rx.Observable;
@@ -186,7 +187,7 @@ public class InteractBuilderImpl implements InteractBuilder {
                 return this;
             }
 
-            private Observable<? extends HttpSlice> defineInteraction(final HttpInitiator initiator) {
+            private Observable<FullMessage<HttpResponse>> defineInteraction(final HttpInitiator initiator) {
                 return initiator.defineInteraction(_obsreqRef.get());
             }
 
@@ -199,7 +200,7 @@ public class InteractBuilderImpl implements InteractBuilder {
                             if ( null != _terminable) {
                                 _terminable.doOnTerminate(initiator.closer());
                             }
-                            final Observable<? extends HttpSlice> interaction = defineInteraction(initiator);
+                            final Observable<FullMessage<HttpResponse>> interaction = defineInteraction(initiator);
                             return new Interaction() {
                                 @Override
                                 public HttpInitiator initiator() {
@@ -207,7 +208,7 @@ public class InteractBuilderImpl implements InteractBuilder {
                                 }
 
                                 @Override
-                                public Observable<? extends HttpSlice> execute() {
+                                public Observable<? extends FullMessage<HttpResponse>> execute() {
                                     return interaction;
                                 }};
                         }
