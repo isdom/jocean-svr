@@ -625,8 +625,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 } else if (obj instanceof FullMessage) {
                     @SuppressWarnings({ "rawtypes", "unchecked" })
                     final FullMessage<HttpResponse> fulmsg = (FullMessage)obj;
-                    return Observable.concat(fulmsg.message(), fulmsg.body().concatMap(body -> body.content()),
-                            Observable.just(LastHttpContent.EMPTY_LAST_CONTENT));
+                    return Observable.<Object>just(fulmsg.message())
+                            .concatWith(fulmsg.body().concatMap(body -> body.content()))
+                            .concatWith(Observable.just(LastHttpContent.EMPTY_LAST_CONTENT));
                 } else if (obj instanceof Stepable) {
                     return handleStepable((Stepable<Object>)obj, request.protocolVersion());
                 } else {
