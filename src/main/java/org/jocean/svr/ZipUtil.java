@@ -10,7 +10,9 @@ import org.jocean.http.ByteBufSlice;
 import org.jocean.http.MessageUtil;
 import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.Terminable;
+import org.jocean.netty.util.BufsInputStream;
 import org.jocean.netty.util.BufsOutputStream;
+import org.jocean.netty.zip.ZipInputStreamX;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,12 +27,71 @@ import rx.functions.Func0;
 import rx.functions.Func1;
 
 public class ZipUtil {
-    @SuppressWarnings("unused")
     private static final Logger LOG
         = LoggerFactory.getLogger(ZipUtil.class);
 
     private ZipUtil() {
         throw new IllegalStateException("No instances!");
+    }
+
+    public static Transformer<ByteBufSlice, ByteBufSlice> unzipSlices(
+            final Func0<DisposableWrapper<ByteBuf>> allocator,
+            final Terminable terminable,
+            final int bufsize,
+            final Action1<DisposableWrapper<? extends ByteBuf>> onunzipped ) {
+        return bbses -> {
+            final BufsInputStream<DisposableWrapper<? extends ByteBuf>> bufin = new BufsInputStream<>(dwb->dwb.unwrap(), onunzipped);
+            final ZipInputStreamX zipin = new ZipInputStreamX(bufin);
+            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
+            final byte[] readbuf = new byte[bufsize];
+
+            terminable.doOnTerminate(() -> {
+                try {
+                    zipin.close();
+                } catch (final IOException e1) {
+                }
+            });
+
+            final AtomicReference<ZipEntry> entryRef = new AtomicReference<>(null);
+
+            return bbses.map(bbs -> {
+                Observable<? extends DisposableWrapper<? extends ByteBuf>> element = Observable.empty();
+
+                bbs.element().toList().subscribe(dwbs -> bufin.appendBufs(dwbs));
+                if (entryRef.get() == null) {
+                    try {
+                        entryRef.set(zipin.getNextEntry());
+                        LOG.info("read next zip entry: {}", entryRef.get());
+                    } catch (final IOException e) {
+                    }
+                }
+                if (entryRef.get() != null) {
+                    element = MessageUtil.fromBufout(bufout, ()-> {
+                        while (true) {
+                            try {
+                                final int readed = zipin.read(readbuf);
+                                bufout.write(readbuf, 0, readed);
+                            } catch (final IOException e) {
+                                break;
+                            }
+                        }
+                    }).cache();
+                }
+
+                final Observable<? extends DisposableWrapper<? extends ByteBuf>> cached = element;
+                return new ByteBufSlice() {
+                    @Override
+                    public void step() {
+                        bbs.step();
+                    }
+
+                    @Override
+                    public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                        return cached;
+                    }};
+            });
+
+        };
     }
 
     public static Transformer<ByteBufSlice, ByteBufSlice> zipSlices(
@@ -288,8 +349,10 @@ public class ZipUtil {
             }));
     }
 
-    private static Action0 addBuf(final ZipOutputStream zipout, final DisposableWrapper<ByteBuf> dwb,
-            final byte[] readbuf, final Action1<DisposableWrapper<ByteBuf>> onzipped) {
+    private static Action0 addBuf(final ZipOutputStream zipout,
+            final DisposableWrapper<ByteBuf> dwb,
+            final byte[] readbuf,
+            final Action1<DisposableWrapper<ByteBuf>> onzipped) {
         return ()->{
             try (final ByteBufInputStream is = new ByteBufInputStream(dwb.unwrap())) {
                 int readed;
