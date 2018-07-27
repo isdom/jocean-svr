@@ -109,9 +109,7 @@ public class ZipUtil {
                             final int readed = syncunzip(zipin, bufout, readbuf);
                             if (-1 == readed) {
                                 // means end of entry
-                                // TODO deocde the whole entry
-                                // here
-                                doOnEntry = complete4entry(currentSubject.getAndSet(null), bbs, dwbs);
+                                doOnEntry = complete4entry(entities, currentEntry, bbs, dwbs);
                             }
                         } catch (final IOException e) {
                             if (e instanceof NoDataException) {
@@ -254,14 +252,42 @@ public class ZipUtil {
     }
 
     private static Action1<Boolean> complete4entry(
+            final List<ZipEntity> entities,
+            final ZipEntry entry,
+            final ByteBufSlice bbs,
+            final List<DisposableWrapper<ByteBuf>> dwbs) {
+        return hasNextEntry -> {
+            entities.add(new ZipEntity() {
+                @Override
+                public ZipEntry entry() {
+                    return entry;
+                }
+
+                @Override
+                public Observable<? extends ByteBufSlice> body() {
+                    return Observable.just(bbsof(!hasNextEntry, bbs, dwbs));
+                }});
+        };
+    }
+
+    private static Action1<Boolean> complete4entry(
             final PublishSubject<ByteBufSlice> subject,
             final ByteBufSlice bbs,
             final List<DisposableWrapper<ByteBuf>> dwbs) {
         return hasNextEntry -> {
-            subject.onNext(new ByteBufSlice() {
+            subject.onNext(bbsof(!hasNextEntry, bbs, dwbs));
+            subject.onCompleted();
+        };
+    }
+
+    private static ByteBufSlice bbsof(
+            final boolean callstep,
+            final ByteBufSlice bbs,
+            final List<DisposableWrapper<ByteBuf>> dwbs) {
+        return new ByteBufSlice() {
             @Override
             public void step() {
-                if (!hasNextEntry) {
+                if (!callstep) {
                     bbs.step();
                 }
             }
@@ -269,9 +295,7 @@ public class ZipUtil {
             @Override
             public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
                 return Observable.from(dwbs);
-            }});
-            subject.onCompleted();
-        };
+            }};
     }
 
     private static int syncunzip(final ZipInputStreamX zipin,
