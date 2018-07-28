@@ -2,6 +2,7 @@ package org.jocean.svr;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.Deflater;
@@ -11,6 +12,7 @@ import java.util.zip.ZipOutputStream;
 import org.jocean.http.ByteBufSlice;
 import org.jocean.http.MessageUtil;
 import org.jocean.idiom.DisposableWrapper;
+import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Terminable;
 import org.jocean.netty.util.BufsInputStream;
 import org.jocean.netty.util.BufsOutputStream;
@@ -43,16 +45,13 @@ public class ZipUtil {
         public Observable<? extends ByteBufSlice> body();
     }
 
-    public static class EndOfEntry extends RuntimeException {
-        private static final long serialVersionUID = 1L;
-    };
-
     public static Transformer<ByteBufSlice, ZipEntity> unzipSlices(
             final Func0<DisposableWrapper<ByteBuf>> allocator,
             final Terminable terminable,
             final int bufsize,
             final Action1<DisposableWrapper<? extends ByteBuf>> onunzipped ) {
         return bbses -> {
+            // init ctx for unzip
             final BufsInputStream<DisposableWrapper<? extends ByteBuf>> bufin = new BufsInputStream<>(dwb->dwb.unwrap(), onunzipped);
             final ZipInputStreamX zipin = new ZipInputStreamX(bufin);
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
@@ -68,147 +67,13 @@ public class ZipUtil {
             final AtomicReference<PublishSubject<ByteBufSlice>> currentSubject = new AtomicReference<>(null);
 
             return bbses.flatMap(bbs -> {
+                // append all income data(zipped) to inflater
                 bufin.appendBufs(bbs.element().toList().toBlocking().single());
 
-                final List<ZipEntity> entities = new ArrayList<>();
-                Action1<Boolean> doOnEntry = null;
-
-                while (true) {
-                    if (currentSubject.get() == null) {
-                        ZipEntry currentEntry = null;
-                        try {
-                            // TODO
-                            // if return null means eos
-                            currentEntry = zipin.getNextEntry();
-                            if (null == currentEntry) {
-                                // TODO , no more entry
-                            } else {
-                                LOG.info("read next zip entry: {}", currentEntry);
-                                if (null != doOnEntry) {
-                                    doOnEntry.call(true);
-                                    doOnEntry = null;
-                                }
-                            }
-                        } catch (final IOException e) {
-                            if (e instanceof NoDataException) {
-                                if (null != doOnEntry) {
-                                    doOnEntry.call(false);
-                                    doOnEntry = null;
-                                }
-                                return entities.isEmpty() ? Observable.empty() : Observable.from(entities);
-                            } else {
-                                // other IOException
-                                // TODO
-                            }
-                        }
-
-                        final List<DisposableWrapper<ByteBuf>> dwbs = new ArrayList<>();
-                        bufout.setOutput(dwb -> dwbs.add(dwb));
-
-                        try {
-                            final int readed = syncunzip(zipin, bufout, readbuf);
-                            if (-1 == readed) {
-                                // means end of entry
-                                doOnEntry = complete4entry(entities, currentEntry, bbs, dwbs);
-                            }
-                        } catch (final IOException e) {
-                            if (e instanceof NoDataException) {
-                                // using currentEntry
-                                final PublishSubject<ByteBufSlice> subject = PublishSubject.create();
-                                currentSubject.set(subject);
-                                final ZipEntry entry = currentEntry;
-                                entities.add(new ZipEntity() {
-                                    @Override
-                                    public ZipEntry entry() {
-                                        return entry;
-                                    }
-
-                                    @Override
-                                    public Observable<? extends ByteBufSlice> body() {
-                                        return Observable.<ByteBufSlice>just(new ByteBufSlice() {
-                                            @Override
-                                            public void step() {
-                                                bbs.step();
-                                            }
-
-                                            @Override
-                                            public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                                                return Observable.from(dwbs);
-                                            }})
-                                            .concatWith(subject);
-                                    }}
-                                );
-                                return Observable.from(entities);
-                            } else {
-                                // other IOException
-                                // TODO
-                            }
-                        }
-                    } else {
-                        // continue decode zipped
-                        final List<DisposableWrapper<ByteBuf>> dwbs = new ArrayList<>();
-                        bufout.setOutput(dwb -> dwbs.add(dwb));
-
-                        try {
-                            final int readed = syncunzip(zipin, bufout, readbuf);
-                            if (-1 == readed) {
-                                // means end of entry
-                                doOnEntry = complete4entry(currentSubject.getAndSet(null), bbs, dwbs);
-                            }
-                        } catch (final IOException e) {
-                            if (e instanceof NoDataException) {
-                                onnext4entry(currentSubject.get(), bbs, dwbs);
-                                return entities.isEmpty() ? Observable.empty() : Observable.from(entities);
-                            } else {
-                                // other IOException
-                                // TODO
-                            }
-                        }
-                    }
-                }
+                return slice2entities(bbs, zipin, bufout, readbuf, currentSubject);
             });
         };
-                    /*
 
-                        if (e instanceof NoDataException) {
-                            LOG.debug("zipin has no more data");
-                            break;
-                        } else {
-                            throw new RuntimeException(e);
-                        }
-                        // means pending for income data OR end of zipped stream
-                        if (-1 == readed) {
-                            throw new EndOfEntry();
-                        }
-
-                    }
-
-                    if (null != currentEntry.get()) {
-                        unzip(zipin, bufout, readbuf);
-
-                        return Observable.empty();
-                    }
-                }*/
-
-                /*
-                final Observable<? extends DisposableWrapper<? extends ByteBuf>> unzipped =
-                    unzip(zipin, bufout, readbuf, currentEntry).cache();
-
-                return new ByteBufSlice() {
-                    @Override
-                    public String toString() {
-                        return new StringBuilder().append("ByteBufSlice [unzipped for ").append(bbs).append("]").toString();
-                    }
-                    @Override
-                    public void step() {
-                        bbs.step();
-                    }
-                    @Override
-                    public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                        return unzipped;
-                    }
-                };
-                */
             /*,
             e -> Observable.error(e),
             () -> {
@@ -233,6 +98,124 @@ public class ZipUtil {
                         }
                     });
             }*/
+    }
+
+    private static Observable<? extends ZipEntity> slice2entities(
+            final ByteBufSlice bbs,
+            final ZipInputStreamX zipin,
+            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout,
+            final byte[] readbuf,
+            final AtomicReference<PublishSubject<ByteBufSlice>> currentSubject) {
+        final List<ZipEntity> entities = new ArrayList<>();
+        final AtomicReference<Action1<Boolean>> afterNextEntry = new AtomicReference<>(null);
+        Func1<List<DisposableWrapper<ByteBuf>>, Action1<Boolean>> onEntryComplete = null;
+        Action1<List<DisposableWrapper<ByteBuf>>> onEntryNeedData = null;
+
+        while (true) {
+            if (currentSubject.get() == null) {
+                // no unzipping entry, try to get Next Entry
+                try {
+                    final ZipEntry entry = getNextEntry(zipin, afterNextEntry.getAndSet(null));
+                    if (null != entry) {
+                        onEntryComplete = dwbs -> complete4entry(entities, entry, bbs, dwbs);
+                        onEntryNeedData = dwbs -> currentSubject.set(newentity4entry(entities, entry, bbs, dwbs));
+                    } else {
+                        return entities(entities);
+                    }
+                } catch (final IOException e) {
+                    return Observable.error(e);
+                }
+            } else {
+                onEntryComplete = dwbs -> complete4entry(currentSubject.getAndSet(null), bbs, dwbs);
+                onEntryNeedData = dwbs -> onnext4entry(currentSubject.get(), bbs, dwbs);
+            }
+
+            final List<DisposableWrapper<ByteBuf>> dwbs = new ArrayList<>();
+            bufout.setOutput(dwb -> dwbs.add(dwb));
+
+            try {
+                final int readed = syncunzip(zipin, bufout, readbuf);
+                if (-1 == readed) {
+                    // means end of entry
+                    LOG.debug("syncunzip return -1, current entry completed.");
+                    afterNextEntry.set(onEntryComplete.call(dwbs));
+                }
+            } catch (final IOException e) {
+                if (e instanceof NoDataException) {
+                    LOG.debug("syncunzip throw NoDataException, stop unzip and wait for input.");
+                    onEntryNeedData.call(dwbs);
+                    return entities(entities);
+                } else {
+                    return Observable.error(e);
+                }
+            }
+        }
+    }
+
+    private static PublishSubject<ByteBufSlice> newentity4entry(
+            final List<ZipEntity> entities,
+            final ZipEntry entry,
+            final ByteBufSlice bbs,
+            final List<DisposableWrapper<ByteBuf>> dwbs) {
+        final PublishSubject<ByteBufSlice> subject = PublishSubject.create();
+        entities.add(new ZipEntity() {
+            @Override
+            public ZipEntry entry() {
+                return entry;
+            }
+
+            @Override
+            public Observable<? extends ByteBufSlice> body() {
+                return Observable.<ByteBufSlice>just(new ByteBufSlice() {
+                    @Override
+                    public void step() {
+                        bbs.step();
+                    }
+
+                    @Override
+                    public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                        return Observable.from(dwbs);
+                    }})
+                    .concatWith(subject);
+            }}
+        );
+        return subject;
+    }
+
+    private static ZipEntry getNextEntry(final ZipInputStreamX zipin, final Action1<Boolean> afterNextEntry)
+            throws IOException {
+        ZipEntry entry = null;
+        try {
+            // if return null means End Of Stream
+            entry = zipin.getNextEntry();
+            if (null != entry) {
+                LOG.info("zipin.getNextEntry() return: {}, get new ZipEntity", entry);
+                doWithHasNext(afterNextEntry, true);
+            } else {
+                // TODO , no more entries
+                LOG.debug("zipin.getNextEntry() return null, no more entries");
+                doWithHasNext(afterNextEntry, false);
+            }
+        } catch (final IOException e) {
+            if (e instanceof NoDataException) {
+                LOG.debug("zipin.getNextEntry() throw NoDataException, stop unzip and wait for input");
+                doWithHasNext(afterNextEntry, false);
+            } else {
+                LOG.debug("zipin.getNextEntry() throw {}", ExceptionUtils.exception2detail(e));
+                throw e;
+            }
+        }
+        return entry;
+    }
+
+    private static void doWithHasNext(final Action1<Boolean> action, final boolean hasNextEntry) {
+        if (null != action) {
+            action.call(hasNextEntry);
+        }
+    }
+
+    private static Observable<? extends ZipEntity> entities(final Collection<ZipEntity> entities) {
+        return entities.isEmpty() ? Observable.empty() : Observable.from(entities);
     }
 
     private static void onnext4entry(
@@ -317,76 +300,76 @@ public class ZipUtil {
         return readed;
     }
 
-    private static Observable<? extends DisposableWrapper<? extends ByteBuf>> unzip(
-            final ZipInputStreamX zipin,
-            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout,
-            final byte[] readbuf) {
-        return MessageUtil.fromBufout(bufout, ()-> {
-            int readed = 0;
-            do {
-                try {
-                    readed = zipin.read(readbuf);
-                    if (readed > 0) {
-                        bufout.write(readbuf, 0, readed);
-                    }
-                } catch (final IOException e) {
-                    if (e instanceof NoDataException) {
-                        LOG.debug("zipin has no more data");
-                        break;
-                    } else {
-                        throw new RuntimeException(e);
-                    }
-                }
-            } while (readed > 0);
-            // means pending for income data OR end of zipped stream
-            try {
-                bufout.flush();
-            } catch (final IOException e) {}
-            if (-1 == readed) {
-                throw new EndOfEntry();
-            }
-        });
-    }
-
-    private static Observable<? extends DisposableWrapper<? extends ByteBuf>> unzip(
-            final ZipInputStreamX zipin,
-            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout,
-            final byte[] readbuf,
-            final AtomicReference<ZipEntry> entryRef) {
-        if (entryRef.get() == null) {
-            try {
-                entryRef.set(zipin.getNextEntry());
-                LOG.info("read next zip entry: {}", entryRef.get());
-            } catch (final IOException e) {
-            }
-        }
-        if (entryRef.get() != null) {
-            return MessageUtil.fromBufout(bufout, ()-> {
-                int readed = 0;
-                do {
-                    try {
-                        readed = zipin.read(readbuf);
-                        if (readed > 0) {
-                            bufout.write(readbuf, 0, readed);
-                        }
-                    } catch (final IOException e) {
-                        if (e instanceof NoDataException) {
-                            LOG.debug("zipin has no more data");
-                            break;
-                        } else {
-                            throw new RuntimeException(e);
-                        }
-                    }
-                } while (readed > 0);
-                // means pending for income data OR end of zipped stream
-                try {
-                    bufout.flush();
-                } catch (final IOException e) {}
-            });
-        } else {
-            return Observable.empty();
-        }
-    }
+//    private static Observable<? extends DisposableWrapper<? extends ByteBuf>> unzip(
+//            final ZipInputStreamX zipin,
+//            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout,
+//            final byte[] readbuf) {
+//        return MessageUtil.fromBufout(bufout, ()-> {
+//            int readed = 0;
+//            do {
+//                try {
+//                    readed = zipin.read(readbuf);
+//                    if (readed > 0) {
+//                        bufout.write(readbuf, 0, readed);
+//                    }
+//                } catch (final IOException e) {
+//                    if (e instanceof NoDataException) {
+//                        LOG.debug("zipin has no more data");
+//                        break;
+//                    } else {
+//                        throw new RuntimeException(e);
+//                    }
+//                }
+//            } while (readed > 0);
+//            // means pending for income data OR end of zipped stream
+//            try {
+//                bufout.flush();
+//            } catch (final IOException e) {}
+//            if (-1 == readed) {
+//                throw new EndOfEntry();
+//            }
+//        });
+//    }
+//
+//    private static Observable<? extends DisposableWrapper<? extends ByteBuf>> unzip(
+//            final ZipInputStreamX zipin,
+//            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout,
+//            final byte[] readbuf,
+//            final AtomicReference<ZipEntry> entryRef) {
+//        if (entryRef.get() == null) {
+//            try {
+//                entryRef.set(zipin.getNextEntry());
+//                LOG.info("read next zip entry: {}", entryRef.get());
+//            } catch (final IOException e) {
+//            }
+//        }
+//        if (entryRef.get() != null) {
+//            return MessageUtil.fromBufout(bufout, ()-> {
+//                int readed = 0;
+//                do {
+//                    try {
+//                        readed = zipin.read(readbuf);
+//                        if (readed > 0) {
+//                            bufout.write(readbuf, 0, readed);
+//                        }
+//                    } catch (final IOException e) {
+//                        if (e instanceof NoDataException) {
+//                            LOG.debug("zipin has no more data");
+//                            break;
+//                        } else {
+//                            throw new RuntimeException(e);
+//                        }
+//                    }
+//                } while (readed > 0);
+//                // means pending for income data OR end of zipped stream
+//                try {
+//                    bufout.flush();
+//                } catch (final IOException e) {}
+//            });
+//        } else {
+//            return Observable.empty();
+//        }
+//    }
 
     public static Transformer<ByteBufSlice, ByteBufSlice> zipSlices(
             final Func0<DisposableWrapper<ByteBuf>> allocator,
