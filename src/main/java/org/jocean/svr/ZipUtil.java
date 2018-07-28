@@ -40,12 +40,12 @@ public class ZipUtil {
         throw new IllegalStateException("No instances!");
     }
 
-    public interface ZipEntity {
+    public interface UnzipEntity {
         public ZipEntry entry();
         public Observable<? extends ByteBufSlice> body();
     }
 
-    public static Transformer<ByteBufSlice, ZipEntity> unzipSlices(
+    public static Transformer<ByteBufSlice, UnzipEntity> unzipToEntities(
             final Func0<DisposableWrapper<ByteBuf>> allocator,
             final Terminable terminable,
             final int bufsize,
@@ -75,13 +75,13 @@ public class ZipUtil {
         };
     }
 
-    private static Observable<? extends ZipEntity> slice2entities(
+    private static Observable<? extends UnzipEntity> slice2entities(
             final ByteBufSlice bbs,
             final ZipInputStreamX zipin,
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout,
             final byte[] readbuf,
             final AtomicReference<PublishSubject<ByteBufSlice>> currentSubject) {
-        final List<ZipEntity> entities = new ArrayList<>();
+        final List<UnzipEntity> entities = new ArrayList<>();
         final AtomicReference<Action1<Boolean>> afterNextEntry = new AtomicReference<>(null);
         Func1<List<DisposableWrapper<ByteBuf>>, Action1<Boolean>> onEntryComplete = null;
         Action1<List<DisposableWrapper<ByteBuf>>> onEntryNeedData = null;
@@ -128,12 +128,12 @@ public class ZipUtil {
     }
 
     private static PublishSubject<ByteBufSlice> newentity4entry(
-            final List<ZipEntity> entities,
+            final List<UnzipEntity> entities,
             final ZipEntry entry,
             final ByteBufSlice bbs,
             final List<DisposableWrapper<ByteBuf>> dwbs) {
         final PublishSubject<ByteBufSlice> subject = PublishSubject.create();
-        entities.add(new ZipEntity() {
+        entities.add(new UnzipEntity() {
             @Override
             public ZipEntry entry() {
                 return entry;
@@ -171,7 +171,7 @@ public class ZipUtil {
             // if return null means End Of Stream
             entry = zipin.getNextEntry();
             if (null != entry) {
-                LOG.info("zipin.getNextEntry() return: {}, get new ZipEntity", entry);
+                LOG.info("zipin.getNextEntry() return: {}, get new UnzipEntity", entry);
                 doWithHasNext(afterNextEntry, true);
             } else {
                 // TODO , no more entries
@@ -196,7 +196,7 @@ public class ZipUtil {
         }
     }
 
-    private static Observable<? extends ZipEntity> entities(final Collection<ZipEntity> entities) {
+    private static Observable<? extends UnzipEntity> entities(final Collection<UnzipEntity> entities) {
         return entities.isEmpty() ? Observable.empty() : Observable.from(entities);
     }
 
@@ -222,12 +222,12 @@ public class ZipUtil {
     }
 
     private static Action1<Boolean> complete4entry(
-            final List<ZipEntity> entities,
+            final List<UnzipEntity> entities,
             final ZipEntry entry,
             final ByteBufSlice bbs,
             final List<DisposableWrapper<ByteBuf>> dwbs) {
         return hasNextEntry -> {
-            entities.add(new ZipEntity() {
+            entities.add(new UnzipEntity() {
                 @Override
                 public ZipEntry entry() {
                     return entry;
@@ -293,6 +293,41 @@ public class ZipUtil {
         return readed;
     }
 
+    public interface TozipEntity {
+        public String entryName();
+        public Observable<? extends ByteBufSlice> body();
+    }
+
+    public static Transformer<TozipEntity, ByteBufSlice> zipEntities(
+            final Func0<DisposableWrapper<ByteBuf>> allocator,
+            final Terminable terminable,
+            final int bufsize,
+            final Action1<DisposableWrapper<ByteBuf>> onzipped) {
+        return entities -> {
+            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
+            final ZipOutputStream zipout = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
+            zipout.setLevel(Deflater.BEST_COMPRESSION);
+
+            final byte[] readbuf = new byte[bufsize];
+
+            terminable.doOnTerminate(() -> {
+                try {
+                    zipout.close();
+                } catch (final IOException e1) {
+                }
+            });
+
+            return entities.flatMap( entity ->
+                        // start zip: entry info
+                        Observable.defer(()->zipentry(entity.entryName(), zipout, bufout)).concatWith(
+                        // zip content
+                        entity.body().map(dozip(zipout, bufout, readbuf, onzipped))),
+                e -> Observable.error(e),
+                // end of zip: finish all
+                ()-> Observable.defer(()->finishzip(zipout, bufout)));
+        };
+    }
+
     public static Transformer<ByteBufSlice, ByteBufSlice> zipSlices(
             final Func0<DisposableWrapper<ByteBuf>> allocator,
             final String entryName,
@@ -340,7 +375,7 @@ public class ZipUtil {
             @Override
             public String toString() {
                 return new StringBuilder()
-                        .append("ByteBufSlice [beginzip entry=").append(entryName).append("]").toString();
+                        .append("ByteBufSlice [begin zip entry=").append(entryName).append("]").toString();
             }
 
             @Override
