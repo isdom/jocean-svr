@@ -73,31 +73,6 @@ public class ZipUtil {
                 return slice2entities(bbs, zipin, bufout, readbuf, currentSubject);
             });
         };
-
-            /*,
-            e -> Observable.error(e),
-            () -> {
-                bufin.markEOS();
-                final Observable<? extends DisposableWrapper<? extends ByteBuf>> unzipped =
-                        unzip(zipin, bufout, readbuf, entryRef).cache();
-
-                    return Observable.<ByteBufSlice>just(new ByteBufSlice() {
-                        @Override
-                        public void step() {}
-
-                        @Override
-                        public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                            return unzipped;
-                        }
-
-                        @Override
-                        public String toString() {
-                            return new StringBuilder()
-                                    .append(",element:").append(unzipped)
-                                    .toString();
-                        }
-                    });
-            }*/
     }
 
     private static Observable<? extends ZipEntity> slice2entities(
@@ -168,6 +143,13 @@ public class ZipUtil {
             public Observable<? extends ByteBufSlice> body() {
                 return Observable.<ByteBufSlice>just(new ByteBufSlice() {
                     @Override
+                    public String toString() {
+                        return new StringBuilder()
+                                .append("ByteBufSlice [unzip begin entry=").append(entry)
+                                .append(", unzipped for ").append(bbs).append("]").toString();
+                    }
+
+                    @Override
                     public void step() {
                         bbs.step();
                     }
@@ -224,6 +206,11 @@ public class ZipUtil {
             final List<DisposableWrapper<ByteBuf>> dwbs) {
         subject.onNext(new ByteBufSlice() {
             @Override
+            public String toString() {
+                return new StringBuilder().append("ByteBufSlice [unzip part for ").append(bbs).append("]").toString();
+            }
+
+            @Override
             public void step() {
                 bbs.step();
             }
@@ -269,8 +256,14 @@ public class ZipUtil {
             final List<DisposableWrapper<ByteBuf>> dwbs) {
         return new ByteBufSlice() {
             @Override
+            public String toString() {
+                return new StringBuilder().append("ByteBufSlice [unzip part for ").append(bbs)
+                        .append(", step enabled=").append(callstep).append("]").toString();
+            }
+
+            @Override
             public void step() {
-                if (!callstep) {
+                if (callstep) {
                     bbs.step();
                 }
             }
@@ -299,77 +292,6 @@ public class ZipUtil {
         }
         return readed;
     }
-
-//    private static Observable<? extends DisposableWrapper<? extends ByteBuf>> unzip(
-//            final ZipInputStreamX zipin,
-//            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout,
-//            final byte[] readbuf) {
-//        return MessageUtil.fromBufout(bufout, ()-> {
-//            int readed = 0;
-//            do {
-//                try {
-//                    readed = zipin.read(readbuf);
-//                    if (readed > 0) {
-//                        bufout.write(readbuf, 0, readed);
-//                    }
-//                } catch (final IOException e) {
-//                    if (e instanceof NoDataException) {
-//                        LOG.debug("zipin has no more data");
-//                        break;
-//                    } else {
-//                        throw new RuntimeException(e);
-//                    }
-//                }
-//            } while (readed > 0);
-//            // means pending for income data OR end of zipped stream
-//            try {
-//                bufout.flush();
-//            } catch (final IOException e) {}
-//            if (-1 == readed) {
-//                throw new EndOfEntry();
-//            }
-//        });
-//    }
-//
-//    private static Observable<? extends DisposableWrapper<? extends ByteBuf>> unzip(
-//            final ZipInputStreamX zipin,
-//            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout,
-//            final byte[] readbuf,
-//            final AtomicReference<ZipEntry> entryRef) {
-//        if (entryRef.get() == null) {
-//            try {
-//                entryRef.set(zipin.getNextEntry());
-//                LOG.info("read next zip entry: {}", entryRef.get());
-//            } catch (final IOException e) {
-//            }
-//        }
-//        if (entryRef.get() != null) {
-//            return MessageUtil.fromBufout(bufout, ()-> {
-//                int readed = 0;
-//                do {
-//                    try {
-//                        readed = zipin.read(readbuf);
-//                        if (readed > 0) {
-//                            bufout.write(readbuf, 0, readed);
-//                        }
-//                    } catch (final IOException e) {
-//                        if (e instanceof NoDataException) {
-//                            LOG.debug("zipin has no more data");
-//                            break;
-//                        } else {
-//                            throw new RuntimeException(e);
-//                        }
-//                    }
-//                } while (readed > 0);
-//                // means pending for income data OR end of zipped stream
-//                try {
-//                    bufout.flush();
-//                } catch (final IOException e) {}
-//            });
-//        } else {
-//            return Observable.empty();
-//        }
-//    }
 
     public static Transformer<ByteBufSlice, ByteBufSlice> zipSlices(
             final Func0<DisposableWrapper<ByteBuf>> allocator,
