@@ -87,7 +87,6 @@ import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.DefaultHttpContent;
 import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.DefaultLastHttpContent;
-import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
@@ -691,26 +690,20 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
-    private Observable<HttpObject> strings2Response(final Observable<String> strings, final HttpRequest request) {
-        return strings.toList().flatMap(contents -> {
-                final StringBuilder sb = new StringBuilder();
-                for (final String s : contents) {
-                    sb.append(s);
-                }
-                final FullHttpResponse response = new DefaultFullHttpResponse(
-                        request.protocolVersion(),
-                        HttpResponseStatus.OK,
-                        (sb.length() > 0 ? Unpooled.copiedBuffer(sb.toString(), CharsetUtil.UTF_8) : Unpooled.buffer(0)));
+    private Observable<Object> strings2Response(final Observable<String> strings, final HttpRequest request) {
+        final HttpResponse response = new DefaultHttpResponse(request.protocolVersion(), HttpResponseStatus.OK);
 
-                response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain");
+        response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain");
 
-                // Add 'Content-Length' header only for a keep-alive connection.
-                response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
+        response.headers().set(HttpHeaderNames.CACHE_CONTROL, HttpHeaderValues.NO_STORE);
+        response.headers().set(HttpHeaderNames.PRAGMA, HttpHeaderValues.NO_CACHE);
 
-                response.headers().set(HttpHeaderNames.CACHE_CONTROL, HttpHeaderValues.NO_STORE);
-                response.headers().set(HttpHeaderNames.PRAGMA, HttpHeaderValues.NO_CACHE);
-                return Observable.<HttpObject>just(response);
-            });
+        HttpUtil.setTransferEncodingChunked(response, true);
+
+
+        return Observable.<Object>just(response)
+                .concatWith(strings.map(s -> RxNettys.wrap4release(Unpooled.wrappedBuffer(s.getBytes()))))
+                .concatWith(Observable.just(LastHttpContent.EMPTY_LAST_CONTENT));
     }
 
     private Object[] buildArgs(final Object resource, final ArgsCtx argCtx) {
