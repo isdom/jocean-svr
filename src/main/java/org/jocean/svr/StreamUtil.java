@@ -15,6 +15,8 @@ import org.slf4j.LoggerFactory;
 import io.netty.buffer.ByteBuf;
 import rx.Observable;
 import rx.Observable.Transformer;
+import rx.Subscriber;
+import rx.functions.Func2;
 
 public class StreamUtil {
     @SuppressWarnings("unused")
@@ -90,6 +92,30 @@ public class StreamUtil {
             return lineBuf.toString();
         } finally {
             lineBuf.setLength(0);
+        }
+    }
+
+    public static void range2slice(
+            final Subscriber<? super ByteBufSlice> subscriber,
+            final int begin,
+            final int end,
+            final int maxstep,
+            final Func2<Integer, Integer, Observable<DisposableWrapper<ByteBuf>>> bbsbuilder) {
+        if (!subscriber.isUnsubscribed()) {
+            final int step = Math.min(end - begin + 1, maxstep);
+            if (step <= 0) {
+                subscriber.onCompleted();
+            }
+            subscriber.onNext(new ByteBufSlice() {
+                @Override
+                public void step() {
+                    range2slice(subscriber, begin + step, end, maxstep, bbsbuilder);
+                }
+
+                @Override
+                public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                    return bbsbuilder.call(begin, step);
+                }});
         }
     }
 }
