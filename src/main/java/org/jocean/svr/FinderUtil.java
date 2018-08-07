@@ -130,14 +130,14 @@ public class FinderUtil {
                         throw new RuntimeException("spi has already set to " + spi.type());
                     }
                     @Override
-                    public <T> Observable<T> execute(final Func1<Interact, Observable<T>> invoker) {
+                    public <T> Observable<T> execute(final Func1<Interact, Observable<? extends T>> invoker) {
                         return interacts.compose(FinderUtil.endpoint(finder, spi)).flatMap(invoker)
                                 .compose(withAfter(finder, ste));
                     }};
             }
 
             @Override
-            public <T> Observable<T> execute(final Func1<Interact, Observable<T>> invoker) {
+            public <T> Observable<T> execute(final Func1<Interact, Observable<? extends T>> invoker) {
                 return interacts.flatMap(invoker).compose(withAfter(finder, ste));
             }
         };
