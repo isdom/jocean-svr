@@ -130,50 +130,18 @@ public class FinderUtil {
                         throw new RuntimeException("spi has already set to " + spi.type());
                     }
                     @Override
-                    public <T> Observable<T> execute(final Func1<Interact, Observable<? extends T>> invoker) {
+                    public <T> Observable<T> execute(final Func1<Interact, Observable<T>> invoker) {
                         return interacts.compose(FinderUtil.endpoint(finder, spi)).flatMap(invoker)
                                 .compose(withAfter(finder, ste));
                     }};
             }
 
             @Override
-            public <T> Observable<T> execute(final Func1<Interact, Observable<? extends T>> invoker) {
+            public <T> Observable<T> execute(final Func1<Interact, Observable<T>> invoker) {
                 return interacts.flatMap(invoker).compose(withAfter(finder, ste));
             }
         };
     }
-
-    /*
-    public interface RpcBuilder {
-        public RpcBuilder spi(final TypedSPI spi);
-        public <T> Transformer<Interact, T> attach(final Func1<Interact, Observable<T>> invoker);
-    }
-
-    public static RpcBuilder rpc(final BeanFinder finder) {
-        final StackTraceElement[] stes = Thread.currentThread().getStackTrace();
-
-        return new RpcBuilder() {
-            @Override
-            public RpcBuilder spi(final TypedSPI spi) {
-                return new RpcBuilder() {
-                    @Override
-                    public RpcBuilder spi(final TypedSPI otherSpi) {
-                        throw new RuntimeException("spi has already set to " + spi.type());
-                    }
-                    @Override
-                    public <T> Transformer<Interact, T> attach(final Func1<Interact, Observable<T>> invoker) {
-                        return interacts -> interacts.compose(FinderUtil.endpoint(finder, spi)).flatMap(invoker)
-                                .compose(withAfter(finder, stes[2]));
-                    }};
-            }
-
-            @Override
-            public <T> Transformer<Interact, T> attach(final Func1<Interact, Observable<T>> invoker) {
-                return interacts -> interacts.flatMap(invoker).compose(withAfter(finder, stes[2]));
-            }
-        };
-    }
-    */
 
     private static <T> Transformer<T, T> withAfter(final BeanFinder finder, final StackTraceElement ste) {
         final String callerClassName = ste.getClassName();
