@@ -3,10 +3,12 @@ package org.jocean.svr;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import org.jocean.http.ByteBufSlice;
 import org.jocean.idiom.DisposableWrapper;
+import org.jocean.idiom.Stepable;
 import org.jocean.netty.util.BufsInputStream;
 import org.jocean.netty.util.NoDataException;
 import org.slf4j.Logger;
@@ -25,6 +27,60 @@ public class StreamUtil {
 
     private StreamUtil() {
         throw new IllegalStateException("No instances!");
+    }
+
+    public static Transformer<ByteBufSlice, Stepable<List<String>>> asLineSlice() {
+
+        final BufsInputStream<DisposableWrapper<? extends ByteBuf>> bufin = new BufsInputStream<>(
+                dwb->dwb.unwrap(), dwb->dwb.dispose());
+        final StringBuilder lineBuf = new StringBuilder();
+
+        return bbses ->
+            bbses.flatMap(bbs -> {
+                // add all upstream dwb to bufin stream
+                bufin.appendBufs(bbs.element().toList().toBlocking().single());
+                // read as InputStream
+                final List<String> lines = new ArrayList<>();
+
+                try {
+                    while (true) {
+                        lines.add(readLine(bufin, lineBuf));
+                    }
+                } catch (final IOException e) {
+                    if (!(e instanceof NoDataException)) {
+                        return Observable.error(e);
+                    }
+                }
+
+                return Observable.<Stepable<List<String>>>just(new Stepable<List<String>>() {
+                    @Override
+                    public void step() {
+                        bbs.step();
+                    }
+                    @Override
+                    public List<String> element() {
+                        return lines;
+                    }});
+            },
+            e -> Observable.error(e),
+            () -> {
+                // stream is end
+                bufin.markEOS();
+                if (lineBuf.length() > 0) {
+                    return Observable.<Stepable<List<String>>>just(new Stepable<List<String>>() {
+
+                        @Override
+                        public void step() {
+                        }
+
+                        @Override
+                        public List<String> element() {
+                            return Arrays.asList(lineBuf.toString());
+                        }});
+                } else {
+                    return Observable.empty();
+                }
+            });
     }
 
     public static Transformer<ByteBufSlice, String> asLines() {
