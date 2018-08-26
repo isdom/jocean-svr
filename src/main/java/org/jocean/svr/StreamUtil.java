@@ -2,14 +2,17 @@ package org.jocean.svr;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 import org.jocean.http.ByteBufSlice;
 import org.jocean.idiom.DisposableWrapper;
+import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Stepable;
 import org.jocean.netty.util.BufsInputStream;
+import org.jocean.netty.util.BufsOutputStream;
 import org.jocean.netty.util.NoDataException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,15 +21,50 @@ import io.netty.buffer.ByteBuf;
 import rx.Observable;
 import rx.Observable.Transformer;
 import rx.Subscriber;
+import rx.functions.Action1;
+import rx.functions.Func0;
+import rx.functions.Func1;
 import rx.functions.Func2;
 
 public class StreamUtil {
-    @SuppressWarnings("unused")
     private static final Logger LOG
         = LoggerFactory.getLogger(StreamUtil.class);
 
     private StreamUtil() {
         throw new IllegalStateException("No instances!");
+    }
+
+    public static <T extends Stepable<?>> Func1<T, ByteBufSlice> stepable2bbs(
+            final Func0<DisposableWrapper<ByteBuf>> allocator,
+            final Action1<OutputStream> out) {
+        return stepable -> {
+            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
+            final List<DisposableWrapper<ByteBuf>> dwbs = new ArrayList<>();
+            bufout.setOutput(dwb -> dwbs.add(dwb));
+            try {
+                out.call(bufout);
+                bufout.flush();
+                bufout.close();
+            } catch (final Exception e) {
+                LOG.warn("exception when generate ByteBuf, detail: {}", ExceptionUtils.exception2detail(e));
+            }
+
+            return new ByteBufSlice() {
+                @Override
+                public String toString() {
+                    return new StringBuilder()
+                            .append("ByteBufSlice from [").append(stepable).append("]").toString();
+                }
+
+                @Override
+                public void step() {
+                    stepable.step();
+                }
+                @Override
+                public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                    return Observable.from(dwbs);
+                }};
+        };
     }
 
     public static Transformer<ByteBufSlice, Stepable<List<String>>> asLineSlice() {
