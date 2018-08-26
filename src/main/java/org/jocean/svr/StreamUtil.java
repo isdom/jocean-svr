@@ -21,7 +21,7 @@ import io.netty.buffer.ByteBuf;
 import rx.Observable;
 import rx.Observable.Transformer;
 import rx.Subscriber;
-import rx.functions.Action1;
+import rx.functions.Action2;
 import rx.functions.Func0;
 import rx.functions.Func1;
 import rx.functions.Func2;
@@ -36,13 +36,13 @@ public class StreamUtil {
 
     public static <T extends Stepable<?>> Func1<T, ByteBufSlice> stepable2bbs(
             final Func0<DisposableWrapper<ByteBuf>> allocator,
-            final Action1<OutputStream> out) {
+            final Action2<T, OutputStream> out) {
         return stepable -> {
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
             final List<DisposableWrapper<ByteBuf>> dwbs = new ArrayList<>();
             bufout.setOutput(dwb -> dwbs.add(dwb));
             try {
-                out.call(bufout);
+                out.call(stepable, bufout);
                 bufout.flush();
                 bufout.close();
             } catch (final Exception e) {
