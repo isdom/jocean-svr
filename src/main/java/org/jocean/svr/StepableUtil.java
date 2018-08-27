@@ -26,11 +26,11 @@ import rx.functions.Func0;
 import rx.functions.Func1;
 import rx.functions.Func2;
 
-public class StreamUtil {
+public class StepableUtil {
     private static final Logger LOG
-        = LoggerFactory.getLogger(StreamUtil.class);
+        = LoggerFactory.getLogger(StepableUtil.class);
 
-    private StreamUtil() {
+    private StepableUtil() {
         throw new IllegalStateException("No instances!");
     }
 
