@@ -23,7 +23,6 @@ import rx.Observable.Transformer;
 import rx.Subscriber;
 import rx.functions.Action2;
 import rx.functions.Func0;
-import rx.functions.Func1;
 import rx.functions.Func2;
 
 public class ByteBufSliceUtil {
@@ -34,36 +33,37 @@ public class ByteBufSliceUtil {
         throw new IllegalStateException("No instances!");
     }
 
-    public static <T extends Stepable<?>> Func1<T, ByteBufSlice> stepable2bbs(
+    public static <T extends Stepable<?>> Transformer<T, ByteBufSlice> stepable2bbs(
             final Func0<DisposableWrapper<ByteBuf>> allocator,
-            final Action2<T, OutputStream> out) {
-        return stepable -> {
+            final Action2<T, OutputStream> fillout) {
+        return stepables -> {
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
-            final List<DisposableWrapper<ByteBuf>> dwbs = new ArrayList<>();
-            bufout.setOutput(dwb -> dwbs.add(dwb));
-            try {
-                out.call(stepable, bufout);
-                bufout.flush();
-                bufout.close();
-            } catch (final Exception e) {
-                LOG.warn("exception when generate ByteBuf, detail: {}", ExceptionUtils.exception2detail(e));
-            }
 
-            return new ByteBufSlice() {
-                @Override
-                public String toString() {
-                    return new StringBuilder()
-                            .append("ByteBufSlice from [").append(stepable).append("]").toString();
+            return stepables.map(stepable -> {
+                final List<DisposableWrapper<ByteBuf>> dwbs = new ArrayList<>();
+                bufout.setOutput(dwb -> dwbs.add(dwb));
+                try {
+                    fillout.call(stepable, bufout);
+                    bufout.flush();
+                } catch (final Exception e) {
+                    LOG.warn("exception when generate ByteBuf, detail: {}", ExceptionUtils.exception2detail(e));
                 }
 
-                @Override
-                public void step() {
-                    stepable.step();
-                }
-                @Override
-                public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                    return Observable.from(dwbs);
-                }};
+                return new ByteBufSlice() {
+                    @Override
+                    public String toString() {
+                        return new StringBuilder()
+                                .append("ByteBufSlice from [").append(stepable).append("]").toString();
+                    }
+                    @Override
+                    public void step() {
+                        stepable.step();
+                    }
+                    @Override
+                    public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                        return Observable.from(dwbs);
+                    }};
+            });
         };
     }
 
