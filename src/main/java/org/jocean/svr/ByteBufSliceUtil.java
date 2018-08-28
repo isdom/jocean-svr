@@ -26,11 +26,11 @@ import rx.functions.Func0;
 import rx.functions.Func1;
 import rx.functions.Func2;
 
-public class StepableUtil {
+public class ByteBufSliceUtil {
     private static final Logger LOG
-        = LoggerFactory.getLogger(StepableUtil.class);
+        = LoggerFactory.getLogger(ByteBufSliceUtil.class);
 
-    private StepableUtil() {
+    private ByteBufSliceUtil() {
         throw new IllegalStateException("No instances!");
     }
 
@@ -115,47 +115,6 @@ public class StepableUtil {
                         public List<String> element() {
                             return Arrays.asList(lineBuf.toString());
                         }});
-                } else {
-                    return Observable.empty();
-                }
-            });
-    }
-
-    public static Transformer<ByteBufSlice, String> asLines() {
-
-        final BufsInputStream<DisposableWrapper<? extends ByteBuf>> bufin = new BufsInputStream<>(
-                dwb->dwb.unwrap(), dwb->dwb.dispose());
-        final StringBuilder lineBuf = new StringBuilder();
-
-        return bbses ->
-            bbses.flatMap(bbs -> {
-                // add all upstream dwb to bufin stream
-                bufin.appendBufs(bbs.element().toList().toBlocking().single());
-                // read as InputStream
-                final List<String> lines = new ArrayList<>();
-
-                try {
-                    while (true) {
-                        lines.add(readLine(bufin, lineBuf));
-                    }
-                } catch (final IOException e) {
-                    if (!(e instanceof NoDataException)) {
-                        return Observable.error(e);
-                    }
-                }
-
-                try {
-                    return Observable.from(lines);
-                } finally {
-                    bbs.step();
-                }
-            },
-            e -> Observable.error(e),
-            () -> {
-                // stream is end
-                bufin.markEOS();
-                if (lineBuf.length() > 0) {
-                    return Observable.just(lineBuf.toString());
                 } else {
                     return Observable.empty();
                 }
