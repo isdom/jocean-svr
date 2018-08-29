@@ -622,17 +622,31 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 } else if (obj instanceof ResponseBody) {
                     return Observable.just(new DefaultLastHttpContent(body2content((ResponseBody)obj)));
                 } else if (obj instanceof FullMessage) {
-                    @SuppressWarnings({ "rawtypes", "unchecked" })
-                    final FullMessage<HttpResponse> fulmsg = (FullMessage)obj;
-                    return Observable.<Object>just(fulmsg.message())
-                            .concatWith(fulmsg.body().concatMap(body -> body.content()))
-                            .concatWith(Observable.just(LastHttpContent.EMPTY_LAST_CONTENT));
+                    @SuppressWarnings({ "unchecked" })
+                    final FullMessage<HttpResponse> fulmsg = (FullMessage<HttpResponse>)obj;
+                    return fullmsg2hobjs(fulmsg);
                 } else if (obj instanceof Stepable) {
-                    return handleStepable((Stepable<Object>)obj, request.protocolVersion());
+                    @SuppressWarnings("unchecked")
+                    final Stepable<Object> stepable = (Stepable<Object>)obj;
+                    return handleStepable(stepable, request.protocolVersion());
                 } else {
                     return Observable.just(new DefaultHttpContent(Unpooled.copiedBuffer(obj.toString(), CharsetUtil.UTF_8)));
                 }
             });
+    }
+
+    private Observable<Object> fullmsg2hobjs(final FullMessage<HttpResponse> fulmsg) {
+        return fulmsg.body().concatMap(body -> {
+            if ( null != body.contentType()) {
+                fulmsg.message().headers().set(HttpHeaderNames.CONTENT_TYPE, body.contentType());
+            }
+            if ( body.contentLength() > 0 ) {
+                HttpUtil.setContentLength(fulmsg.message(), body.contentLength());
+            } else {
+                HttpUtil.setTransferEncodingChunked(fulmsg.message(), true);
+            }
+            return Observable.<Object>just(fulmsg.message()).concatWith(body.content());
+        }).concatWith(Observable.just(LastHttpContent.EMPTY_LAST_CONTENT));
     }
 
     private Observable<? extends Object> handleStepable(final Stepable<Object> stepable, final HttpVersion version) {
