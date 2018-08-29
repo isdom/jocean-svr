@@ -316,16 +316,15 @@ public class ZipUtil {
                 }
             });
 
-            return entities.flatMap(entity ->
+            return entities.concatMap(entity ->
                         // start zip: entry info
                         Observable.defer(()->zipentry(entity.entryName(), zipout, bufout)).concatWith(
                         // zip content
                         entity.body().map(dozip(zipout, bufout, readbuf, onzipped))).concatWith(
                          // close entry
-                        Observable.defer(()->closeentry(zipout, bufout)) ),
-                    e -> Observable.error(e),
+                        Observable.defer(()->closeentry(zipout, bufout)) ))
                     // end of zip: finish all
-                    ()-> Observable.defer(()->finishzip(zipout, bufout)));
+                    .concatWith(Observable.defer(()->finishzip(zipout, bufout)));
         };
     }
 
@@ -453,7 +452,6 @@ public class ZipUtil {
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout) {
         final Observable<? extends DisposableWrapper<? extends ByteBuf>> zipped = fromBufout(bufout, () -> {
             try {
-//                zipout.closeEntry();
                 zipout.finish();
                 zipout.close();
             } catch (final IOException e) {
