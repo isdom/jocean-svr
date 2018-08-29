@@ -623,8 +623,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     return Observable.just(new DefaultLastHttpContent(body2content((ResponseBody)obj)));
                 } else if (obj instanceof FullMessage) {
                     @SuppressWarnings({ "unchecked" })
-                    final FullMessage<HttpResponse> fulmsg = (FullMessage<HttpResponse>)obj;
-                    return fullmsg2hobjs(fulmsg);
+                    final FullMessage<HttpResponse> fullmsg = (FullMessage<HttpResponse>)obj;
+                    return fullmsg2hobjs(fullmsg);
                 } else if (obj instanceof Stepable) {
                     @SuppressWarnings("unchecked")
                     final Stepable<Object> stepable = (Stepable<Object>)obj;
@@ -635,17 +635,18 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             });
     }
 
-    private Observable<Object> fullmsg2hobjs(final FullMessage<HttpResponse> fulmsg) {
-        return fulmsg.body().concatMap(body -> {
-            if ( null != body.contentType()) {
-                fulmsg.message().headers().set(HttpHeaderNames.CONTENT_TYPE, body.contentType());
+    private Observable<Object> fullmsg2hobjs(final FullMessage<HttpResponse> fullmsg) {
+        return fullmsg.body().concatMap(body -> {
+            final HttpResponse resp = fullmsg.message();
+            if (null != body.contentType()) {
+                resp.headers().set(HttpHeaderNames.CONTENT_TYPE, body.contentType());
             }
             if ( body.contentLength() > 0 ) {
-                HttpUtil.setContentLength(fulmsg.message(), body.contentLength());
+                HttpUtil.setContentLength(resp, body.contentLength());
             } else {
-                HttpUtil.setTransferEncodingChunked(fulmsg.message(), true);
+                HttpUtil.setTransferEncodingChunked(resp, true);
             }
-            return Observable.<Object>just(fulmsg.message()).concatWith(body.content());
+            return Observable.<Object>just(resp).concatWith(body.content());
         }).concatWith(Observable.just(LastHttpContent.EMPTY_LAST_CONTENT));
     }
 
