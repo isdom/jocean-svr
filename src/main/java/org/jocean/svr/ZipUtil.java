@@ -328,37 +328,6 @@ public class ZipUtil {
         };
     }
 
-    public static Transformer<ByteBufSlice, ByteBufSlice> zipSlices(
-            final Func0<DisposableWrapper<ByteBuf>> allocator,
-            final String entryName,
-            final Terminable terminable,
-            final int bufsize,
-            final Action1<DisposableWrapper<? extends ByteBuf>> onzipped) {
-        return bbses -> {
-            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
-            final ZipOutputStream zipout = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
-            zipout.setLevel(Deflater.BEST_COMPRESSION);
-
-            final byte[] readbuf = new byte[bufsize];
-
-            terminable.doOnTerminate(() -> {
-                try {
-                    zipout.close();
-                } catch (final IOException e1) {
-                }
-            });
-
-            return Observable.concat(
-                    // start zip: entry info
-                    Observable.defer(()->zipentry(entryName, zipout, bufout)),
-                    // zip content
-                    bbses.map(dozip(zipout, bufout, readbuf, onzipped)),
-                    // end of zip: finish all
-                    Observable.defer(()->finishzip(zipout, bufout)))
-                    ;
-        };
-    }
-
     private static Observable<ByteBufSlice> zipentry(
             final String entryName,
             final ZipOutputStream zipout,
