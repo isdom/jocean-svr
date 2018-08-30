@@ -440,15 +440,15 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             } else if (gt1st.equals(String.class)) {
                 return strings2Response((Observable<String>)returnValue, request);
             } else /*if (gt1st.equals(Object.class))*/ {
-                return objs2Response((Observable<Object>)returnValue, request);
+                return objs2Response((Observable<Object>)returnValue, request.protocolVersion());
             }
         } else if (null != returnValue) {
             if (returnValue instanceof Observable) {
-                return objs2Response((Observable<Object>)returnValue, request);
+                return objs2Response((Observable<Object>)returnValue, request.protocolVersion());
             } else if (String.class.equals(returnValue.getClass())) {
                 return strings2Response(Observable.just((String)returnValue), request);
             } else if (MessageResponse.class.isAssignableFrom(returnValue.getClass())) {
-                return objs2Response(Observable.just(returnValue), request);
+                return objs2Response(Observable.just(returnValue), request.protocolVersion());
             }
             // return is NOT Observable<?>
 //            if (Object.class.equals(returnType)) {
@@ -611,14 +611,14 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return Observable.class.equals(getParameterizedRawType(type));
     }
 
-    private Observable<? extends Object> objs2Response(final Observable<Object> objs, final HttpRequest request) {
+    private Observable<? extends Object> objs2Response(final Observable<Object> objs, final HttpVersion version) {
         return objs.flatMap(obj -> {
                 if (obj instanceof HttpObject) {
                     return Observable.just(obj);
                 } else if (obj instanceof DisposableWrapper) {
                     return Observable.just(obj);
                 } else if (obj instanceof MessageResponse) {
-                    return Observable.just(buildResponse((MessageResponse)obj, request.protocolVersion()));
+                    return Observable.just(buildResponse((MessageResponse)obj, version));
                 } else if (obj instanceof ResponseBody) {
                     return Observable.just(new DefaultLastHttpContent(body2content((ResponseBody)obj)));
                 } else if (obj instanceof FullMessage) {
@@ -628,7 +628,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 } else if (obj instanceof Stepable) {
                     @SuppressWarnings("unchecked")
                     final Stepable<Object> stepable = (Stepable<Object>)obj;
-                    return handleStepable(stepable, request.protocolVersion());
+                    return handleStepable(stepable, version);
                 } else {
                     return Observable.just(new DefaultHttpContent(Unpooled.copiedBuffer(obj.toString(), CharsetUtil.UTF_8)));
                 }
