@@ -84,7 +84,6 @@ import com.google.common.collect.Sets;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
-import io.netty.handler.codec.http.DefaultHttpContent;
 import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.DefaultLastHttpContent;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -99,7 +98,6 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder;
-import io.netty.util.CharsetUtil;
 import rx.Completable;
 import rx.Observable;
 import rx.functions.Action1;
@@ -630,9 +628,29 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     final Stepable<Object> stepable = (Stepable<Object>)obj;
                     return handleStepable(stepable, version);
                 } else {
-                    return Observable.just(new DefaultHttpContent(Unpooled.copiedBuffer(obj.toString(), CharsetUtil.UTF_8)));
+                    return Observable.just(fullmsg2hobjs(fullmsgOf(obj, version)));
+//                    return Observable.just(new DefaultHttpContent(Unpooled.copiedBuffer(obj.toString(), CharsetUtil.UTF_8)));
                 }
             });
+    }
+
+    private FullMessage<HttpResponse> fullmsgOf(final Object obj, final HttpVersion version) {
+        final HttpResponse resp = new DefaultHttpResponse(version, HttpResponseStatus.OK);
+        if (obj instanceof WithStatus) {
+            resp.setStatus(HttpResponseStatus.valueOf(((WithStatus)obj).status()));
+        }
+        fillParams(obj, resp);
+
+        return new FullMessage<HttpResponse>() {
+            @Override
+            public HttpResponse message() {
+                return resp;
+            }
+
+            @Override
+            public Observable<? extends MessageBody> body() {
+                return Observable.empty();
+            }};
     }
 
     private Observable<Object> fullmsg2hobjs(final FullMessage<HttpResponse> fullmsg) {
