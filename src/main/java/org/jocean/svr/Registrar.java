@@ -628,7 +628,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     final Stepable<Object> stepable = (Stepable<Object>)obj;
                     return handleStepable(stepable, version);
                 } else {
-                    return Observable.just(fullmsg2hobjs(fullmsgOf(obj, version)));
+                    return fullmsg2hobjs(fullmsgOf(obj, version));
 //                    return Observable.just(new DefaultHttpContent(Unpooled.copiedBuffer(obj.toString(), CharsetUtil.UTF_8)));
                 }
             });
