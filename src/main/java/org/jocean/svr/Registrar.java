@@ -641,6 +641,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
         fillParams(obj, resp);
 
+        final Observable<? extends MessageBody> body = bodyOf(obj);
+
         return new FullMessage<HttpResponse>() {
             @Override
             public HttpResponse message() {
@@ -649,8 +651,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
             @Override
             public Observable<? extends MessageBody> body() {
-                return Observable.empty();
+                return body;
             }};
+    }
+
+    private Observable<? extends MessageBody> bodyOf(final Object obj) {
+        return (obj instanceof WithBody) ? ((WithBody)obj).body() : Observable.empty();
     }
 
     private Observable<Object> fullmsg2hobjs(final FullMessage<HttpResponse> fullmsg) {
