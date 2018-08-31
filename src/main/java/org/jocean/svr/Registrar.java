@@ -20,6 +20,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
 import javax.inject.Inject;
@@ -662,18 +663,33 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Observable<Object> fullmsg2hobjs(final FullMessage<HttpResponse> fullmsg) {
+        final HttpResponse resp = fullmsg.message();
+        final AtomicInteger bodyCnt = new AtomicInteger(0);
+
         return fullmsg.body().concatMap(body -> {
-            final HttpResponse resp = fullmsg.message();
-            if (null != body.contentType()) {
-                resp.headers().set(HttpHeaderNames.CONTENT_TYPE, body.contentType());
-            }
-            if ( body.contentLength() > 0 ) {
-                HttpUtil.setContentLength(resp, body.contentLength());
+            if (bodyCnt.get() == 0) {
+                bodyCnt.incrementAndGet();
+                if (null != body.contentType()) {
+                    resp.headers().set(HttpHeaderNames.CONTENT_TYPE, body.contentType());
+                }
+                if ( body.contentLength() > 0 ) {
+                    HttpUtil.setContentLength(resp, body.contentLength());
+                } else {
+                    HttpUtil.setTransferEncodingChunked(resp, true);
+                }
+                return Observable.<Object>just(resp).concatWith(body.content());
             } else {
-                HttpUtil.setTransferEncodingChunked(resp, true);
+                LOG.warn("NOT support multipart body, ignore body {}", body);
+                return Observable.empty();
             }
-            return Observable.<Object>just(resp).concatWith(body.content());
-        }).concatWith(Observable.just(LastHttpContent.EMPTY_LAST_CONTENT));
+        }).concatWith(Observable.defer(() -> {
+            if (bodyCnt.get() > 0) {
+                return Observable.just(LastHttpContent.EMPTY_LAST_CONTENT);
+            } else {
+                // no body
+                return Observable.just(resp, LastHttpContent.EMPTY_LAST_CONTENT);
+            }
+        }));
     }
 
     private Observable<? extends Object> handleStepable(final Stepable<Object> stepable, final HttpVersion version) {
