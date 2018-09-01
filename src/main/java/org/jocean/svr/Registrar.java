@@ -5,6 +5,7 @@ package org.jocean.svr;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
+import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
@@ -36,11 +37,13 @@ import javax.ws.rs.POST;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
+import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
 
 import org.jocean.http.BodyBuilder;
 import org.jocean.http.ByteBufSlice;
 import org.jocean.http.ContentEncoder;
+import org.jocean.http.ContentUtil;
 import org.jocean.http.FullMessage;
 import org.jocean.http.HttpSlice;
 import org.jocean.http.HttpSliceUtil;
@@ -386,7 +389,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             request,
                             pair.second,
                             interceptors.toArray(new MethodInterceptor[0]));
-                    final Observable<? extends Object> obsResponse = invokeProcessor(request,
+                    final Observable<? extends Object> obsResponse = invokeProcessor(
+                            trade,
+                            request,
                             resource,
                             processor,
                             argctx);
@@ -400,8 +405,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Observable<? extends Object> invokeProcessor(
+            final HttpTrade trade,
             final HttpRequest request,
-//            final Observable<? extends HttpObject> obsRequest,
             final Object resource,
             final Method processor,
             final ArgsCtx argsctx
@@ -409,8 +414,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         try {
             final Object returnValue = processor.invoke(resource, buildArgs(resource, argsctx));
             if (null!=returnValue) {
-                final Observable<? extends Object> obsResponse = returnValue2ObsResponse(request,
-                        processor.getGenericReturnType(),
+                final Observable<? extends Object> obsResponse = returnValue2ObsResponse(
+                        trade,
+                        request,
+                        processor,
                         returnValue);
                 if (null!=obsResponse) {
                     return obsResponse;
@@ -428,33 +435,31 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     @SuppressWarnings("unchecked")
     private Observable<? extends Object> returnValue2ObsResponse(
+            final HttpTrade trade,
             final HttpRequest request,
-            final Type returnType,
+            final Method processor,
             final Object returnValue) {
-        if (isObservableType(returnType)) {
+        if (isObservableType(processor.getGenericReturnType())) {
             //  return type is Observable<XXX>
-            final Type gt1st = getGenericTypeOf(returnType, 0);
+            final Type gt1st = getGenericTypeOf(processor.getGenericReturnType(), 0);
             if (gt1st.equals(HttpObject.class)) {
                 return (Observable<HttpObject>)returnValue;
             } else if (gt1st.equals(String.class)) {
                 return strings2Response((Observable<String>)returnValue, request);
             } else /*if (gt1st.equals(Object.class))*/ {
-                return objs2Response((Observable<Object>)returnValue, request.protocolVersion());
+                return objs2Response((Observable<Object>)returnValue, trade, processor, request.protocolVersion());
             }
         } else if (null != returnValue) {
             if (returnValue instanceof Observable) {
-                return objs2Response((Observable<Object>)returnValue, request.protocolVersion());
+                return objs2Response((Observable<Object>)returnValue, trade, processor, request.protocolVersion());
             } else if (String.class.equals(returnValue.getClass())) {
                 return strings2Response(Observable.just((String)returnValue), request);
             } else if (MessageResponse.class.isAssignableFrom(returnValue.getClass())) {
-                return objs2Response(Observable.just(returnValue), request.protocolVersion());
+                return objs2Response(Observable.just(returnValue), trade, processor, request.protocolVersion());
             } else {
-                return fullmsg2hobjs(fullmsgOf(returnValue, request.protocolVersion()));
+                return fullmsg2hobjs(fullmsgOf(returnValue, request.protocolVersion(), trade, processor));
             }
             // return is NOT Observable<?>
-//            if (Object.class.equals(returnType)) {
-//                // TODO
-//            }
         }
         return null;
     }
@@ -612,7 +617,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return Observable.class.equals(getParameterizedRawType(type));
     }
 
-    private Observable<? extends Object> objs2Response(final Observable<Object> objs, final HttpVersion version) {
+    private Observable<? extends Object> objs2Response(final Observable<Object> objs,
+            final HttpTrade trade,
+            final Method processor,
+            final HttpVersion version) {
         return objs.flatMap(obj -> {
                 if (obj instanceof HttpObject) {
                     return Observable.just(obj);
@@ -631,20 +639,24 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     final Stepable<Object> stepable = (Stepable<Object>)obj;
                     return handleStepable(stepable, version);
                 } else {
-                    return fullmsg2hobjs(fullmsgOf(obj, version));
+                    return fullmsg2hobjs(fullmsgOf(obj, version, trade, processor));
 //                    return Observable.just(new DefaultHttpContent(Unpooled.copiedBuffer(obj.toString(), CharsetUtil.UTF_8)));
                 }
             });
     }
 
-    private FullMessage<HttpResponse> fullmsgOf(final Object obj, final HttpVersion version) {
+    private FullMessage<HttpResponse> fullmsgOf(
+            final Object obj,
+            final HttpVersion version,
+            final HttpTrade trade,
+            final Method processor) {
         final HttpResponse resp = new DefaultHttpResponse(version, HttpResponseStatus.OK);
         if (obj instanceof WithStatus) {
             resp.setStatus(HttpResponseStatus.valueOf(((WithStatus)obj).status()));
         }
         fillParams(obj, resp);
 
-        final Observable<? extends MessageBody> body = bodyOf(obj);
+        final Observable<? extends MessageBody> body = bodyOf(obj, trade, processor);
 
         return new FullMessage<HttpResponse>() {
             @Override
@@ -658,8 +670,75 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }};
     }
 
-    private Observable<? extends MessageBody> bodyOf(final Object obj) {
-        return (obj instanceof WithBody) ? ((WithBody)obj).body() : Observable.empty();
+    private Observable<? extends MessageBody> bodyOf(final Object obj, final HttpTrade trade, final Method processor) {
+        return (obj instanceof WithBody) ? ((WithBody)obj).body() : tryContent(obj, trade, processor);
+    }
+
+    private Observable<MessageBody> tryContent(final Object obj, final HttpTrade trade, final Method processor) {
+        return (obj instanceof WithContent) ? fromContent(((WithContent)obj).content(), trade, processor) : Observable.empty();
+    }
+
+    static final ContentEncoder[] _encoders = new ContentEncoder[]{ContentUtil.TOJSON, ContentUtil.TOXML};
+
+    private Observable<MessageBody> fromContent(final Object content, final HttpTrade trade, final Method processor) {
+        final Produces produces = processor.getAnnotation(Produces.class);
+        final ContentEncoder encoder = produces != null ? encoderOf(produces.value()) : ContentUtil.TOJSON;
+        ;
+        final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(
+                buildAllocatorBuilder(trade).build(512),
+                dwb->dwb.unwrap());
+        final List<DisposableWrapper<ByteBuf>> dwbs = new ArrayList<>();
+        bufout.setOutput(dwb -> dwbs.add(dwb));
+
+        try {
+            encoder.encoder().call(content, bufout);
+        } finally {
+            try {
+                bufout.flush();
+                bufout.close();
+            } catch (final IOException e) {
+            }
+        }
+
+        final int size = sizeOf(dwbs);
+        return Observable.just(new MessageBody() {
+            @Override
+            public String contentType() {
+                return encoder.contentType();
+            }
+            @Override
+            public int contentLength() {
+                return size;
+            }
+            @Override
+            public Observable<? extends ByteBufSlice> content() {
+                return Observable.just(new ByteBufSlice() {
+                    @Override
+                    public void step() {}
+                    @Override
+                    public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                        return Observable.from(dwbs);
+                    }});
+            }});
+    }
+
+    private int sizeOf(final List<DisposableWrapper<ByteBuf>> dwbs) {
+        int size = 0;
+        for (final DisposableWrapper<ByteBuf> dwb : dwbs) {
+            size += dwb.unwrap().readableBytes();
+        }
+        return size;
+    }
+
+    private ContentEncoder encoderOf(final String[] mimeTypes) {
+        for (final String type : mimeTypes) {
+            for (final ContentEncoder encoder : _encoders) {
+                if (encoder.contentType().equals(type)) {
+                    return encoder;
+                }
+            }
+        }
+        return ContentUtil.TOJSON;
     }
 
     private Observable<Object> fullmsg2hobjs(final FullMessage<HttpResponse> fullmsg) {
