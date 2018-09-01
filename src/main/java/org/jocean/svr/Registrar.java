@@ -675,7 +675,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Observable<MessageBody> tryContent(final Object obj, final HttpTrade trade, final Method processor) {
-        return (obj instanceof WithContent) ? fromContent(((WithContent)obj).content(), trade, processor) : Observable.empty();
+        return (obj instanceof WithContent)
+                ? fromContent(((WithContent)obj).content(), trade, processor)
+                : fromContent(obj, trade, processor);
     }
 
     static final ContentEncoder[] _encoders = new ContentEncoder[]{ContentUtil.TOJSON, ContentUtil.TOXML};
