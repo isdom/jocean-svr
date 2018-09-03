@@ -1,33 +1,17 @@
 package org.jocean.svr;
 
-import java.util.concurrent.atomic.AtomicReference;
-
 import javax.ws.rs.HeaderParam;
 import javax.ws.rs.core.MediaType;
 
 import org.jocean.http.DoFlush;
-import org.jocean.http.MessageBody;
-import org.jocean.http.MessageUtil;
 import org.jocean.http.util.RxNettys;
 import org.jocean.idiom.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.alibaba.fastjson.JSON;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
-import com.google.common.base.Charsets;
-
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
-import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpRequest;
-import io.netty.handler.codec.http.HttpResponse;
-import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpUtil;
-import io.netty.handler.codec.http.HttpVersion;
-import io.netty.handler.codec.http.LastHttpContent;
 import rx.Observable;
 import rx.Observable.Transformer;
 import rx.functions.Func1;
@@ -73,22 +57,15 @@ public class ResponseUtil {
     }
 
     public static Object responseAsJson(final int status, final Object pojo) {
-        return new FullResponse(status, MediaType.APPLICATION_JSON, Unpooled.wrappedBuffer(JSON.toJSONBytes(pojo)));
+        return new StatusAndContent(status, MediaType.APPLICATION_JSON, pojo);
     }
 
     public static Object responseAsXml(final int status, final Object pojo) {
-        try {
-            final XmlMapper mapper = new XmlMapper();
-            return new FullResponse(status, MediaType.APPLICATION_XML,
-                    Unpooled.wrappedBuffer(mapper.writeValueAsBytes(pojo)));
-        } catch (final JsonProcessingException e) {
-            LOG.warn("exception when convert {} to xml, detail: {}", pojo, ExceptionUtils.exception2detail(e));
-            return statusOnly(500);
-        }
+        return new StatusAndContent(status, MediaType.APPLICATION_XML, pojo);
     }
 
     public static Object responseAsText(final int status, final String text) {
-        return new FullResponse(status, MediaType.TEXT_PLAIN, Unpooled.wrappedBuffer(text.getBytes(Charsets.UTF_8)));
+        return new StatusAndContent(status, MediaType.TEXT_PLAIN, text);
     }
 
     public static MessageResponse respWithStatus(final int status) {
@@ -137,18 +114,8 @@ public class ResponseUtil {
         return DEFAULT_ERROR_HANDLER;
     }
 
-    public static ResponseBody emptyBody() {
-        return EMPTY_BODY;
-    }
-
-    private static final ResponseBody EMPTY_BODY = new ResponseBody() {
-        @Override
-        public ByteBuf content() {
-            return null;
-        }};
-
-    private static final class FullResponse implements MessageResponse, ResponseBody {
-        FullResponse(final int status, final String contentType, final ByteBuf content) {
+    private static final class StatusAndContent implements WithStatus, WithContent {
+        StatusAndContent(final int status, final String contentType, final Object content) {
             this._status = status;
             this._contentType = contentType;
             this._content = content;
@@ -160,14 +127,17 @@ public class ResponseUtil {
         }
 
         @Override
-        public ByteBuf content() {
-            return this._content;
+        public String contentType() {
+            return _contentType;
+        }
+
+        @Override
+        public Object content() {
+            return _content;
         }
 
         private final int _status;
-        private final ByteBuf _content;
-
-        @HeaderParam("content-type")
+        private final Object _content;
         private final String _contentType;
     }
 
@@ -182,46 +152,5 @@ public class ResponseUtil {
         }
 
         private final int _status;
-    }
-
-    public static Observable<Object> response(final int status) {
-        return Observable.<Object>just(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(status)),
-                LastHttpContent.EMPTY_LAST_CONTENT);
-    }
-
-    public interface ResponseBuilder {
-
-        public ResponseBuilder status(final int status);
-
-        public ResponseBuilder body(final Observable<? extends MessageBody> body);
-
-        public Observable<Object> build();
-    }
-
-    public static ResponseBuilder response() {
-        final AtomicReference<Observable<Object>> responseRef = new AtomicReference<>(response(200));
-        return new ResponseBuilder() {
-
-            @Override
-            public ResponseBuilder status(final int status) {
-                responseRef.set(responseRef.get().doOnNext(obj -> {
-                    if (obj instanceof HttpResponse) {
-                        ((HttpResponse)obj).setStatus(HttpResponseStatus.valueOf(status));
-                    }
-                }));
-                return this;
-            }
-
-            @Override
-            public ResponseBuilder body(final Observable<? extends MessageBody> body) {
-                responseRef.set(responseRef.get().compose(MessageUtil.addBody(body)));
-                return this;
-            }
-
-            @Override
-            public Observable<Object> build() {
-                return responseRef.get();
-            }
-        };
     }
 }
