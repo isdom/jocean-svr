@@ -680,7 +680,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 : fromContent(obj, null, trade, processor);
     }
 
-    static final ContentEncoder[] _encoders = new ContentEncoder[]{ContentUtil.TOJSON, ContentUtil.TOXML, ContentUtil.TOTEXT};
+    static final ContentEncoder[] _encoders = new ContentEncoder[]{
+            ContentUtil.TOJSON,
+            ContentUtil.TOXML,
+            ContentUtil.TOTEXT,
+            ContentUtil.TOHTML};
 
     private Observable<MessageBody> fromContent(
             final Object content,
