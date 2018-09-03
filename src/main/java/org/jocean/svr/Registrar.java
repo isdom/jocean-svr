@@ -676,16 +676,19 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     private Observable<MessageBody> tryContent(final Object obj, final HttpTrade trade, final Method processor) {
         return (obj instanceof WithContent)
-                ? fromContent(((WithContent)obj).content(), trade, processor)
-                : fromContent(obj, trade, processor);
+                ? fromContent(((WithContent)obj).content(), ((WithContent)obj).contentType(), trade, processor)
+                : fromContent(obj, null, trade, processor);
     }
 
-    static final ContentEncoder[] _encoders = new ContentEncoder[]{ContentUtil.TOJSON, ContentUtil.TOXML};
+    static final ContentEncoder[] _encoders = new ContentEncoder[]{ContentUtil.TOJSON, ContentUtil.TOXML, ContentUtil.TOTEXT};
 
-    private Observable<MessageBody> fromContent(final Object content, final HttpTrade trade, final Method processor) {
-        final Produces produces = processor.getAnnotation(Produces.class);
-        final ContentEncoder encoder = produces != null ? encoderOf(produces.value()) : ContentUtil.TOJSON;
-        ;
+    private Observable<MessageBody> fromContent(
+            final Object content,
+            final String contentType,
+            final HttpTrade trade,
+            final Method processor) {
+        final ContentEncoder encoder = getEncoder(contentType, processor);
+
         final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(
                 buildAllocatorBuilder(trade).build(512),
                 dwb->dwb.unwrap());
@@ -722,6 +725,13 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         return Observable.from(dwbs);
                     }});
             }});
+    }
+
+    private ContentEncoder getEncoder(final String contentType, final Method processor) {
+        final Produces produces = processor.getAnnotation(Produces.class);
+        return contentType != null
+                ? encoderOf(new String[]{contentType})
+                : produces != null ? encoderOf(produces.value()) : ContentUtil.TOJSON;
     }
 
     private int sizeOf(final List<DisposableWrapper<ByteBuf>> dwbs) {
