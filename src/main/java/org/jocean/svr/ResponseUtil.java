@@ -41,57 +41,6 @@ public class ResponseUtil {
         throw new IllegalStateException("No instances!");
     }
 
-    static private class ACRHeader {
-        @HeaderParam("access-control-request-headers")
-        private String _headers;
-
-        @HeaderParam("access-control-request-method")
-        private String _method;
-
-        @HeaderParam("origin")
-        private String _origin;
-    }
-
-    static private class ACAOnly implements MessageResponse, ResponseBody {
-        @HeaderParam("access-control-allow-headers")
-        private String _headers;
-
-        @HeaderParam("access-control-allow-methods")
-        private String _method;
-
-        @HeaderParam("access-control-allow-origin")
-        private String _origin;
-
-        @HeaderParam("access-control-allow-credentials")
-        private final boolean _credentials = true;
-
-        @Override
-        public ByteBuf content() {
-            return null;
-        }
-
-        @Override
-        public int status() {
-            return 202;
-        }
-    }
-
-    public static Observable<Object> acceptCORS(final Observable<HttpObject> request) {
-        final ACRHeader hdr = new ACRHeader();
-        return request.compose(RxNettys.asHttpRequest())
-                .doOnNext(ParamUtil.injectHeaderParams(hdr))
-                .map(new Func1<HttpRequest, Object>() {
-                    @Override
-                    public Object call(final HttpRequest req) {
-                        final ACAOnly aca = new ACAOnly();
-                        aca._headers = hdr._headers;
-                        aca._method = hdr._method;
-                        aca._origin = hdr._origin;
-                        return aca;
-                    }})
-                .delaySubscription(request.last());
-    }
-
     public static Object flushOnly() {
         return DoFlush.Util.flushOnly();
     }
@@ -100,7 +49,7 @@ public class ResponseUtil {
         return new StatusOnly(status);
     }
 
-    public static class Redirectable implements MessageResponse, ResponseBody {
+    public static class Redirectable extends HeaderOnly implements WithStatus {
 
         public Redirectable(final String location) {
             this._location = location;
@@ -109,11 +58,6 @@ public class ResponseUtil {
         @Override
         public int status() {
             return 302;
-        }
-
-        @Override
-        public ByteBuf content() {
-            return null;
         }
 
         public String location() {
@@ -227,7 +171,7 @@ public class ResponseUtil {
         private final String _contentType;
     }
 
-    private static final class StatusOnly implements MessageResponse, ResponseBody {
+    private static final class StatusOnly extends HeaderOnly implements WithStatus {
         StatusOnly(final int status) {
             this._status = status;
         }
@@ -235,11 +179,6 @@ public class ResponseUtil {
         @Override
         public int status() {
             return _status;
-        }
-
-        @Override
-        public ByteBuf content() {
-            return null;
         }
 
         private final int _status;

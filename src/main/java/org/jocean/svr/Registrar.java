@@ -691,44 +691,48 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final String contentType,
             final HttpTrade trade,
             final Method processor) {
-        final ContentEncoder encoder = getEncoder(contentType, processor);
+        if (null != content) {
+            final ContentEncoder encoder = getEncoder(contentType, processor);
 
-        final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(
-                buildAllocatorBuilder(trade).build(512),
-                dwb->dwb.unwrap());
-        final List<DisposableWrapper<ByteBuf>> dwbs = new ArrayList<>();
-        bufout.setOutput(dwb -> dwbs.add(dwb));
+            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(
+                    buildAllocatorBuilder(trade).build(512),
+                    dwb->dwb.unwrap());
+            final List<DisposableWrapper<ByteBuf>> dwbs = new ArrayList<>();
+            bufout.setOutput(dwb -> dwbs.add(dwb));
 
-        try {
-            encoder.encoder().call(content, bufout);
-        } finally {
             try {
-                bufout.flush();
-                bufout.close();
-            } catch (final IOException e) {
+                encoder.encoder().call(content, bufout);
+            } finally {
+                try {
+                    bufout.flush();
+                    bufout.close();
+                } catch (final IOException e) {
+                }
             }
-        }
 
-        final int size = sizeOf(dwbs);
-        return Observable.just(new MessageBody() {
-            @Override
-            public String contentType() {
-                return encoder.contentType();
-            }
-            @Override
-            public int contentLength() {
-                return size;
-            }
-            @Override
-            public Observable<? extends ByteBufSlice> content() {
-                return Observable.just(new ByteBufSlice() {
-                    @Override
-                    public void step() {}
-                    @Override
-                    public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                        return Observable.from(dwbs);
-                    }});
-            }});
+            final int size = sizeOf(dwbs);
+            return Observable.just(new MessageBody() {
+                @Override
+                public String contentType() {
+                    return encoder.contentType();
+                }
+                @Override
+                public int contentLength() {
+                    return size;
+                }
+                @Override
+                public Observable<? extends ByteBufSlice> content() {
+                    return Observable.just(new ByteBufSlice() {
+                        @Override
+                        public void step() {}
+                        @Override
+                        public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                            return Observable.from(dwbs);
+                        }});
+                }});
+        } else {
+            return Observable.empty();
+        }
     }
 
     private ContentEncoder getEncoder(final String contentType, final Method processor) {
