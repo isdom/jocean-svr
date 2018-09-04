@@ -115,32 +115,4 @@ public class ResponseUtil {
     public static Transformer<Object, Object> defaultErrorHandler() {
         return DEFAULT_ERROR_HANDLER;
     }
-
-    /*
-    public static Transformer<Object, Object> handleExpect100(
-            final Observable<HttpObject> request,
-            final Func1<HttpRequest, Integer> continueHandler) {
-        return new Transformer<Object, Object>() {
-            @Override
-            public Observable<Object> call(final Observable<Object> response) {
-                return request.compose(RxNettys.asHttpRequest())
-                .flatMap(new Func1<HttpRequest, Observable<Object>>() {
-                    @Override
-                    public Observable<Object> call(final HttpRequest req) {
-                        if (!HttpUtil.is100ContinueExpected(req)) {
-                            return response;
-                        } else {
-                            final int status = continueHandler.call(req);
-                            if (status == 100) {
-                                return Observable.concat(
-                                    Observable.<Object>just(new StatusOnly(100), DoFlush.Util.flushOnly()),
-                                    response);
-                            } else {
-                                return Observable.<Object>just(ResponseUtil.statusOnly(status));
-                            }
-                        }
-                    }});
-            }};
-    }
-    */
 }
