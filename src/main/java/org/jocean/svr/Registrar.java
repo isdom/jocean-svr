@@ -640,7 +640,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     return handleStepable(stepable, version);
                 } else {
                     return fullmsg2hobjs(fullmsgOf(obj, version, trade, processor));
-//                    return Observable.just(new DefaultHttpContent(Unpooled.copiedBuffer(obj.toString(), CharsetUtil.UTF_8)));
                 }
             });
     }
@@ -785,7 +784,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (bodyCnt.get() > 0) {
                 return Observable.just(LastHttpContent.EMPTY_LAST_CONTENT);
             } else {
-                // no body
+                // no body, so force set content-length to 0
+                HttpUtil.setContentLength(resp, 0);
                 return Observable.just(resp, LastHttpContent.EMPTY_LAST_CONTENT);
             }
         }));
