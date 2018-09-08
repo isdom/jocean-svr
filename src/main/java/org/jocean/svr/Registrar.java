@@ -87,9 +87,7 @@ import com.google.common.collect.Sets;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.DefaultHttpResponse;
-import io.netty.handler.codec.http.DefaultLastHttpContent;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
@@ -454,8 +452,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 return objs2Response((Observable<Object>)returnValue, trade, processor, request.protocolVersion());
             } else if (String.class.equals(returnValue.getClass())) {
                 return strings2Response(Observable.just((String)returnValue), request);
-            } else if (MessageResponse.class.isAssignableFrom(returnValue.getClass())) {
-                return objs2Response(Observable.just(returnValue), trade, processor, request.protocolVersion());
             } else {
                 return fullmsg2hobjs(fullmsgOf(returnValue, request.protocolVersion(), trade, processor));
             }
@@ -626,10 +622,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     return Observable.just(obj);
                 } else if (obj instanceof DisposableWrapper) {
                     return Observable.just(obj);
-                } else if (obj instanceof MessageResponse) {
-                    return Observable.just(buildResponse((MessageResponse)obj, version));
-                } else if (obj instanceof ResponseBody) {
-                    return Observable.just(new DefaultLastHttpContent(body2content((ResponseBody)obj)));
                 } else if (obj instanceof FullMessage) {
                     @SuppressWarnings({ "unchecked" })
                     final FullMessage<HttpResponse> fullmsg = (FullMessage<HttpResponse>)obj;
@@ -792,40 +784,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Observable<? extends Object> handleStepable(final Stepable<Object> stepable, final HttpVersion version) {
-        if (stepable.element() instanceof MessageResponse) {
-            return Observable.just(replaceElement(stepable, buildResponse((MessageResponse)stepable.element(), version)));
-        } else {
-            return Observable.just(stepable);
-        }
-    }
-
-    private Stepable<Object> replaceElement(final Stepable<Object> stepable, final Object element) {
-        return new Stepable<Object>() {
-            @Override
-            public void step() {
-                stepable.step();
-            }
-
-            @Override
-            public Object element() {
-                return element;
-            }
-        };
-    }
-
-    private HttpResponse buildResponse(final MessageResponse msgresp, final HttpVersion version) {
-        HttpResponse resp = null;
-        if (msgresp instanceof ResponseBody) {
-            final ByteBuf content = body2content((ResponseBody)msgresp);
-            resp = new DefaultFullHttpResponse(version, HttpResponseStatus.valueOf(msgresp.status()),
-                    content);
-            HttpUtil.setContentLength(resp, content.readableBytes());
-        } else {
-            resp = new DefaultHttpResponse(version, HttpResponseStatus.valueOf(msgresp.status()));
-            HttpUtil.setTransferEncodingChunked(resp, true);
-        }
-        fillParams(msgresp, resp);
-        return resp;
+        return Observable.just(stepable);
     }
 
     private void fillParams(final Object obj, final HttpResponse resp) {
@@ -1095,10 +1054,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     @Override
     public void setMBeanRegister(final MBeanRegister register) {
 //        this._register = register;
-    }
-
-    private ByteBuf body2content(final ResponseBody body) {
-        return null != body.content() ? body.content() : Unpooled.EMPTY_BUFFER;
     }
 
     private final Map<String, ResContext> _resCtxs =

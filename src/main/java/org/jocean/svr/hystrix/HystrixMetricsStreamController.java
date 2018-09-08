@@ -6,7 +6,7 @@ import javax.ws.rs.Path;
 import javax.ws.rs.core.HttpHeaders;
 
 import org.jocean.http.DoFlush;
-import org.jocean.svr.MessageResponse;
+import org.jocean.svr.WithStatus;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Controller;
 
@@ -19,7 +19,8 @@ import rx.Observable;
 @Scope("singleton")
 public class HystrixMetricsStreamController {
 
-    static class StreamResponse implements MessageResponse {
+    //  TODO, re-impl
+    static class StreamResponse implements WithStatus {
 
         @Override
         public int status() {
