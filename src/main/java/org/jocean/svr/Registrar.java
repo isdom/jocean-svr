@@ -668,7 +668,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private Observable<MessageBody> tryContent(final Object obj, final HttpTrade trade, final Method processor) {
         return (obj instanceof WithContent)
                 ? fromContent(((WithContent)obj).content(), ((WithContent)obj).contentType(), trade, processor)
-                : fromContent(obj, null, trade, processor);
+                : (obj instanceof WithStepable)
+                    ? fromStepable((WithStepable<?>)obj, trade)
+                    : fromContent(obj, null, trade, processor);
     }
 
     static final ContentEncoder[] _encoders = new ContentEncoder[]{
@@ -750,6 +752,28 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
         }
         return ContentUtil.TOJSON;
+    }
+
+    private Observable<MessageBody> fromStepable(@SuppressWarnings("rawtypes") final WithStepable withStepable,
+            final HttpTrade trade) {
+        return Observable.just(new MessageBody() {
+            @Override
+            public String contentType() {
+                return withStepable.contentType();
+            }
+
+            @Override
+            public int contentLength() {
+                return -1;
+            }
+
+            @SuppressWarnings("unchecked")
+            @Override
+            public Observable<? extends ByteBufSlice> content() {
+                return withStepable.content().compose(
+                        ByteBufSliceUtil.stepable2bbs(buildAllocatorBuilder(trade).build(8192), withStepable.out()));
+            }
+        });
     }
 
     private Observable<Object> fullmsg2hobjs(final FullMessage<HttpResponse> fullmsg) {
