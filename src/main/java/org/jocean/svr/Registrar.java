@@ -629,7 +629,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 } else if (obj instanceof Stepable) {
                     @SuppressWarnings("unchecked")
                     final Stepable<Object> stepable = (Stepable<Object>)obj;
-                    return handleStepable(stepable, version);
+                    return Observable.just(stepable);
                 } else {
                     return fullmsg2hobjs(fullmsgOf(obj, version, trade, processor));
                 }
@@ -781,10 +781,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 return Observable.just(resp, LastHttpContent.EMPTY_LAST_CONTENT);
             }
         }));
-    }
-
-    private Observable<? extends Object> handleStepable(final Stepable<Object> stepable, final HttpVersion version) {
-        return Observable.just(stepable);
     }
 
     private void fillParams(final Object obj, final HttpResponse resp) {
