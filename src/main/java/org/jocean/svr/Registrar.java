@@ -57,7 +57,6 @@ import org.jocean.idiom.BeanHolder;
 import org.jocean.idiom.BeanHolderAware;
 import org.jocean.idiom.Beans;
 import org.jocean.idiom.DisposableWrapper;
-import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Pair;
 import org.jocean.idiom.ReflectUtils;
@@ -892,9 +891,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             //参数化类型
             if (isObservableType(argType)) {
                 final Type gt1st = getGenericTypeOf(argType, 0);
-                if (HttpObject.class.equals(gt1st)) {
-                    return trade.inbound().compose(MessageUtil.AUTOSTEP2DWH).map(DisposableWrapperUtil.unwrap());
-                } else if (MessageBody.class.equals(gt1st)) {
+                if (MessageBody.class.equals(gt1st)) {
                     return buildMessageBody(trade, request);
                 }
             } else if (UntilRequestCompleted.class.equals(getParameterizedRawType(argType))) {
