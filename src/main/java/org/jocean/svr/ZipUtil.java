@@ -39,12 +39,28 @@ public class ZipUtil {
         throw new IllegalStateException("No instances!");
     }
 
+    public interface TozipEntity {
+        public String entryName();
+        public Observable<? extends ByteBufSlice> body();
+    }
+
+    public interface Zipper extends Transformer<TozipEntity, ByteBufSlice> {
+    }
+
     public interface UnzipEntity {
         public ZipEntry entry();
         public Observable<? extends ByteBufSlice> body();
     }
 
-    public static Transformer<ByteBufSlice, UnzipEntity> unzipToEntities(
+    public interface Unzipper extends Transformer<ByteBufSlice, UnzipEntity> {
+    }
+
+    public interface ZipBuilder {
+        public Zipper zip(final int pageSize, final int bufsize);
+        public Unzipper unzip(final int pageSize, final int bufsize);
+    }
+
+    public static Unzipper unzipToEntities(
             final Func0<DisposableWrapper<ByteBuf>> allocator,
             final Terminable terminable,
             final int bufsize,
@@ -292,12 +308,7 @@ public class ZipUtil {
         return readed;
     }
 
-    public interface TozipEntity {
-        public String entryName();
-        public Observable<? extends ByteBufSlice> body();
-    }
-
-    public static Transformer<TozipEntity, ByteBufSlice> zipEntities(
+    public static Zipper zipEntities(
             final Func0<DisposableWrapper<ByteBuf>> allocator,
             final Terminable terminable,
             final int bufsize,

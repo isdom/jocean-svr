@@ -71,6 +71,9 @@ import org.jocean.j2se.unit.UnitAgent;
 import org.jocean.j2se.unit.UnitListener;
 import org.jocean.j2se.util.BeanHolders;
 import org.jocean.netty.util.BufsOutputStream;
+import org.jocean.svr.ZipUtil.Unzipper;
+import org.jocean.svr.ZipUtil.ZipBuilder;
+import org.jocean.svr.ZipUtil.Zipper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -917,6 +920,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return buildInteractBuilder(trade);
         } else if (argType.equals(TradeContext.class)) {
             return buildTradeContext(trade);
+        } else if (argType.equals(ZipBuilder.class)) {
+            return buildZipBuilder(trade);
         } else {
             for (final MethodInterceptor interceptor : interceptors) {
                 if (interceptor instanceof ArgumentBuilder) {
@@ -929,6 +934,20 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
 
         return null;
+    }
+
+    private ZipBuilder buildZipBuilder(final HttpTrade trade) {
+        final TradeContext tctx = buildTradeContext(trade);
+        return new ZipBuilder() {
+            @Override
+            public Zipper zip(final int pageSize, final int bufsize) {
+                return ZipUtil.zipEntities(tctx.allocatorBuilder().build(pageSize), tctx.terminable(), bufsize, dwb->dwb.dispose());
+            }
+
+            @Override
+            public Unzipper unzip(final int pageSize, final int bufsize) {
+                return ZipUtil.unzipToEntities(tctx.allocatorBuilder().build(pageSize), tctx.terminable(), bufsize, dwb->dwb.dispose());
+            }};
     }
 
     private TradeContext buildTradeContext(final HttpTrade trade) {
