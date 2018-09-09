@@ -770,8 +770,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             @SuppressWarnings("unchecked")
             @Override
             public Observable<? extends ByteBufSlice> content() {
-                return withStepable.content().compose(
-                        ByteBufSliceUtil.stepable2bbs(buildAllocatorBuilder(trade).build(8192), withStepable.out()));
+                return withStepable.stepables().compose(
+                        ByteBufSliceUtil.stepable2bbs(buildAllocatorBuilder(trade).build(8192), withStepable.output()));
             }
         });
     }

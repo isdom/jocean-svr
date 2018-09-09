@@ -9,6 +9,6 @@ import rx.functions.Action2;
 
 public interface WithStepable<T extends Stepable<?>> {
     public String contentType();
-    public Observable<T> content();
-    public Action2<T, OutputStream> out();
+    public Observable<T> stepables();
+    public Action2<T, OutputStream> output();
 }

@@ -41,7 +41,7 @@ public class HystrixMetricsStreamController {
             }
 
             @Override
-            public Observable<Stepable<String>> content() {
+            public Observable<Stepable<String>> stepables() {
                 return HystrixDashboardStream.getInstance().observe()
                         .concatMap(dashboardData -> Observable
                                 .from(SerialHystrixDashboardData.toMultipleJsonStrings(dashboardData)))
@@ -57,7 +57,7 @@ public class HystrixMetricsStreamController {
             }
 
             @Override
-            public Action2<Stepable<String>, OutputStream> out() {
+            public Action2<Stepable<String>, OutputStream> output() {
                 return (ss, out) -> {
                     try {
                         out.write(ss.element().getBytes(CharsetUtil.UTF_8));
