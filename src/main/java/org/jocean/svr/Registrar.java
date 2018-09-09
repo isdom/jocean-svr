@@ -445,15 +445,15 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             } else if (gt1st.equals(String.class)) {
                 return strings2Response((Observable<String>)returnValue, request);
             } else /*if (gt1st.equals(Object.class))*/ {
-                return objs2Response((Observable<Object>)returnValue, trade, processor, request.protocolVersion());
+                return objs2Response((Observable<Object>)returnValue, buildTradeContext(trade), processor, request.protocolVersion());
             }
         } else if (null != returnValue) {
             if (returnValue instanceof Observable) {
-                return objs2Response((Observable<Object>)returnValue, trade, processor, request.protocolVersion());
+                return objs2Response((Observable<Object>)returnValue, buildTradeContext(trade), processor, request.protocolVersion());
             } else if (String.class.equals(returnValue.getClass())) {
                 return strings2Response(Observable.just((String)returnValue), request);
             } else {
-                return fullmsg2hobjs(fullmsgOf(returnValue, request.protocolVersion(), trade, processor));
+                return fullmsg2hobjs(fullmsgOf(returnValue, request.protocolVersion(), buildTradeContext(trade), processor));
             }
             // return is NOT Observable<?>
         }
@@ -614,7 +614,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Observable<? extends Object> objs2Response(final Observable<Object> objs,
-            final HttpTrade trade,
+            final TradeContext tradeContext,
             final Method processor,
             final HttpVersion version) {
         return objs.flatMap(obj -> {
@@ -631,7 +631,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     final Stepable<Object> stepable = (Stepable<Object>)obj;
                     return Observable.just(stepable);
                 } else {
-                    return fullmsg2hobjs(fullmsgOf(obj, version, trade, processor));
+                    return fullmsg2hobjs(fullmsgOf(obj, version, tradeContext, processor));
                 }
             });
     }
@@ -639,7 +639,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private FullMessage<HttpResponse> fullmsgOf(
             final Object obj,
             final HttpVersion version,
-            final HttpTrade trade,
+            final TradeContext tradeContext,
             final Method processor) {
         final HttpResponse resp = new DefaultHttpResponse(version, HttpResponseStatus.OK);
         if (obj instanceof WithStatus) {
@@ -647,7 +647,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
         fillParams(obj, resp);
 
-        final Observable<? extends MessageBody> body = bodyOf(obj, trade, processor);
+        final Observable<? extends MessageBody> body = bodyOf(obj, tradeContext, processor);
 
         return new FullMessage<HttpResponse>() {
             @Override
@@ -661,16 +661,16 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }};
     }
 
-    private Observable<? extends MessageBody> bodyOf(final Object obj, final HttpTrade trade, final Method processor) {
-        return (obj instanceof WithBody) ? ((WithBody)obj).body() : tryContent(obj, trade, processor);
+    private Observable<? extends MessageBody> bodyOf(final Object obj, final TradeContext tradeContext, final Method processor) {
+        return (obj instanceof WithBody) ? ((WithBody)obj).body() : tryContent(obj, tradeContext, processor);
     }
 
-    private Observable<MessageBody> tryContent(final Object obj, final HttpTrade trade, final Method processor) {
+    private Observable<MessageBody> tryContent(final Object obj, final TradeContext tradeContext, final Method processor) {
         return (obj instanceof WithContent)
-                ? fromContent(((WithContent)obj).content(), ((WithContent)obj).contentType(), trade, processor)
+                ? fromContent(((WithContent)obj).content(), ((WithContent)obj).contentType(), tradeContext, processor)
                 : (obj instanceof WithStepable)
-                    ? fromStepable((WithStepable<?>)obj, trade)
-                    : fromContent(obj, null, trade, processor);
+                    ? fromStepable((WithStepable<?>)obj, tradeContext)
+                    : fromContent(obj, null, tradeContext, processor);
     }
 
     static final ContentEncoder[] _encoders = new ContentEncoder[]{
@@ -682,13 +682,13 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private Observable<MessageBody> fromContent(
             final Object content,
             final String contentType,
-            final HttpTrade trade,
+            final TradeContext tradeContext,
             final Method processor) {
         if (null != content) {
             final ContentEncoder encoder = getEncoder(contentType, processor);
 
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(
-                    buildAllocatorBuilder(trade).build(512),
+                    tradeContext.allocatorBuilder().build(512),
                     dwb->dwb.unwrap());
             final List<DisposableWrapper<ByteBuf>> dwbs = new ArrayList<>();
             bufout.setOutput(dwb -> dwbs.add(dwb));
@@ -755,7 +755,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Observable<MessageBody> fromStepable(@SuppressWarnings("rawtypes") final WithStepable withStepable,
-            final HttpTrade trade) {
+            final TradeContext tradeContext) {
         return Observable.just(new MessageBody() {
             @Override
             public String contentType() {
@@ -771,7 +771,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             @Override
             public Observable<? extends ByteBufSlice> content() {
                 return withStepable.stepables().compose(
-                        ByteBufSliceUtil.stepable2bbs(buildAllocatorBuilder(trade).build(8192), withStepable.output()));
+                        ByteBufSliceUtil.stepable2bbs(tradeContext.allocatorBuilder().build(8192), withStepable.output()));
             }
         });
     }
@@ -915,6 +915,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return buildBodyBuilder(trade);
         } else if (argType.equals(InteractBuilder.class)) {
             return buildInteractBuilder(trade);
+        } else if (argType.equals(TradeContext.class)) {
+            return buildTradeContext(trade);
         } else {
             for (final MethodInterceptor interceptor : interceptors) {
                 if (interceptor instanceof ArgumentBuilder) {
@@ -927,6 +929,30 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
 
         return null;
+    }
+
+    private TradeContext buildTradeContext(final HttpTrade trade) {
+        return new TradeContext() {
+
+            @Override
+            public WriteCtrl writeCtrl() {
+                return trade.writeCtrl();
+            }
+
+            @Override
+            public Terminable terminable() {
+                return trade;
+            }
+
+            @Override
+            public AllocatorBuilder allocatorBuilder() {
+                return buildAllocatorBuilder(trade);
+            }
+
+            @Override
+            public InteractBuilder interactBuilder() {
+                return buildInteractBuilder(trade);
+            }};
     }
 
     private AllocatorBuilder buildAllocatorBuilder(final HttpTrade trade) {
