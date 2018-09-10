@@ -672,7 +672,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 ? fromContent(((WithContent)obj).content(), ((WithContent)obj).contentType(), tradeContext, processor)
                 : (obj instanceof WithStepable)
                     ? fromStepable((WithStepable<?>)obj, tradeContext)
-                    : fromContent(obj, null, tradeContext, processor);
+                    : (obj instanceof WithSlice)
+                        ? fromSlice((WithSlice)obj, tradeContext)
+                        : fromContent(obj, null, tradeContext, processor);
     }
 
     static final ContentEncoder[] _encoders = new ContentEncoder[]{
@@ -774,6 +776,25 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             public Observable<? extends ByteBufSlice> content() {
                 return withStepable.stepables().compose(
                         ByteBufSliceUtil.stepable2bbs(tradeContext.allocatorBuilder().build(8192), withStepable.output()));
+            }
+        });
+    }
+
+    private Observable<MessageBody> fromSlice(final WithSlice withSlice, final TradeContext tradeContext) {
+        return Observable.just(new MessageBody() {
+            @Override
+            public String contentType() {
+                return withSlice.contentType();
+            }
+
+            @Override
+            public int contentLength() {
+                return -1;
+            }
+
+            @Override
+            public Observable<? extends ByteBufSlice> content() {
+                return withSlice.slices();
             }
         });
     }
