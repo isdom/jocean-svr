@@ -6,7 +6,6 @@ package org.jocean.svr;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import java.io.IOException;
-import java.io.OutputStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -40,7 +39,6 @@ import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
 
-import org.jocean.http.BodyBuilder;
 import org.jocean.http.ByteBufSlice;
 import org.jocean.http.ContentEncoder;
 import org.jocean.http.ContentUtil;
@@ -104,7 +102,6 @@ import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder;
 import rx.Completable;
 import rx.Observable;
-import rx.functions.Action1;
 import rx.functions.Func0;
 
 /**
@@ -963,8 +960,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return trade.writeCtrl();
         } else if (argType.equals(AllocatorBuilder.class)) {
             return buildAllocatorBuilder(trade);
-        } else if (argType.equals(BodyBuilder.class)) {
-            return buildBodyBuilder(trade);
         } else if (argType.equals(InteractBuilder.class)) {
             return buildInteractBuilder(trade);
         } else if (argType.equals(TradeContext.class)) {
@@ -1031,6 +1026,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }};
     }
 
+    /*
     private BodyBuilder buildBodyBuilder(final HttpTrade trade) {
         return new BodyBuilder() {
             @Override
@@ -1060,6 +1056,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     }});
             }};
     }
+    */
 
     private InteractBuilder buildInteractBuilder(final HttpTrade trade) {
         return new InteractBuilderImpl(trade);
