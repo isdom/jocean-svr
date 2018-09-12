@@ -6,5 +6,5 @@ import rx.Observable;
 
 public interface WithSlice extends WithBody {
     public String contentType();
-    public Observable<ByteBufSlice> slices();
+    public Observable<? extends ByteBufSlice> slices();
 }
