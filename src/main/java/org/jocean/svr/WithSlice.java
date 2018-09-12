@@ -4,7 +4,7 @@ import org.jocean.http.ByteBufSlice;
 
 import rx.Observable;
 
-public interface WithSlice {
+public interface WithSlice extends WithBody {
     public String contentType();
     public Observable<ByteBufSlice> slices();
 }

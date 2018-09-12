@@ -644,13 +644,34 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final TradeContext tradeContext,
             final Method processor) {
         final HttpResponse resp = new DefaultHttpResponse(version, HttpResponseStatus.OK);
-        if (obj instanceof WithStatus) {
-            resp.setStatus(HttpResponseStatus.valueOf(((WithStatus)obj).status()));
+        Observable<? extends MessageBody> body = Observable.empty();
+
+        if (obj instanceof ResponseBean) {
+
+            final ResponseBean responseBean = (ResponseBean)obj;
+            if (responseBean.withStatus() != null) {
+                resp.setStatus(HttpResponseStatus.valueOf(responseBean.withStatus().status()));
+            }
+            if (responseBean.withHeader() != null) {
+                fillHeaders(responseBean.withHeader(), resp);
+            }
+            if (responseBean.withBody() != null) {
+                body = buildBody(responseBean.withBody(), tradeContext, processor);
+            }
+        } else {
+            if (obj instanceof WithStatus) {
+                resp.setStatus(HttpResponseStatus.valueOf(((WithStatus)obj).status()));
+            }
+            fillHeaders(obj, resp);
+            if (obj instanceof WithBody) {
+                body = buildBody((WithBody)obj, tradeContext, processor);
+            } else {
+                // not withBody instance
+                body = fromContent(obj, null, tradeContext, processor);
+            }
         }
-        fillParams(obj, resp);
 
-        final Observable<? extends MessageBody> body = bodyOf(obj, tradeContext, processor);
-
+        final Observable<? extends MessageBody> finalyBody = body;
         return new FullMessage<HttpResponse>() {
             @Override
             public HttpResponse message() {
@@ -659,22 +680,25 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
             @Override
             public Observable<? extends MessageBody> body() {
-                return body;
+                return finalyBody;
             }};
     }
 
-    private Observable<? extends MessageBody> bodyOf(final Object obj, final TradeContext tradeContext, final Method processor) {
-        return (obj instanceof WithBody) ? ((WithBody)obj).body() : tryContent(obj, tradeContext, processor);
-    }
-
-    private Observable<MessageBody> tryContent(final Object obj, final TradeContext tradeContext, final Method processor) {
-        return (obj instanceof WithContent)
-                ? fromContent(((WithContent)obj).content(), ((WithContent)obj).contentType(), tradeContext, processor)
-                : (obj instanceof WithStepable)
-                    ? fromStepable((WithStepable<?>)obj, tradeContext)
-                    : (obj instanceof WithSlice)
-                        ? fromSlice((WithSlice)obj, tradeContext)
-                        : fromContent(obj, null, tradeContext, processor);
+    private Observable<? extends MessageBody> buildBody(
+            final WithBody withBody,
+            final TradeContext tradeContext,
+            final Method processor) {
+        if (withBody instanceof WithRawBody) {
+            return ((WithRawBody)withBody).body();
+        } else if (withBody instanceof WithContent) {
+            return fromContent(((WithContent)withBody).content(), ((WithContent)withBody).contentType(), tradeContext, processor);
+        } else if (withBody instanceof WithStepable) {
+            return fromStepable((WithStepable<?>)withBody, tradeContext);
+        } else if (withBody instanceof WithSlice) {
+            return fromSlice((WithSlice)withBody, tradeContext);
+        } else {
+            return Observable.error(new RuntimeException("unknown WithBody type:" + withBody.getClass()));
+        }
     }
 
     static final ContentEncoder[] _encoders = new ContentEncoder[]{
@@ -830,20 +854,27 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }));
     }
 
-    private void fillParams(final Object obj, final HttpResponse resp) {
-        final Field[] headerFields =
-            ReflectUtils.getAnnotationFieldsOf(obj.getClass(), HeaderParam.class);
-        for ( final Field field : headerFields ) {
-            try {
-                final Object value = field.get(obj);
-                if ( null != value ) {
-                    final String headername =
-                        field.getAnnotation(HeaderParam.class).value();
-                    resp.headers().set(headername, value);
+    private void fillHeaders(final Object obj, final HttpResponse resp) {
+        if (obj instanceof WithHeader) {
+            final WithHeader withHeader = (WithHeader)obj;
+            for (final Map.Entry<String, String> entry : withHeader.headers().entrySet()) {
+                resp.headers().set(entry.getKey(), entry.getValue());
+            }
+        } else {
+            final Field[] headerFields =
+                ReflectUtils.getAnnotationFieldsOf(obj.getClass(), HeaderParam.class);
+            for ( final Field field : headerFields ) {
+                try {
+                    final Object value = field.get(obj);
+                    if ( null != value ) {
+                        final String headername =
+                            field.getAnnotation(HeaderParam.class).value();
+                        resp.headers().set(headername, value);
+                    }
+                } catch (final Exception e) {
+                    LOG.warn("exception when get value from headerparam field:[{}], detail:{}",
+                            field, ExceptionUtils.exception2detail(e));
                 }
-            } catch (final Exception e) {
-                LOG.warn("exception when get value from headerparam field:[{}], detail:{}",
-                        field, ExceptionUtils.exception2detail(e));
             }
         }
     }
