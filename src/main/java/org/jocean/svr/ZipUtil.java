@@ -83,9 +83,15 @@ public class ZipUtil {
 
             return bbses.flatMap(bbs -> {
                 // append all income data(zipped) to inflater
-                bufin.appendBufs(bbs.element().toList().toBlocking().single());
-
-                return slice2entities(bbs, zipin, bufout, readbuf, currentSubject);
+                final List<? extends DisposableWrapper<? extends ByteBuf>> bufs = bbs.element().toList().toBlocking().single();
+                if (bufs.size() > 0) {
+                    bufin.appendBufs(bufs);
+                    return slice2entities(bbs, zipin, bufout, readbuf, currentSubject);
+                } else {
+                    // no more data, just call bbs.step() to get more data
+                    bbs.step();
+                    return Observable.empty();
+                }
             });
         };
     }
