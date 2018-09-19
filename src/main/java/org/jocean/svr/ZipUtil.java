@@ -85,10 +85,12 @@ public class ZipUtil {
                 // append all income data(zipped) to inflater
                 final List<? extends DisposableWrapper<? extends ByteBuf>> bufs = bbs.element().toList().toBlocking().single();
                 if (bufs.size() > 0) {
+                    LOG.debug("get valid zipped bufs: {}, try to decode zip data", bufs.size());
                     bufin.appendBufs(bufs);
                     return slice2entities(bbs, zipin, bufout, readbuf, currentSubject);
                 } else {
                     // no more data, just call bbs.step() to get more data
+                    LOG.debug("no more zipped bufs, try to get more zipped data from upstream");
                     bbs.step();
                     return Observable.empty();
                 }
