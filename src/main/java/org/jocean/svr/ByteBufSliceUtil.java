@@ -90,15 +90,22 @@ public class ByteBufSliceUtil {
                     }
                 }
 
-                return Observable.<Stepable<List<String>>>just(new Stepable<List<String>>() {
-                    @Override
-                    public void step() {
-                        bbs.step();
-                    }
-                    @Override
-                    public List<String> element() {
-                        return lines;
-                    }});
+                if (!lines.isEmpty()) {
+                    // read at least one line
+                    return Observable.<Stepable<List<String>>>just(new Stepable<List<String>>() {
+                        @Override
+                        public void step() {
+                            bbs.step();
+                        }
+                        @Override
+                        public List<String> element() {
+                            return lines;
+                        }});
+                } else {
+                    LOG.debug("no lines readed, auto step this bbs");
+                    bbs.step();
+                    return Observable.empty();
+                }
             },
             e -> Observable.error(e),
             () -> {
