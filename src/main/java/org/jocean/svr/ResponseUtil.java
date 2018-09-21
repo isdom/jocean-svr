@@ -77,7 +77,7 @@ public class ResponseUtil {
 
         @Override
         public String contentDisposition() {
-            return this._headers.get(HttpHeaderNames.CONTENT_DISPOSITION);
+            return this._headers.get(HttpHeaderNames.CONTENT_DISPOSITION.toString());
         }
 
         @Override
@@ -87,7 +87,7 @@ public class ResponseUtil {
         }
         @Override
         public String location() {
-            return this._headers.get(HttpHeaderNames.LOCATION);
+            return this._headers.get(HttpHeaderNames.LOCATION.toString());
         }
 
         @Override
