@@ -644,7 +644,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         Observable<? extends MessageBody> body = Observable.empty();
 
         if (obj instanceof ResponseBean) {
-
             final ResponseBean responseBean = (ResponseBean)obj;
             if (responseBean.withStatus() != null) {
                 resp.setStatus(HttpResponseStatus.valueOf(responseBean.withStatus().status()));
@@ -1025,38 +1024,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 return MessageUtil.pooledAllocator(trade, pageSize);
             }};
     }
-
-    /*
-    private BodyBuilder buildBodyBuilder(final HttpTrade trade) {
-        return new BodyBuilder() {
-            @Override
-            public Observable<? extends MessageBody> build(final Object bean, final ContentEncoder contentEncoder) {
-                final Func0<BufsOutputStream<DisposableWrapper<ByteBuf>>> creator =
-                        ()->new BufsOutputStream<>(MessageUtil.pooledAllocator(trade, 8192), dwb->dwb.unwrap());
-                final Action1<OutputStream> fillout = (out)->contentEncoder.encoder().call(bean, out);
-                return Observable.just(new MessageBody() {
-                    @Override
-                    public String contentType() {
-                        return contentEncoder.contentType();
-                    }
-                    @Override
-                    public int contentLength() {
-                        return -1;
-                    }
-                    @Override
-                    public Observable<? extends ByteBufSlice> content() {
-                        return Observable.just(new ByteBufSlice() {
-                            @Override
-                            public void step() {}
-
-                            @Override
-                            public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                                return MessageUtil.fromBufout(creator, fillout);
-                            }});
-                    }});
-            }};
-    }
-    */
 
     private InteractBuilder buildInteractBuilder(final HttpTrade trade) {
         return new InteractBuilderImpl(trade);
