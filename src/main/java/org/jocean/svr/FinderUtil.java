@@ -23,6 +23,13 @@ public class FinderUtil {
         throw new IllegalStateException("No instances!");
     }
 
+    public static <RPC, RESP> Observable<RESP> run_rpc(
+            final Observable<RpcRunner> runners,
+            final Observable<? extends RPC> getrpc,
+            final Func1<RPC, Transformer<RpcRunner, RESP>> rpc2resp) {
+        return getrpc.map(rpc2resp).flatMap(invoker -> runners.compose(invoker));
+    }
+
     private static Transformer<? super Interact, ? extends Interact> findAndApplyRpcConfig(
             final BeanFinder finder,
             final StackTraceElement ste) {
