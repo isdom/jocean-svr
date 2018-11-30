@@ -11,6 +11,11 @@ import org.jocean.idiom.BeanFinder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.netflix.hystrix.HystrixCommandGroupKey;
+import com.netflix.hystrix.HystrixCommandKey;
+import com.netflix.hystrix.HystrixCommandProperties;
+import com.netflix.hystrix.HystrixObservableCommand;
+
 import rx.Observable;
 import rx.Observable.Transformer;
 import rx.functions.Func1;
@@ -189,30 +194,32 @@ public class FinderUtil {
     }
 
     private static <T> Observable<T> doExecute(
-            Observable<? extends Interact> interacts,
+            final Observable<? extends Interact> interacts,
             final BeanFinder finder,
             final StackTraceElement ste,
             final TypedSPI spi,
             final String name,
             final Func1<Interact, Observable<T>> invoker) {
-//      return new HystrixObservableCommand<T>(HystrixObservableCommand.Setter
-//      .withGroupKey(HystrixCommandGroupKey.Factory.asKey("rpc"))
-//      .andCommandKey(HystrixCommandKey.Factory.asKey(summary))
-//      .andCommandPropertiesDefaults(HystrixCommandProperties.Setter()
-////              .withExecutionTimeoutEnabled(false)
-//              .withExecutionTimeoutInMilliseconds(30 * 1000)
-//              .withExecutionIsolationSemaphoreMaxConcurrentRequests(1000)
-//              )
-//      ) {
-//  @Override
-//  protected Observable<T> construct() {
-//      return ;
-//  }
-//}.toObservable();
-        if (null != spi) {
-            interacts = interacts.compose(FinderUtil.endpoint(finder, spi));
-        }
-        return interacts.flatMap(invoker).compose(withAfter(finder, ste));
+        final String key = ste.getClassName() + "." + ste.getMethodName()
+            + (null != spi ? "/" + spi.type() : "")
+            + (null != name ? "/" + name : "");
+
+        return new HystrixObservableCommand<T>(
+                HystrixObservableCommand.Setter.withGroupKey(HystrixCommandGroupKey.Factory.asKey("rpc"))
+                        .andCommandKey(HystrixCommandKey.Factory.asKey(key))
+                        .andCommandPropertiesDefaults(HystrixCommandProperties.Setter()
+                                // .withExecutionTimeoutEnabled(false)
+                                .withExecutionTimeoutInMilliseconds(30 * 1000)
+                                .withExecutionIsolationSemaphoreMaxConcurrentRequests(1000))) {
+            @Override
+            protected Observable<T> construct() {
+                Observable<? extends Interact> inters = interacts;
+                if (null != spi) {
+                    inters = inters.compose(FinderUtil.endpoint(finder, spi));
+                }
+                return inters.flatMap(invoker).compose(withAfter(finder, ste));
+            }
+        }.toObservable();
     }
 
     private static <T> Transformer<T, T> withAfter(final BeanFinder finder, final StackTraceElement ste) {
