@@ -15,11 +15,16 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Controller;
 
-import com.netflix.hystrix.metric.consumer.HystrixDashboardStream;
+import com.netflix.hystrix.HystrixCollapserMetrics;
+import com.netflix.hystrix.HystrixCommandMetrics;
+import com.netflix.hystrix.HystrixThreadPoolMetrics;
+import com.netflix.hystrix.metric.consumer.HystrixDashboardStream.DashboardData;
 import com.netflix.hystrix.serial.SerialHystrixDashboardData;
 
 import io.netty.util.CharsetUtil;
 import rx.Observable;
+import rx.Observable.OnSubscribe;
+import rx.Subscriber;
 import rx.functions.Action2;
 
 @Controller
@@ -50,20 +55,26 @@ public class HystrixMetricsStreamController {
 
             @Override
             public Observable<Stepable<String>> stepables() {
-                return HystrixDashboardStream.getInstance().observe()
-                        .concatMap(dashboardData -> Observable
-                                .from(SerialHystrixDashboardData.toMultipleJsonStrings(dashboardData)))
-                        .map(str -> new Stepable<String>() {
-                            @Override
-                            public void step() {
-                                LOG.debug("getStream DashboardData's step(...)");
-                            }
+                return Observable.unsafeCreate(new OnSubscribe<Stepable<String>>() {
+                    @Override
+                    public void call(final Subscriber<? super Stepable<String>> subscriber) {
+                        pushStepable(subscriber);
+                    }});
 
-                            @Override
-                            public String element() {
-                                return new StringBuilder().append("data: ").append(str).append("\n\n").toString();
-                            }
-                        });
+//                return HystrixDashboardStream.getInstance().observe()
+//                        .concatMap(dashboardData -> Observable
+//                                .from(SerialHystrixDashboardData.toMultipleJsonStrings(dashboardData)))
+//                        .map(str -> new Stepable<String>() {
+//                            @Override
+//                            public void step() {
+//                                LOG.debug("getStream DashboardData's step(...)");
+//                            }
+//
+//                            @Override
+//                            public String element() {
+//                                return new StringBuilder().append("data: ").append(str).append("\n\n").toString();
+//                            }
+//                        });
             }
 
             @Override
@@ -77,5 +88,25 @@ public class HystrixMetricsStreamController {
                 };
             }
         };
+    }
+
+    private void pushStepable(final Subscriber<? super Stepable<String>> subscriber) {
+        if (!subscriber.isUnsubscribed()) {
+            subscriber.onNext(new Stepable<String>() {
+                @Override
+                public void step() {
+                    pushStepable(subscriber);
+                }
+
+                @Override
+                public String element() {
+                    return new StringBuilder().append("data: ")
+                        .append(SerialHystrixDashboardData.toMultipleJsonStrings(new DashboardData(
+                            HystrixCommandMetrics.getInstances(),
+                            HystrixThreadPoolMetrics.getInstances(),
+                            HystrixCollapserMetrics.getInstances())))
+                        .append("\n\n").toString();
+                }});
+        }
     }
 }
