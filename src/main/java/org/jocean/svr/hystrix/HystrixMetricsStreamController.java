@@ -6,8 +6,12 @@ import java.io.OutputStream;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
 
+import org.jocean.http.WriteCtrl;
+import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.Stepable;
 import org.jocean.svr.WithStepable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Controller;
 
@@ -22,6 +26,7 @@ import rx.functions.Action2;
 @Scope("singleton")
 public class HystrixMetricsStreamController {
 
+    private static final Logger LOG = LoggerFactory.getLogger(HystrixMetricsStreamController.class);
     //  TODO, re-impl
 //    static class StreamResponse implements WithBody {
 //        @HeaderParam(HttpHeaders.CACHE_CONTROL)
@@ -33,7 +38,10 @@ public class HystrixMetricsStreamController {
 
     @Path("/hystrix.stream")
     @GET
-    public WithStepable<Stepable<String>> getStream() {
+    public WithStepable<Stepable<String>> getStream(final WriteCtrl writeCtrl) {
+
+        writeCtrl.sended().subscribe(obj -> DisposableWrapperUtil.dispose(obj));
+
         return new WithStepable<Stepable<String>>() {
             @Override
             public String contentType() {
@@ -47,7 +55,9 @@ public class HystrixMetricsStreamController {
                                 .from(SerialHystrixDashboardData.toMultipleJsonStrings(dashboardData)))
                         .map(str -> new Stepable<String>() {
                             @Override
-                            public void step() {}
+                            public void step() {
+                                LOG.debug("getStream DashboardData's step(...)");
+                            }
 
                             @Override
                             public String element() {
