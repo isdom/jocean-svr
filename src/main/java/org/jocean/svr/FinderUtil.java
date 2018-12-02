@@ -200,12 +200,12 @@ public class FinderUtil {
             final TypedSPI spi,
             final String name,
             final Func1<Interact, Observable<T>> invoker) {
-        final String key = ste.getClassName() + "." + ste.getMethodName()
-            + (null != spi ? "/" + spi.type() : "")
-            + (null != name ? "/" + name : "");
+        final String group = getSimpleClassName(ste.getClassName()) + "." + ste.getMethodName();
+
+        final String key = (null != spi ? spi.type() : "(api)") + "." + (null != name ? name : "(unname)");
 
         return new HystrixObservableCommand<T>(
-                HystrixObservableCommand.Setter.withGroupKey(HystrixCommandGroupKey.Factory.asKey("rpc"))
+                HystrixObservableCommand.Setter.withGroupKey(HystrixCommandGroupKey.Factory.asKey(group))
                         .andCommandKey(HystrixCommandKey.Factory.asKey(key))
                         .andCommandPropertiesDefaults(HystrixCommandProperties.Setter()
                                 // .withExecutionTimeoutEnabled(false)
@@ -220,6 +220,11 @@ public class FinderUtil {
                 return inters.flatMap(invoker).compose(withAfter(finder, ste));
             }
         }.toObservable();
+    }
+
+    private static String getSimpleClassName(final String className) {
+        final int idx = className.lastIndexOf('.');
+        return idx >= 0 ? className.substring(idx + 1) : className;
     }
 
     private static <T> Transformer<T, T> withAfter(final BeanFinder finder, final StackTraceElement ste) {

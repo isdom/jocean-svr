@@ -30,14 +30,6 @@ import rx.functions.Action2;
 public class HystrixMetricsStreamController {
 
     private static final Logger LOG = LoggerFactory.getLogger(HystrixMetricsStreamController.class);
-    //  TODO, re-impl
-//    static class StreamResponse implements WithBody {
-//        @HeaderParam(HttpHeaders.CACHE_CONTROL)
-//        private final String cacheControl = "no-cache, no-store, max-age=0, must-revalidate";
-//
-//        @HeaderParam("Pragma")
-//        private final String Pragma = "no-cache";
-//    }
 
     @Path("/hystrix.stream")
     @GET
@@ -53,11 +45,6 @@ public class HystrixMetricsStreamController {
 
             @Override
             public Observable<Stepable<List<String>>> stepables() {
-//                return Observable.unsafeCreate(new OnSubscribe<Stepable<String>>() {
-//                    @Override
-//                    public void call(final Subscriber<? super Stepable<String>> subscriber) {
-//                        pushStepable(subscriber, System.currentTimeMillis());
-//                    }});
                 final AtomicBoolean stepCalled = new AtomicBoolean(true);
                 return HystrixDashboardStream.getInstance().observe()
                         .filter(dashboardData -> stepCalled.getAndSet(false))
@@ -94,27 +81,4 @@ public class HystrixMetricsStreamController {
             }
         };
     }
-
-    /*
-    private void pushStepable(final Subscriber<? super Stepable<String>> subscriber, final long lastts) {
-        if (!subscriber.isUnsubscribed()) {
-            final long now = System.currentTimeMillis();
-            subscriber.onNext(new Stepable<String>() {
-                @Override
-                public void step() {
-                    pushStepable(subscriber, now);
-                }
-
-                @Override
-                public String element() {
-                    return new StringBuilder().append("data: ")
-                        .append(SerialHystrixDashboardData.toMultipleJsonStrings(new DashboardData(
-                            HystrixCommandMetrics.getInstances(),
-                            HystrixThreadPoolMetrics.getInstances(),
-                            HystrixCollapserMetrics.getInstances())))
-                        .append("\n\n").toString();
-                }});
-        }
-    }
-    */
 }
