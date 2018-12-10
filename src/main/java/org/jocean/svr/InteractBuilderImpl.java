@@ -1,6 +1,5 @@
 package org.jocean.svr;
 
-import java.io.OutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -220,7 +219,7 @@ public class InteractBuilderImpl implements InteractBuilder {
     private Observable<? extends MessageBody> tobody(final Object bean, final ContentEncoder contentEncoder) {
         final Func0<BufsOutputStream<DisposableWrapper<ByteBuf>>> creator =
                 ()->new BufsOutputStream<>(MessageUtil.pooledAllocator(this._terminable, 8192), dwb->dwb.unwrap());
-        final Action1<OutputStream> fillout = (out)->contentEncoder.encoder().call(bean, out);
+
         return Observable.just(new MessageBody() {
             @Override
             public String contentType() {
@@ -238,8 +237,15 @@ public class InteractBuilderImpl implements InteractBuilder {
                     public void step() {}
 
                     @Override
-                    public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                        return MessageUtil.fromBufout(creator, fillout);
+                    public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                        final List<DisposableWrapper<ByteBuf>> dwbs = new ArrayList<>();
+                        try (final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = creator.call()) {
+                            bufout.setOutput(dwb -> dwbs.add(dwb));
+                            contentEncoder.encoder().call(bean, bufout);
+                        } catch (final Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                        return dwbs;
                     }});
             }});
     }

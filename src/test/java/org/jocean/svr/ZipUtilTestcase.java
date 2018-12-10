@@ -61,8 +61,9 @@ public class ZipUtilTestcase {
                     public void step() {}
 
                     @Override
-                    public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                        return Observable.just(DisposableWrapperUtil.wrap(Unpooled.wrappedBuffer(bytes), (Action1<ByteBuf>)null));
+                    public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                        return Observable.just(DisposableWrapperUtil.wrap(Unpooled.wrappedBuffer(bytes), (Action1<ByteBuf>)null))
+                                .toList().toBlocking().single();
                     }});
             }};
     }
@@ -112,7 +113,7 @@ public class ZipUtilTestcase {
             .compose(zipBy(terminable))
             .doOnNext( bbs -> {
                 LOG.debug("=========== zipped slice: {}", bbs);
-                final List<? extends DisposableWrapper<? extends ByteBuf>> dwbs = bbs.element().toList().toBlocking().single();
+                final List<? extends DisposableWrapper<? extends ByteBuf>> dwbs = Observable.from(bbs.element()).toList().toBlocking().single();
                 LOG.debug("------------ zipped begin");
                 for (final DisposableWrapper<? extends ByteBuf> dwb : dwbs) {
                     LOG.debug("zipped:\r\n{}", ByteBufUtil.prettyHexDump(dwb.unwrap()));
@@ -181,7 +182,7 @@ public class ZipUtilTestcase {
         final ZipOutputStream zipout = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
         zipout.setLevel(Deflater.BEST_COMPRESSION);
 
-        final Observable<DisposableWrapper<ByteBuf>> zipped = ZipUtil.fromBufout(bufout, ()-> {
+        final Iterable<DisposableWrapper<ByteBuf>> zipped = ZipUtil.fromBufout(bufout, ()-> {
             try {
                 zipout.putNextEntry(new ZipEntry("1"));
                 zipout.write(c1);
@@ -206,12 +207,13 @@ public class ZipUtilTestcase {
             public void step() {}
 
             @Override
-            public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+            public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
                 return zipped;
             }})
             .doOnNext( bbs -> {
                 LOG.debug("=========== zipped slice: {}", bbs);
-                final List<? extends DisposableWrapper<? extends ByteBuf>> dwbs = bbs.element().toList().toBlocking().single();
+                final List<? extends DisposableWrapper<? extends ByteBuf>> dwbs = Observable.from(bbs.element())
+                        .toList().toBlocking().single();
                 LOG.debug("------------ zipped begin");
                 for (final DisposableWrapper<? extends ByteBuf> dwb : dwbs) {
                     LOG.debug("zipped:\r\n{}", ByteBufUtil.prettyHexDump(dwb.unwrap()));

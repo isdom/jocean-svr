@@ -743,8 +743,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         @Override
                         public void step() {}
                         @Override
-                        public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                            return Observable.from(dwbs);
+                        public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                            return dwbs;
                         }});
                 }});
         } else {

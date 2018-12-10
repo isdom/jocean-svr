@@ -52,16 +52,15 @@ public class ByteBufSliceUtil {
                 return new ByteBufSlice() {
                     @Override
                     public String toString() {
-                        return new StringBuilder()
-                                .append("ByteBufSlice from [").append(stepable).append("]").toString();
+                        return new StringBuilder().append("ByteBufSlice from [").append(stepable).append("]").toString();
                     }
                     @Override
                     public void step() {
                         stepable.step();
                     }
                     @Override
-                    public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                        return Observable.from(dwbs);
+                    public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                        return dwbs;
                     }};
             });
         };
@@ -76,7 +75,7 @@ public class ByteBufSliceUtil {
         return bbses ->
             bbses.flatMap(bbs -> {
                 // add all upstream dwb to bufin stream
-                bufin.appendBufs(bbs.element().toList().toBlocking().single());
+                bufin.appendIterable(bbs.element());
                 // read as InputStream
                 final List<String> lines = new ArrayList<>();
 
@@ -160,7 +159,7 @@ public class ByteBufSliceUtil {
             final int begin,
             final int end,
             final int maxstep,
-            final Func2<Integer, Integer, Observable<DisposableWrapper<ByteBuf>>> bbsbuilder) {
+            final Func2<Integer, Integer, Iterable<DisposableWrapper<ByteBuf>>> bbsbuilder) {
         if (!subscriber.isUnsubscribed()) {
             final int step = Math.min(end - begin + 1, maxstep);
             if (step <= 0) {
@@ -173,7 +172,7 @@ public class ByteBufSliceUtil {
                 }
 
                 @Override
-                public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
                     return bbsbuilder.call(begin, step);
                 }});
         }

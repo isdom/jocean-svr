@@ -29,7 +29,6 @@ import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder.EndOfDataDec
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder.ErrorDataDecoderException;
 import io.netty.handler.codec.http.multipart.InterfaceHttpData;
 import rx.Observable;
-import rx.Observable.OnSubscribe;
 import rx.Subscriber;
 import rx.functions.Func1;
 import rx.subscriptions.Subscriptions;
@@ -195,31 +194,19 @@ class MultipartBody implements Observable.OnSubscribe<MessageBody> {
 
         @Override
         public Observable<? extends ByteBufSlice> content() {
-            return Observable.just(new ByteBufSlice() {
+            final List<DisposableWrapper<ByteBuf>> dwbs = new ArrayList<>();
+            final ByteBuf buf = _holder.content().retainedSlice();
+            if (null != buf) {
+                dwbs.add(DisposableWrapperUtil.disposeOn(_terminable, RxNettys.wrap4release(buf)));
+            }
 
+            return Observable.just(new ByteBufSlice() {
                 @Override
                 public void step() {}
 
                 @Override
-                public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                    return Observable.unsafeCreate(new OnSubscribe<DisposableWrapper<ByteBuf>>() {
-                        @Override
-                        public void call(final Subscriber<? super DisposableWrapper<ByteBuf>> subscriber) {
-                            if (!subscriber.isUnsubscribed()) {
-                                try {
-                                    final ByteBuf buf = _holder.content().retainedSlice();
-                                    if (null != buf) {
-                                        subscriber.onNext(DisposableWrapperUtil.disposeOn(_terminable, RxNettys.wrap4release(buf)));
-                                        subscriber.onCompleted();
-                                    } else {
-                                        subscriber.onError(new RuntimeException("invalid bytebuf"));
-                                    }
-                                } catch (final Exception e) {
-                                    subscriber.onError(e);
-                                }
-                            }
-                        }
-                    });
+                public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                    return dwbs;
                 }});
 
         }

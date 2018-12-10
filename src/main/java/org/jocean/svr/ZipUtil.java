@@ -21,7 +21,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufInputStream;
 import io.netty.util.CharsetUtil;
 import rx.Observable;
 import rx.Observable.Transformer;
@@ -83,10 +82,10 @@ public class ZipUtil {
 
             return bbses.flatMap(bbs -> {
                 // append all income data(zipped) to inflater
-                final List<? extends DisposableWrapper<? extends ByteBuf>> bufs = bbs.element().toList().toBlocking().single();
-                if (bufs.size() > 0) {
-                    LOG.debug("get valid zipped bufs: {}, try to decode zip data", bufs.size());
-                    bufin.appendBufs(bufs);
+                final Iterable<? extends DisposableWrapper<? extends ByteBuf>> element = bbs.element();
+                if (element.iterator().hasNext()) {
+                    LOG.debug("get valid zipped bufs, try to decode zip data");
+                    bufin.appendIterable(element);
                     return slice2entities(bbs, zipin, bufout, readbuf, currentSubject);
                 } else {
                     // no more data, just call bbs.step() to get more data
@@ -178,8 +177,8 @@ public class ZipUtil {
                     }
 
                     @Override
-                    public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                        return Observable.from(dwbs);
+                    public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                        return dwbs;
                     }})
                     .concatWith(subject);
             }}
@@ -239,8 +238,8 @@ public class ZipUtil {
             }
 
             @Override
-            public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                return Observable.from(dwbs);
+            public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                return dwbs;
             }});
     }
 
@@ -292,8 +291,8 @@ public class ZipUtil {
             }
 
             @Override
-            public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                return Observable.from(dwbs);
+            public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                return dwbs;
             }};
     }
 
@@ -350,9 +349,8 @@ public class ZipUtil {
     private static Observable<ByteBufSlice> zipentry(
             final String entryName,
             final ZipOutputStream zipout,
-            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout
-            ) {
-        final Observable<? extends DisposableWrapper<? extends ByteBuf>> zipped = fromBufout(bufout, ()-> {
+            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout) {
+        final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped = fromBufout(bufout, ()-> {
             try {
                 zipout.putNextEntry(new ZipEntry(entryName));
             } catch (final IOException e) {
@@ -369,7 +367,7 @@ public class ZipUtil {
             public void step() {}
 
             @Override
-            public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+            public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
                 return zipped;
             }});
     }
@@ -380,8 +378,8 @@ public class ZipUtil {
             final byte[] readbuf,
             final Action1<DisposableWrapper<? extends ByteBuf>> onzipped) {
         return bbs -> {
-            final Observable<? extends DisposableWrapper<? extends ByteBuf>> zipped = bbs.element()
-                    .flatMap(zipdwb(zipout, bufout, readbuf, onzipped)).cache();
+            final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped =
+                    fromBufout(bufout, appendBuf(zipout, bbs.element(), readbuf, onzipped));
 
             return new ByteBufSlice() {
                 @Override
@@ -394,26 +392,17 @@ public class ZipUtil {
                 }
 
                 @Override
-                public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
                     return zipped;
                 }
             };
         };
     }
 
-    private static Func1<DisposableWrapper<? extends ByteBuf>, Observable<? extends DisposableWrapper<ByteBuf>>>
-        zipdwb(
-            final ZipOutputStream zipout,
-            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout,
-            final byte[] readbuf,
-            final Action1<DisposableWrapper<? extends ByteBuf>> onzipped) {
-        return dwb -> fromBufout(bufout, appendBuf(zipout, dwb, readbuf, onzipped));
-    }
-
     private static Observable<ByteBufSlice> closeentry(
             final ZipOutputStream zipout,
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout) {
-        final Observable<? extends DisposableWrapper<? extends ByteBuf>> zipped = fromBufout(bufout, () -> {
+        final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped = fromBufout(bufout, () -> {
             try {
                 zipout.closeEntry();
                 zipout.flush();
@@ -430,7 +419,7 @@ public class ZipUtil {
             public void step() {}
 
             @Override
-            public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+            public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
                 return zipped;
             }});
     }
@@ -438,7 +427,7 @@ public class ZipUtil {
     private static Observable<ByteBufSlice> finishzip(
             final ZipOutputStream zipout,
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout) {
-        final Observable<? extends DisposableWrapper<? extends ByteBuf>> zipped = fromBufout(bufout, () -> {
+        final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped = fromBufout(bufout, () -> {
             try {
                 zipout.finish();
                 zipout.close();
@@ -455,17 +444,20 @@ public class ZipUtil {
             public void step() {}
 
             @Override
-            public Observable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+            public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
                 return zipped;
             }});
     }
 
     private static Action0 appendBuf(final ZipOutputStream zipout,
-            final DisposableWrapper<? extends ByteBuf> dwb,
+            final Iterable<? extends DisposableWrapper<? extends ByteBuf>> dwbs,
             final byte[] readbuf,
             final Action1<DisposableWrapper<? extends ByteBuf>> onzipped) {
         return ()->{
-            try (final ByteBufInputStream is = new ByteBufInputStream(dwb.unwrap())) {
+            try (final BufsInputStream<DisposableWrapper<? extends ByteBuf>> is =
+                    new BufsInputStream<>(dwb->dwb.unwrap(), onzipped)) {
+                is.appendIterable(dwbs);
+                is.markEOS();
                 int readed;
                 while ((readed = is.read(readbuf)) > 0) {
                     zipout.write(readbuf, 0, readed);
@@ -473,23 +465,20 @@ public class ZipUtil {
 //                zipout.flush();
             } catch (final IOException e) {
                 throw new RuntimeException(e);
-            } finally {
-                if (null != onzipped) {
-                    onzipped.call(dwb);
-                }
             }
         };
     }
 
-    public static <T> Observable<T> fromBufout(final BufsOutputStream<T> bufout, final Action0 action) {
+    public static <T> Iterable<T> fromBufout(final BufsOutputStream<T> bufout, final Action0 action) {
         final List<T> bufs = new ArrayList<>();
         bufout.setOutput(buf -> bufs.add(buf));
 
         try {
             action.call();
-            return Observable.from(bufs);
+            bufout.flush();
+            return bufs;
         } catch (final Exception e) {
-            return Observable.error(e);
+            throw new RuntimeException(e);
         } finally {
             bufout.setOutput(null);
         }
