@@ -10,6 +10,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import org.jocean.http.ByteBufSlice;
+import org.jocean.http.MessageUtil;
 import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Terminable;
@@ -24,7 +25,6 @@ import io.netty.buffer.ByteBuf;
 import io.netty.util.CharsetUtil;
 import rx.Observable;
 import rx.Observable.Transformer;
-import rx.functions.Action0;
 import rx.functions.Action1;
 import rx.functions.Func0;
 import rx.functions.Func1;
@@ -350,7 +350,7 @@ public class ZipUtil {
             final String entryName,
             final ZipOutputStream zipout,
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout) {
-        final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped = fromBufout(bufout, ()-> {
+        final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped = MessageUtil.out2dwbs(bufout, (out)-> {
             try {
                 zipout.putNextEntry(new ZipEntry(entryName));
             } catch (final IOException e) {
@@ -379,7 +379,7 @@ public class ZipUtil {
             final Action1<DisposableWrapper<? extends ByteBuf>> onzipped) {
         return bbs -> {
             final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped =
-                    fromBufout(bufout, appendBuf(zipout, bbs.element(), readbuf, onzipped));
+                    MessageUtil.out2dwbs(bufout, (out) -> append4zip(zipout, bbs.element(), readbuf, onzipped));
 
             return new ByteBufSlice() {
                 @Override
@@ -402,7 +402,7 @@ public class ZipUtil {
     private static Observable<ByteBufSlice> closeentry(
             final ZipOutputStream zipout,
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout) {
-        final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped = fromBufout(bufout, () -> {
+        final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped = MessageUtil.out2dwbs(bufout, (out) -> {
             try {
                 zipout.closeEntry();
                 zipout.flush();
@@ -427,7 +427,7 @@ public class ZipUtil {
     private static Observable<ByteBufSlice> finishzip(
             final ZipOutputStream zipout,
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout) {
-        final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped = fromBufout(bufout, () -> {
+        final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped = MessageUtil.out2dwbs(bufout, (out) -> {
             try {
                 zipout.finish();
                 zipout.close();
@@ -449,38 +449,21 @@ public class ZipUtil {
             }});
     }
 
-    private static Action0 appendBuf(final ZipOutputStream zipout,
+    private static void append4zip(final ZipOutputStream zipout,
             final Iterable<? extends DisposableWrapper<? extends ByteBuf>> dwbs,
             final byte[] readbuf,
             final Action1<DisposableWrapper<? extends ByteBuf>> onzipped) {
-        return ()->{
-            try (final BufsInputStream<DisposableWrapper<? extends ByteBuf>> is =
+        try (final BufsInputStream<DisposableWrapper<? extends ByteBuf>> is =
                     new BufsInputStream<>(dwb->dwb.unwrap(), onzipped)) {
-                is.appendIterable(dwbs);
-                is.markEOS();
-                int readed;
-                while ((readed = is.read(readbuf)) > 0) {
-                    zipout.write(readbuf, 0, readed);
-                }
-//                zipout.flush();
-            } catch (final IOException e) {
-                throw new RuntimeException(e);
+            is.appendIterable(dwbs);
+            is.markEOS();
+            int readed;
+            while ((readed = is.read(readbuf)) > 0) {
+                zipout.write(readbuf, 0, readed);
             }
-        };
-    }
-
-    public static <T> Iterable<T> fromBufout(final BufsOutputStream<T> bufout, final Action0 action) {
-        final List<T> bufs = new ArrayList<>();
-        bufout.setOutput(buf -> bufs.add(buf));
-
-        try {
-            action.call();
-            bufout.flush();
-            return bufs;
-        } catch (final Exception e) {
+//            zipout.flush();
+        } catch (final IOException e) {
             throw new RuntimeException(e);
-        } finally {
-            bufout.setOutput(null);
         }
     }
 }

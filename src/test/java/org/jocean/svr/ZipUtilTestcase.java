@@ -182,7 +182,7 @@ public class ZipUtilTestcase {
         final ZipOutputStream zipout = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
         zipout.setLevel(Deflater.BEST_COMPRESSION);
 
-        final Iterable<DisposableWrapper<ByteBuf>> zipped = ZipUtil.fromBufout(bufout, ()-> {
+        final Iterable<DisposableWrapper<ByteBuf>> zipped = MessageUtil.out2dwbs(bufout, (out)-> {
             try {
                 zipout.putNextEntry(new ZipEntry("1"));
                 zipout.write(c1);
