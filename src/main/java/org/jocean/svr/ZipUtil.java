@@ -350,7 +350,7 @@ public class ZipUtil {
             final String entryName,
             final ZipOutputStream zipout,
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout) {
-        final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped = MessageUtil.out2dwbs(bufout, (out)-> {
+        final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped = MessageUtil.out2dwbs(bufout, out -> {
             try {
                 zipout.putNextEntry(new ZipEntry(entryName));
             } catch (final IOException e) {
@@ -379,7 +379,7 @@ public class ZipUtil {
             final Action1<DisposableWrapper<? extends ByteBuf>> onzipped) {
         return bbs -> {
             final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped =
-                    MessageUtil.out2dwbs(bufout, (out) -> append4zip(zipout, bbs.element(), readbuf, onzipped));
+                    MessageUtil.out2dwbs(bufout, out -> append4zip(zipout, bbs.element(), readbuf, onzipped));
 
             return new ByteBufSlice() {
                 @Override
@@ -402,7 +402,7 @@ public class ZipUtil {
     private static Observable<ByteBufSlice> closeentry(
             final ZipOutputStream zipout,
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout) {
-        final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped = MessageUtil.out2dwbs(bufout, (out) -> {
+        final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped = MessageUtil.out2dwbs(bufout, out -> {
             try {
                 zipout.closeEntry();
                 zipout.flush();
@@ -427,7 +427,7 @@ public class ZipUtil {
     private static Observable<ByteBufSlice> finishzip(
             final ZipOutputStream zipout,
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout) {
-        final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped = MessageUtil.out2dwbs(bufout, (out) -> {
+        final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped = MessageUtil.out2dwbs(bufout, out -> {
             try {
                 zipout.finish();
                 zipout.close();
