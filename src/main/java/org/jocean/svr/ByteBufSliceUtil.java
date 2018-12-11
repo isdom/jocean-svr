@@ -154,6 +154,43 @@ public class ByteBufSliceUtil {
         }
     }
 
+    public interface SliceContext {
+        public boolean isCompleted();
+        public Observable<Iterable<DisposableWrapper<ByteBuf>>> element();
+        public SliceContext next();
+    }
+
+    public static void stream2bbs(
+            final SliceContext ctx,
+            final Subscriber<? super ByteBufSlice> subscriber) {
+//        final int step = Math.min(end - begin + 1, maxstep);
+//        if (step <= 0)
+        if (ctx.isCompleted()) {
+            if (!subscriber.isUnsubscribed()) {
+                subscriber.onCompleted();
+            }
+        } else {
+            ctx.element().subscribe(iterable -> {
+                if (!subscriber.isUnsubscribed()) {
+                    subscriber.onNext(new ByteBufSlice() {
+                        @Override
+                        public void step() {
+                            // begin + step, end, maxstep,
+                            stream2bbs(ctx.next(), subscriber);
+                        }
+                        @Override
+                        public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                            return iterable;
+                        }});
+                }
+            }, e -> {
+                if (!subscriber.isUnsubscribed()) {
+                    subscriber.onError(e);
+                }
+            });
+        }
+    }
+
     public static void range2slice(
             final Subscriber<? super ByteBufSlice> subscriber,
             final int begin,
