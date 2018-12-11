@@ -159,22 +159,29 @@ public class ByteBufSliceUtil {
             final int begin,
             final int end,
             final int maxstep,
-            final Func2<Integer, Integer, Iterable<DisposableWrapper<ByteBuf>>> bbsbuilder) {
-        if (!subscriber.isUnsubscribed()) {
-            final int step = Math.min(end - begin + 1, maxstep);
-            if (step <= 0) {
+            final Func2<Integer, Integer, Observable<Iterable<DisposableWrapper<ByteBuf>>>> bbsbuilder) {
+        final int step = Math.min(end - begin + 1, maxstep);
+        if (step <= 0) {
+            if (!subscriber.isUnsubscribed()) {
                 subscriber.onCompleted();
             }
-            subscriber.onNext(new ByteBufSlice() {
-                @Override
-                public void step() {
-                    range2slice(subscriber, begin + step, end, maxstep, bbsbuilder);
-                }
-
-                @Override
-                public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                    return bbsbuilder.call(begin, step);
-                }});
         }
+        bbsbuilder.call(begin, step).subscribe(iterable -> {
+            if (!subscriber.isUnsubscribed()) {
+                subscriber.onNext(new ByteBufSlice() {
+                    @Override
+                    public void step() {
+                        range2slice(subscriber, begin + step, end, maxstep, bbsbuilder);
+                    }
+                    @Override
+                    public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                        return iterable;
+                    }});
+            }
+        }, e -> {
+            if (!subscriber.isUnsubscribed()) {
+                subscriber.onError(e);
+            }
+        });
     }
 }
