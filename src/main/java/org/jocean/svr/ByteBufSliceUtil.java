@@ -194,7 +194,7 @@ public class ByteBufSliceUtil {
 
     public static class RangeContext implements StreamContext {
 
-        RangeContext(final long begin, final long end, final int maxstep,
+        public RangeContext(final long begin, final long end, final int maxstep,
                 final Func2<Long, Integer, Observable<Iterable<DisposableWrapper<ByteBuf>>>> builder) {
             this._begin = begin;
             this._end = end;
