@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import org.jocean.http.ByteBufSlice;
+import org.jocean.http.MessageUtil;
 import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Stepable;
@@ -40,28 +41,27 @@ public class ByteBufSliceUtil {
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
 
             return stepables.map(stepable -> {
-                final List<DisposableWrapper<ByteBuf>> dwbs = new ArrayList<>();
-                bufout.setOutput(dwb -> dwbs.add(dwb));
                 try {
-                    fillout.call(stepable, bufout);
-                    bufout.flush();
+                    final Iterable<DisposableWrapper<ByteBuf>> dwbs =
+                            MessageUtil.out2dwbs(bufout, out -> fillout.call(stepable, out));
+
+                    return new ByteBufSlice() {
+                        @Override
+                        public String toString() {
+                            return new StringBuilder().append("ByteBufSlice from [").append(stepable).append("]").toString();
+                        }
+                        @Override
+                        public void step() {
+                            stepable.step();
+                        }
+                        @Override
+                        public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                            return dwbs;
+                        }};
                 } catch (final Exception e) {
                     LOG.warn("exception when generate ByteBuf, detail: {}", ExceptionUtils.exception2detail(e));
+                    throw e;
                 }
-
-                return new ByteBufSlice() {
-                    @Override
-                    public String toString() {
-                        return new StringBuilder().append("ByteBufSlice from [").append(stepable).append("]").toString();
-                    }
-                    @Override
-                    public void step() {
-                        stepable.step();
-                    }
-                    @Override
-                    public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                        return dwbs;
-                    }};
             });
         };
     }
@@ -154,17 +154,19 @@ public class ByteBufSliceUtil {
         }
     }
 
-    public interface SliceContext {
+    public interface StreamContext {
         public boolean isCompleted();
         public Observable<Iterable<DisposableWrapper<ByteBuf>>> element();
-        public SliceContext next();
+        public StreamContext next();
     }
 
-    public static void stream2bbs(
-            final SliceContext ctx,
+    public static Observable<ByteBufSlice> buildStream(final StreamContext ctx) {
+        return Observable.unsafeCreate(subscriber -> stream2bbs(ctx, subscriber));
+    }
+
+    private static void stream2bbs(
+            final StreamContext ctx,
             final Subscriber<? super ByteBufSlice> subscriber) {
-//        final int step = Math.min(end - begin + 1, maxstep);
-//        if (step <= 0)
         if (ctx.isCompleted()) {
             if (!subscriber.isUnsubscribed()) {
                 subscriber.onCompleted();
@@ -175,7 +177,6 @@ public class ByteBufSliceUtil {
                     subscriber.onNext(new ByteBufSlice() {
                         @Override
                         public void step() {
-                            // begin + step, end, maxstep,
                             stream2bbs(ctx.next(), subscriber);
                         }
                         @Override
@@ -191,34 +192,36 @@ public class ByteBufSliceUtil {
         }
     }
 
-    public static void range2slice(
-            final Subscriber<? super ByteBufSlice> subscriber,
-            final int begin,
-            final int end,
-            final int maxstep,
-            final Func2<Integer, Integer, Observable<Iterable<DisposableWrapper<ByteBuf>>>> bbsbuilder) {
-        final int step = Math.min(end - begin + 1, maxstep);
-        if (step <= 0) {
-            if (!subscriber.isUnsubscribed()) {
-                subscriber.onCompleted();
-            }
+    static class RangeContext implements StreamContext {
+
+        RangeContext(final long begin, final long end, final int maxstep,
+                final Func2<Long, Integer, Observable<Iterable<DisposableWrapper<ByteBuf>>>> builder) {
+            this._begin = begin;
+            this._end = end;
+            this._step = (int)Math.min(end - begin + 1, maxstep);
+            this._maxstep = maxstep;
+            this._builder = builder;
         }
-        bbsbuilder.call(begin, step).subscribe(iterable -> {
-            if (!subscriber.isUnsubscribed()) {
-                subscriber.onNext(new ByteBufSlice() {
-                    @Override
-                    public void step() {
-                        range2slice(subscriber, begin + step, end, maxstep, bbsbuilder);
-                    }
-                    @Override
-                    public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                        return iterable;
-                    }});
-            }
-        }, e -> {
-            if (!subscriber.isUnsubscribed()) {
-                subscriber.onError(e);
-            }
-        });
+
+        @Override
+        public boolean isCompleted() {
+            return this._step <= 0;
+        }
+
+        @Override
+        public Observable<Iterable<DisposableWrapper<ByteBuf>>> element() {
+            return this._builder.call(this._begin, this._step);
+        }
+
+        @Override
+        public StreamContext next() {
+            return new RangeContext( this._begin + this._step, this._end, this._maxstep, this._builder);
+        }
+
+        private final long _begin;
+        private final long _end;
+        private final int _step;
+        private final int _maxstep;
+        private final Func2<Long, Integer, Observable<Iterable<DisposableWrapper<ByteBuf>>>> _builder;
     }
 }
