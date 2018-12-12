@@ -192,9 +192,9 @@ public class ByteBufSliceUtil {
         }
     }
 
-    public static class RangeContext implements StreamContext {
+    private static class RangeContext implements StreamContext {
 
-        public RangeContext(final long begin, final long end, final int maxstep,
+        private RangeContext(final long begin, final long end, final int maxstep,
                 final Func2<Long, Integer, Observable<Iterable<DisposableWrapper<ByteBuf>>>> builder) {
             this._begin = begin;
             this._end = end;
@@ -223,5 +223,13 @@ public class ByteBufSliceUtil {
         private final int _step;
         private final int _maxstep;
         private final Func2<Long, Integer, Observable<Iterable<DisposableWrapper<ByteBuf>>>> _builder;
+    }
+
+    public static StreamContext rangectx(
+            final long begin,
+            final long end,
+            final int maxstep,
+            final Func2<Long, Integer, Observable<Iterable<DisposableWrapper<ByteBuf>>>> builder) {
+        return new RangeContext(begin, end, maxstep, builder);
     }
 }
