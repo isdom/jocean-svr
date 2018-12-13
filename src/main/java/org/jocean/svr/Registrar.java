@@ -50,6 +50,7 @@ import org.jocean.http.MessageBody;
 import org.jocean.http.MessageUtil;
 import org.jocean.http.RpcExecutor;
 import org.jocean.http.WriteCtrl;
+import org.jocean.http.internal.DefaultRpcExecutor;
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
 import org.jocean.http.util.RxNettys;
 import org.jocean.idiom.BeanFinder;
@@ -993,7 +994,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private RpcExecutor buildRpcExecutor(final Method processor, final HttpTrade trade) {
-        return new RpcExecutor(FinderUtil.rpc(this._finder, fromMethod(processor)).ib(new InteractBuilderImpl(trade)).runner());
+        return new DefaultRpcExecutor(FinderUtil.rpc(this._finder, fromMethod(processor)).ib(new InteractBuilderImpl(trade)).runner());
     }
 
     private static CallerContext fromMethod(final Method processor) {
