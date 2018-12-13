@@ -51,6 +51,7 @@ import org.jocean.http.MessageUtil;
 import org.jocean.http.WriteCtrl;
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
 import org.jocean.http.util.RxNettys;
+import org.jocean.idiom.BeanFinder;
 import org.jocean.idiom.BeanHolder;
 import org.jocean.idiom.BeanHolderAware;
 import org.jocean.idiom.Beans;
@@ -965,6 +966,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return buildTradeContext(trade);
         } else if (argType.equals(ZipBuilder.class)) {
             return buildZipBuilder(trade);
+        } else if (argType.equals(BeanFinder.class)) {
+            return this._finder;
         } else {
             for (final MethodInterceptor interceptor : interceptors) {
                 if (interceptor instanceof ArgumentBuilder) {
@@ -1160,6 +1163,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     @Inject
     @Named("pkg2interceptors")
     Map<String, Class<? extends MethodInterceptor>[]> _pkg2interceptors;
+
+    @Inject
+    private BeanFinder _finder;
 
     private SpringBeanHolder _beanHolder;
     private Pattern _pathPattern;
