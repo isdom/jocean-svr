@@ -48,6 +48,7 @@ import org.jocean.http.HttpSliceUtil;
 import org.jocean.http.InteractBuilder;
 import org.jocean.http.MessageBody;
 import org.jocean.http.MessageUtil;
+import org.jocean.http.RpcExecutor;
 import org.jocean.http.WriteCtrl;
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
 import org.jocean.http.util.RxNettys;
@@ -69,6 +70,7 @@ import org.jocean.j2se.unit.UnitAgent;
 import org.jocean.j2se.unit.UnitListener;
 import org.jocean.j2se.util.BeanHolders;
 import org.jocean.netty.util.BufsOutputStream;
+import org.jocean.svr.FinderUtil.CallerContext;
 import org.jocean.svr.ZipUtil.Unzipper;
 import org.jocean.svr.ZipUtil.ZipBuilder;
 import org.jocean.svr.ZipUtil.Zipper;
@@ -313,6 +315,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     static class ArgsCtx {
+        public Method processor;
         public Type[] genericParameterTypes;
         public Annotation[][] parameterAnnotations;
         public HttpTrade trade;
@@ -320,12 +323,14 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         public Map<String, String> pathParams;
         public MethodInterceptor[] interceptors;
 
-        public ArgsCtx(final Type[] genericParameterTypes,
+        public ArgsCtx(final Method processor,
+                final Type[] genericParameterTypes,
                 final Annotation[][] parameterAnnotations,
                 final HttpTrade trade,
                 final HttpRequest request,
                 final Map<String, String> pathParams,
                 final MethodInterceptor[] interceptors) {
+            this.processor = processor;
             this.genericParameterTypes = genericParameterTypes;
             this.parameterAnnotations = parameterAnnotations;
             this.trade = trade;
@@ -381,7 +386,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     return doPostInvoke(interceptors,
                             copyCtxOverrideResponse(interceptorCtx, aheadObsResponse));
                 } else {
-                    final ArgsCtx argctx = new ArgsCtx(processor.getGenericParameterTypes(),
+                    final ArgsCtx argctx = new ArgsCtx(processor,
+                            processor.getGenericParameterTypes(),
                             processor.getParameterAnnotations(),
                             trade,
                             request,
@@ -897,6 +903,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         int idx = 0;
         for (final Type argType : argCtx.genericParameterTypes) {
             args.add(buildArgByType(resource,
+                    argCtx.processor,
                     argType,
                     argCtx.parameterAnnotations[idx],
                     argCtx.trade,
@@ -910,6 +917,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     //  TBD: 查表实现
     private Object buildArgByType(final Object resource,
+            final Method processor,
             final Type argType,
             final Annotation[] argAnnotations,
             final HttpTrade trade,
@@ -968,6 +976,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return buildZipBuilder(trade);
         } else if (argType.equals(BeanFinder.class)) {
             return this._finder;
+        } else if (argType.equals(RpcExecutor.class)) {
+            return buildRpcExecutor(processor, trade);
         } else {
             for (final MethodInterceptor interceptor : interceptors) {
                 if (interceptor instanceof ArgumentBuilder) {
@@ -980,6 +990,24 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
 
         return null;
+    }
+
+    private RpcExecutor buildRpcExecutor(final Method processor, final HttpTrade trade) {
+        return new RpcExecutor(FinderUtil.rpc(this._finder, fromMethod(processor)).ib(new InteractBuilderImpl(trade)).runner());
+    }
+
+    private static CallerContext fromMethod(final Method processor) {
+        return new CallerContext() {
+
+            @Override
+            public String className() {
+                return processor.getDeclaringClass().getName();
+            }
+
+            @Override
+            public String methodName() {
+                return processor.getName();
+            }};
     }
 
     private ZipBuilder buildZipBuilder(final HttpTrade trade) {

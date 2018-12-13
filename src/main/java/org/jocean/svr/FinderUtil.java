@@ -28,44 +28,21 @@ public class FinderUtil {
         throw new IllegalStateException("No instances!");
     }
 
-    private static Transformer<? super Interact, ? extends Interact> findAndApplyRpcConfig(
-            final BeanFinder finder,
-            final StackTraceElement ste) {
-        final String callerClassName = ste.getClassName();
-        final String callerMethodName = ste.getMethodName();
-        return interacts-> {
-            return finder.find("rpccfg_" + callerClassName, RpcConfig.class).flatMap(cfg -> {
-                final RpcConfig childcfg = cfg.child(callerMethodName);
-                if (null != childcfg) {
-                    LOG.info("using {}:{}-{}'s before", callerClassName, callerMethodName, childcfg);
-                    return interacts.compose(childcfg.before());
-                } else {
-                    LOG.info("using {}-{}'s before", callerClassName, cfg);
-                    return interacts.compose(cfg.before());
-                }
-            }, e -> {
-                return finder.find("rpccfg_global", RpcConfig.class).flatMap(cfg -> {
-                    LOG.info("using rpccfg_global-{}'s before", cfg);
-                    return interacts.compose(cfg.before());
-                }, e1 -> {
-                    LOG.info("Non-Matched RpcConfig for {}:{}", callerClassName, callerMethodName);
-                    return interacts;
-                }, () -> Observable.empty());
-            },
-            () -> Observable.empty());
-        };
+    public interface CallerContext {
+        public String className();
+        public String methodName();
     }
 
-    public static Observable<Interact> interacts(final BeanFinder finder, final InteractBuilder ib) {
-        final StackTraceElement[] stes = Thread.currentThread().getStackTrace();
-        return finder.find(HttpClient.class).map(client -> ib.interact(client))
-                .compose(findAndApplyRpcConfig(finder, stes[2]));
-    }
-
-    public static Observable<Interact> interacts(final BeanFinder finder) {
-        final StackTraceElement[] stes = Thread.currentThread().getStackTrace();
-        return finder.find(HttpClient.class).map(client-> MessageUtil.interact(client))
-                .compose(findAndApplyRpcConfig(finder, stes[2]));
+    private static CallerContext from(final StackTraceElement ste) {
+        return new CallerContext() {
+            @Override
+            public String className() {
+                return ste.getClassName();
+            }
+            @Override
+            public String methodName() {
+                return ste.getMethodName();
+            }};
     }
 
     @SuppressWarnings("unchecked")
@@ -92,13 +69,28 @@ public class FinderUtil {
         return interacts -> finder.find(EndpointSet.class).flatMap(eps -> interacts.compose(eps.of(spi)));
     }
 
+    public static Observable<Interact> interacts(final BeanFinder finder, final InteractBuilder ib) {
+        final CallerContext ctx = from(Thread.currentThread().getStackTrace()[2]);
+        return finder.find(HttpClient.class).map(client -> ib.interact(client))
+                .compose(findAndApplyRpcConfig(finder, ctx));
+    }
+
+    public static Observable<Interact> interacts(final BeanFinder finder) {
+        final CallerContext ctx = from(Thread.currentThread().getStackTrace()[2]);
+        return finder.find(HttpClient.class).map(client-> MessageUtil.interact(client))
+                .compose(findAndApplyRpcConfig(finder, ctx));
+    }
+
     public interface RpcRunnerBuilder {
         public RpcRunnerBuilder ib(final InteractBuilder ib);
         public Observable<RpcRunner> runner();
     }
 
     public static RpcRunnerBuilder rpc(final BeanFinder finder) {
-        final StackTraceElement ste = Thread.currentThread().getStackTrace()[2];
+        return rpc(finder, from(Thread.currentThread().getStackTrace()[2]));
+    }
+
+    public static RpcRunnerBuilder rpc(final BeanFinder finder, final CallerContext ctx) {
         return new RpcRunnerBuilder() {
             @Override
             public RpcRunnerBuilder ib(final InteractBuilder ib) {
@@ -111,22 +103,51 @@ public class FinderUtil {
                     @Override
                     public Observable<RpcRunner> runner() {
                         return finder.find(HttpClient.class).map(client-> ib.interact(client))
-                                .compose(findAndApplyRpcConfig(finder, ste))
-                                .compose(interacts-> Observable.just(buildRunner(interacts, finder, ste)));
+                                .compose(findAndApplyRpcConfig(finder, ctx))
+                                .compose(interacts-> Observable.just(buildRunner(interacts, finder, ctx)));
                     }};
             }
 
             @Override
             public Observable<RpcRunner> runner() {
                 return finder.find(HttpClient.class).map(client-> MessageUtil.interact(client))
-                        .compose(findAndApplyRpcConfig(finder, ste))
-                        .compose(interacts-> Observable.just(buildRunner(interacts, finder, ste)));
+                        .compose(findAndApplyRpcConfig(finder, ctx))
+                        .compose(interacts-> Observable.just(buildRunner(interacts, finder, ctx)));
             }};
+    }
+
+    private static Transformer<? super Interact, ? extends Interact> findAndApplyRpcConfig(
+            final BeanFinder finder,
+            final CallerContext ctx) {
+        final String callerClassName = ctx.className();
+        final String callerMethodName = ctx.methodName();
+
+        return interacts-> {
+            return finder.find("rpccfg_" + callerClassName, RpcConfig.class).flatMap(cfg -> {
+                final RpcConfig childcfg = cfg.child(callerMethodName);
+                if (null != childcfg) {
+                    LOG.info("using {}:{}-{}'s before", callerClassName, callerMethodName, childcfg);
+                    return interacts.compose(childcfg.before());
+                } else {
+                    LOG.info("using {}-{}'s before", callerClassName, cfg);
+                    return interacts.compose(cfg.before());
+                }
+            }, e -> {
+                return finder.find("rpccfg_global", RpcConfig.class).flatMap(cfg -> {
+                    LOG.info("using rpccfg_global-{}'s before", cfg);
+                    return interacts.compose(cfg.before());
+                }, e1 -> {
+                    LOG.info("Non-Matched RpcConfig for {}:{}", callerClassName, callerMethodName);
+                    return interacts;
+                }, () -> Observable.empty());
+            },
+            () -> Observable.empty());
+        };
     }
 
     private static RpcRunner buildRunner(final Observable<? extends Interact> interacts,
             final BeanFinder finder,
-            final StackTraceElement ste) {
+            final CallerContext ctx) {
         return new RpcRunner() {
             @Override
             public RpcRunner spi(final TypedSPI spi) {
@@ -137,11 +158,11 @@ public class FinderUtil {
                     }
                     @Override
                     public RpcRunner name(final String name) {
-                        return finalRunner(interacts, finder, ste, spi, name);
+                        return finalRunner(interacts, finder, ctx, spi, name);
                     }
                     @Override
                     public <T> Observable<T> execute(final Func1<Interact, Observable<T>> invoker) {
-                        return doExecute(interacts, finder, ste, spi, null, invoker);
+                        return doExecute(interacts, finder, ctx, spi, null, invoker);
                     }};
             }
 
@@ -150,7 +171,7 @@ public class FinderUtil {
                 return new RpcRunner() {
                     @Override
                     public RpcRunner spi(final TypedSPI spi) {
-                        return finalRunner(interacts, finder, ste, spi, name);
+                        return finalRunner(interacts, finder, ctx, spi, name);
                     }
                     @Override
                     public RpcRunner name(final String otherName) {
@@ -158,13 +179,13 @@ public class FinderUtil {
                     }
                     @Override
                     public <T> Observable<T> execute(final Func1<Interact, Observable<T>> invoker) {
-                        return doExecute(interacts, finder, ste, null, name, invoker);
+                        return doExecute(interacts, finder, ctx, null, name, invoker);
                     }};
             }
 
             @Override
             public <T> Observable<T> execute(final Func1<Interact, Observable<T>> invoker) {
-                return doExecute(interacts, finder, ste, null, null, invoker);
+                return doExecute(interacts, finder, ctx, null, null, invoker);
             }
         };
     }
@@ -172,7 +193,7 @@ public class FinderUtil {
     private static RpcRunner finalRunner(
             final Observable<? extends Interact> interacts,
             final BeanFinder finder,
-            final StackTraceElement ste,
+            final CallerContext ctx,
             final TypedSPI spi,
             final String name) {
         return new RpcRunner() {
@@ -189,18 +210,18 @@ public class FinderUtil {
 
             @Override
             public <T> Observable<T> execute(final Func1<Interact, Observable<T>> invoker) {
-                return doExecute(interacts, finder, ste, spi, name, invoker);
+                return doExecute(interacts, finder, ctx, spi, name, invoker);
             }};
     }
 
     private static <T> Observable<T> doExecute(
             final Observable<? extends Interact> interacts,
             final BeanFinder finder,
-            final StackTraceElement ste,
+            final CallerContext ctx,
             final TypedSPI spi,
             final String name,
             final Func1<Interact, Observable<T>> invoker) {
-        final String group = getSimpleClassName(ste.getClassName()) + "." + ste.getMethodName();
+        final String group = getSimpleClassName(ctx.className()) + "." + ctx.methodName();
 
         final String key = (null != spi ? spi.type() : "(api)") + "." + (null != name ? name : "(unname)");
 
@@ -217,7 +238,7 @@ public class FinderUtil {
                 if (null != spi) {
                     inters = inters.compose(FinderUtil.endpoint(finder, spi));
                 }
-                return inters.flatMap(invoker).compose(withAfter(finder, ste));
+                return inters.flatMap(invoker).compose(withAfter(finder, ctx));
             }
         }.toObservable();
     }
@@ -227,9 +248,10 @@ public class FinderUtil {
         return idx >= 0 ? className.substring(idx + 1) : className;
     }
 
-    private static <T> Transformer<T, T> withAfter(final BeanFinder finder, final StackTraceElement ste) {
-        final String callerClassName = ste.getClassName();
-        final String callerMethodName = ste.getMethodName();
+    private static <T> Transformer<T, T> withAfter(final BeanFinder finder,final CallerContext ctx) {
+        final String callerClassName = ctx.className();
+        final String callerMethodName = ctx.methodName();
+
         return response -> finder.find("rpccfg_" + callerClassName, RpcConfig.class).flatMap(cfg -> {
             final RpcConfig childcfg = cfg.child(callerMethodName);
             if (null != childcfg) {
