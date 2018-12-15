@@ -18,6 +18,7 @@ configurations {
 // In this section you declare the dependencies for your production and test code
 dependencies {
     compile 'javax.inject:javax.inject:1'
+    compile "com.alibaba:fastjson:${fastjsonVersion}"
     compile "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
     compile "com.fasterxml.jackson.dataformat:jackson-dataformat-xml:${jacksonVersion}"
     compile "org.springframework:spring-context:${springVersion}"
@@ -33,6 +34,7 @@ dependencies {
     compile 'org.jocean:jocean-http:0.0.2-SNAPSHOT'
     compile('org.jocean:jocean-j2se:0.0.4-SNAPSHOT') { transitive = false }
 
+    compile "io.netty:netty-all:${nettyVersion}"
     testCompile 'ch.qos.logback:logback-classic:1.2.2'
 
     // Declare the dependency for your favourite test framework you want to use in your tests.

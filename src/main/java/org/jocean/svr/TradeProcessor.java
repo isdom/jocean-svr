@@ -3,7 +3,9 @@
  */
 package org.jocean.svr;
 
-import org.jocean.http.HttpSlice;
+import org.jocean.http.ByteBufSlice;
+import org.jocean.http.FullMessage;
+import org.jocean.http.MessageBody;
 import org.jocean.http.TrafficCounter;
 import org.jocean.http.WriteCtrl;
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
@@ -50,46 +52,77 @@ public class TradeProcessor extends Subscriber<HttpTrade>
 
     @Override
     public void onNext(final HttpTrade trade) {
-        trade.request().subscribe(req-> {
+        trade.inbound().subscribe(fullreq -> {
             if ( this._maxContentLengthForAutoread <= 0) {
                 LOG.debug("disable autoread full request, handle raw {}.", trade);
-                handleTrade(req, trade);
+                handleTrade(fullreq, trade);
             } else {
-                tryHandleTradeWithAutoread(req, trade);
+                tryHandleTradeWithAutoread(fullreq, trade);
             }
         }, e -> LOG.warn("SOURCE_CANCELED\nfor cause:[{}]", ExceptionUtils.exception2detail(e)));
     }
 
-    private void tryHandleTradeWithAutoread(final HttpRequest req, final HttpTrade trade) {
-        if (HttpUtil.isTransferEncodingChunked(req)) {
+    private void tryHandleTradeWithAutoread(final FullMessage<HttpRequest> fullreq, final HttpTrade trade) {
+        if (HttpUtil.isTransferEncodingChunked(fullreq.message())) {
             // chunked
             // output log and using raw trade
             LOG.info("chunked request, handle raw {}.", trade);
-            handleTrade(req, trade);
-        } else if (!HttpUtil.isContentLengthSet(req)) {
+            handleTrade(fullreq, trade);
+        } else if (!HttpUtil.isContentLengthSet(fullreq.message())) {
             LOG.debug("content-length not set, handle raw {}.", trade);
             // not set content-length and not chunked
-            handleTrade(req, trade);
+            handleTrade(fullreq, trade);
         } else {
-            final long contentLength = HttpUtil.getContentLength(req);
+            final long contentLength = HttpUtil.getContentLength(fullreq.message());
             if (contentLength <= this._maxContentLengthForAutoread) {
                 LOG.debug("content-length is {} <= {}, enable autoread full request for {}.",
                         contentLength, this._maxContentLengthForAutoread, trade);
                 // auto read all request
-                handleTrade(req, enableAutoread(trade));
+                handleTrade(fullreq, enableAutoread(trade));
             } else {
                 // content-length > max content-length
                 LOG.debug("content-length is {} > {}, handle raw {}.",
                         contentLength, this._maxContentLengthForAutoread, trade);
-                handleTrade(req, trade);
+                handleTrade(fullreq, trade);
             }
         }
     }
 
     private HttpTrade enableAutoread(final HttpTrade trade) {
-        final Observable<HttpSlice> cachedInbound = trade.inbound().doOnNext(slice -> slice.step()).cache();
-        // start autoread
-        cachedInbound.subscribe(RxSubscribers.ignoreNext(), RxSubscribers.ignoreError());
+        final Observable<FullMessage<HttpRequest>> autoreadInbound =
+                trade.inbound().<FullMessage<HttpRequest>>map(fullmsg -> {
+                    final Observable<MessageBody> cachedBody = fullmsg.body().<MessageBody>map(body -> {
+                        final Observable<? extends ByteBufSlice> cachedContent =
+                                body.content().doOnNext(bbs -> bbs.step()).cache();
+                        cachedContent.subscribe(RxSubscribers.ignoreNext(), RxSubscribers.ignoreError());
+                        return new MessageBody() {
+                            @Override
+                            public String contentType() {
+                                return body.contentType();
+                            }
+                            @Override
+                            public int contentLength() {
+                                return body.contentLength();
+                            }
+                            @Override
+                            public Observable<? extends ByteBufSlice> content() {
+                                return cachedContent;
+                            }};
+                    }).cache();
+                    cachedBody.subscribe(RxSubscribers.ignoreNext(), RxSubscribers.ignoreError());
+                    return new FullMessage<HttpRequest>() {
+                        @Override
+                        public HttpRequest message() {
+                            return fullmsg.message();
+                        }
+                        @Override
+                        public Observable<? extends MessageBody> body() {
+                            return cachedBody;
+                        }};
+                }).cache();
+
+        autoreadInbound.subscribe(RxSubscribers.ignoreNext(), RxSubscribers.ignoreError());
+
         return new HttpTrade() {
 
             @Override
@@ -118,13 +151,8 @@ public class TradeProcessor extends Subscriber<HttpTrade>
             }
 
             @Override
-            public Observable<HttpRequest> request() {
-                return trade.request();
-            }
-
-            @Override
-            public Observable<HttpSlice> inbound() {
-                return cachedInbound;
+            public Observable<FullMessage<HttpRequest>> inbound() {
+                return autoreadInbound;
             }
 
             @Override
@@ -173,9 +201,9 @@ public class TradeProcessor extends Subscriber<HttpTrade>
             }};
     }
 
-    private void handleTrade(final HttpRequest req, final HttpTrade trade) {
+    private void handleTrade(final FullMessage<HttpRequest> fullreq, final HttpTrade trade) {
         try {
-            final Observable<? extends Object> outbound = this._registrar.buildResource(req, trade);
+            final Observable<? extends Object> outbound = this._registrar.buildResource(fullreq.message(), trade);
             trade.outbound(outbound.doOnNext(DisposableWrapperUtil.disposeOnForAny(trade)));
         } catch (final Exception e) {
             LOG.warn("exception when buildResource, detail:{}",

@@ -1,6 +1,6 @@
 package org.jocean.svr.interceptor;
 
-import org.jocean.http.MessageUtil;
+import org.jocean.idiom.StepableUtil;
 import org.jocean.svr.MethodInterceptor;
 
 import io.netty.buffer.Unpooled;
@@ -39,8 +39,9 @@ public class EnableCORS implements MethodInterceptor {
                     corsresp.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_ORIGIN, origin);
                 }
                 corsresp.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_CREDENTIALS, true);
-                return Observable.<HttpObject>just(corsresp)
-                    .delaySubscription(ctx.obsRequest().compose(MessageUtil.AUTOSTEP2DWH).last());
+                return Observable.<HttpObject>just(corsresp).delaySubscription(
+                        ctx.obsRequest().flatMap(fullmsg -> fullmsg.body()).flatMap(body -> body.content())
+                        .compose(StepableUtil.autostep2element2()).doOnNext(bbs -> bbs.dispose()).ignoreElements());
             }
         }
         return null;

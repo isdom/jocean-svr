@@ -5,7 +5,6 @@ import java.util.List;
 
 import org.jocean.http.ByteBufSlice;
 import org.jocean.http.MessageBody;
-import org.jocean.http.MessageUtil;
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
 import org.jocean.http.util.Nettys;
 import org.jocean.http.util.RxNettys;
@@ -136,8 +135,9 @@ class MultipartBody implements Observable.OnSubscribe<MessageBody> {
             this._trade.doOnTerminate(()->subscriber.unsubscribe());
 
             // TBD: release toblob and release subscriber within trade
-            this._trade.inbound().compose(MessageUtil.AUTOSTEP2DWH).flatMap(new ToBody(this._request, subscriber))
-                .subscribe(subscriber);
+            // TODO fix it
+//            this._trade.inbound().compose(MessageUtil.AUTOSTEP2DWH).flatMap(new ToBody(this._request, subscriber))
+//                .subscribe(subscriber);
         }
     }
 
