@@ -3,7 +3,7 @@
        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
        xsi:schemaLocation="http://www.springframework.org/schema/beans
         http://www.springframework.org/schema/beans/spring-beans.xsd">
-    
+
     <bean id="httpfeatures" class="java.util.concurrent.CopyOnWriteArrayList" />
 
     <bean id="agentServer" 
@@ -22,7 +22,7 @@
         </constructor-arg>
         <constructor-arg>
             <array value-type="org.jocean.http.Feature">
-                <bean class="org.jocean.svr.mbean.RestinIndicator">
+                <bean id="restinIndicator" class="org.jocean.svr.mbean.RestinIndicator">
                     <property name="mbeanName" value="${restin.mbeanname:restin}"/>
                     <property name="category" value="${restin.category}"/>
                     <property name="priority" value="${restin.priority:100}"/>
@@ -48,6 +48,7 @@
         <constructor-arg>
             <bean class="org.jocean.svr.TradeProcessor">
 		        <constructor-arg ref="registrar" />
+                <constructor-arg ref="restinIndicator" />
 		    </bean>
         </constructor-arg>
     </bean>

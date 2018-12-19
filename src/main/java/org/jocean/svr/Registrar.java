@@ -103,6 +103,7 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder;
+import io.opentracing.Span;
 import rx.Completable;
 import rx.Observable;
 import rx.functions.Func0;
@@ -342,7 +343,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     public Observable<? extends Object> buildResource(
             final HttpRequest request,
-            final HttpTrade trade) throws Exception {
+            final HttpTrade trade,
+            final Span span) throws Exception {
 
         // try direct path match
         final Pair<ResContext, Map<String, String>> pair = findResourceCtx(request);
@@ -353,6 +355,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final Object resource = this._beanHolder.getBean(pair.first._cls);
 
             if (null!=resource) {
+                span.setOperationName(resource.getClass().getSimpleName() + "." + processor.getName());
+
                 final Deque<MethodInterceptor> interceptors = new LinkedList<>();
                 final MethodInterceptor.Context interceptorCtx = new MethodInterceptor.Context() {
                     @Override
