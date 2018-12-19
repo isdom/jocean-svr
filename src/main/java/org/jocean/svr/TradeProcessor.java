@@ -35,6 +35,7 @@ import io.opentracing.Tracer;
 import io.opentracing.propagation.Format;
 import io.opentracing.propagation.TextMap;
 import io.opentracing.tag.Tags;
+import io.opentracing.util.GlobalTracer;
 import rx.Completable;
 import rx.Observable;
 import rx.Subscriber;
@@ -83,7 +84,7 @@ public class TradeProcessor extends Subscriber<HttpTrade>
     @Override
     public void onNext(final HttpTrade trade) {
         trade.inbound().first().flatMap(fullreq ->
-            this._finder.find(Tracer.class).map(tracer -> {
+            getTracer().map(tracer -> {
                 Tracer.SpanBuilder spanBuilder;
                 final SpanContext parentSpanCtx = tracer.extract(Format.Builtin.HTTP_HEADERS, message2textmap(fullreq.message()));
                 try {
@@ -111,6 +112,10 @@ public class TradeProcessor extends Subscriber<HttpTrade>
                     tryHandleTradeWithAutoread(reqAndSpan.first, trade, reqAndSpan.second);
                 }
             }, e -> LOG.warn("SOURCE_CANCELED\nfor cause:[{}]", ExceptionUtils.exception2detail(e)));
+    }
+
+    private Observable<Tracer> getTracer() {
+        return this._finder.find(Tracer.class).onErrorReturn(e -> GlobalTracer.get());
     }
 
     private void tryHandleTradeWithAutoread(final FullMessage<HttpRequest> fullreq, final HttpTrade trade, final Span span) {
