@@ -6,6 +6,14 @@
 
     <bean id="httpfeatures" class="java.util.concurrent.CopyOnWriteArrayList" />
 
+    <bean id="restinIndicator" class="org.jocean.svr.mbean.RestinIndicator">
+        <property name="mbeanName" value="${restin.mbeanname:restin}"/>
+        <property name="category" value="${restin.category}"/>
+        <property name="priority" value="${restin.priority:100}"/>
+        <property name="pathPattern" value="${restin.pathpattern}"/>
+        <property name="hostPattern" value="${restin.hostpattern:}"/>
+    </bean>
+    
     <bean id="agentServer" 
         factory-bean="httpServerBuilder" 
         factory-method="defineServer">
@@ -22,13 +30,7 @@
         </constructor-arg>
         <constructor-arg>
             <array value-type="org.jocean.http.Feature">
-                <bean id="restinIndicator" class="org.jocean.svr.mbean.RestinIndicator">
-                    <property name="mbeanName" value="${restin.mbeanname:restin}"/>
-                    <property name="category" value="${restin.category}"/>
-                    <property name="priority" value="${restin.priority:100}"/>
-                    <property name="pathPattern" value="${restin.pathpattern}"/>
-                    <property name="hostPattern" value="${restin.hostpattern:}"/>
-                </bean>
+                <ref bean="restinIndicator"/>
             </array>
         </constructor-arg>
     </bean>
