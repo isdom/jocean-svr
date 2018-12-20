@@ -35,6 +35,8 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.ssl.SslContextBuilder;
+import io.opentracing.Span;
+import io.opentracing.Tracer;
 import rx.Observable;
 import rx.Observable.Transformer;
 import rx.functions.Action1;
@@ -59,12 +61,14 @@ public class InteractBuilderImpl implements InteractBuilder {
         }
     }
 
-    public InteractBuilderImpl(final Terminable terminable) {
+    public InteractBuilderImpl(final Terminable terminable, final Span span, final Observable<Tracer> getTracer) {
         this._terminable = terminable;
+        this._span = span;
+        this._getTracer = getTracer;
     }
 
     @Override
-    public Interact interact(final HttpClient client) {
+    public Observable<Interact> interact(final HttpClient client) {
         final InitiatorBuilder _initiatorBuilder = client.initiator();
         final AtomicBoolean _isSSLEnabled = new AtomicBoolean(false);
         final AtomicReference<Observable<Object>> _obsreqRef = new AtomicReference<>(
@@ -73,7 +77,7 @@ public class InteractBuilderImpl implements InteractBuilder {
         final List<String> _nvs = new ArrayList<>();
         final AtomicReference<URI> _uriRef = new AtomicReference<>();
 
-        return new Interact() {
+        return Observable.just(new Interact() {
             private void updateObsRequest(final Action1<Object> action) {
                 _obsreqRef.set(_obsreqRef.get().doOnNext(action));
             }
@@ -213,7 +217,7 @@ public class InteractBuilderImpl implements InteractBuilder {
                         }
                     );
             }
-        };
+        });
     }
 
     private Observable<? extends MessageBody> tobody(final Object bean, final ContentEncoder contentEncoder) {
@@ -283,4 +287,7 @@ public class InteractBuilderImpl implements InteractBuilder {
     }
 
     private final Terminable _terminable;
+    private final Span _span;
+    private final Observable<Tracer> _getTracer;
+
 }

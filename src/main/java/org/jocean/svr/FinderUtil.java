@@ -71,7 +71,7 @@ public class FinderUtil {
 
     public static Observable<Interact> interacts(final BeanFinder finder, final InteractBuilder ib) {
         final CallerContext ctx = from(Thread.currentThread().getStackTrace()[2]);
-        return finder.find(HttpClient.class).map(client -> ib.interact(client))
+        return finder.find(HttpClient.class).flatMap(client -> ib.interact(client))
                 .compose(findAndApplyRpcConfig(finder, ctx));
     }
 
@@ -102,7 +102,7 @@ public class FinderUtil {
 
                     @Override
                     public Observable<RpcRunner> runner() {
-                        return finder.find(HttpClient.class).map(client-> ib.interact(client))
+                        return finder.find(HttpClient.class).flatMap(client-> ib.interact(client))
                                 .compose(findAndApplyRpcConfig(finder, ctx))
                                 .compose(interacts-> Observable.just(buildRunner(interacts, finder, ctx)));
                     }};
