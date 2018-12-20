@@ -28,6 +28,7 @@ import org.springframework.beans.factory.annotation.Value;
 
 import io.netty.handler.codec.http.HttpMessage;
 import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpUtil;
 import io.opentracing.Span;
 import io.opentracing.SpanContext;
@@ -105,17 +106,31 @@ public class TradeProcessor extends Subscriber<HttpTrade>
 //                    .withTag(Tags.PEER_HOST_IPV4.getKey(), )
                     .start());
             })).subscribe( reqAndSpan -> {
+                final Span span = reqAndSpan.second;
+
+                hook4httpstatus(trade.writeCtrl(), span);
+                trade.doOnTerminate(() -> span.finish());
+
                 if ( this._maxContentLengthForAutoread <= 0) {
                     LOG.debug("disable autoread full request, handle raw {}.", trade);
-                    handleTrade(reqAndSpan.first, trade, reqAndSpan.second);
+                    handleTrade(reqAndSpan.first, trade, span);
                 } else {
-                    tryHandleTradeWithAutoread(reqAndSpan.first, trade, reqAndSpan.second);
+                    tryHandleTradeWithAutoread(reqAndSpan.first, trade, span);
                 }
             }, e -> LOG.warn("SOURCE_CANCELED\nfor cause:[{}]", ExceptionUtils.exception2detail(e)));
     }
 
     private Observable<Tracer> getTracer() {
         return this._finder.find(Tracer.class).onErrorReturn(e -> GlobalTracer.get());
+    }
+
+    private void hook4httpstatus(final WriteCtrl writeCtrl, final Span span) {
+        writeCtrl.sending().subscribe(obj -> {
+            if ( obj instanceof HttpResponse) {
+                final HttpResponse resp = (HttpResponse)obj;
+                span.setTag(Tags.HTTP_STATUS.getKey(), resp.status().code());
+            }
+        });
     }
 
     private void tryHandleTradeWithAutoread(final FullMessage<HttpRequest> fullreq, final HttpTrade trade, final Span span) {
@@ -260,7 +275,7 @@ public class TradeProcessor extends Subscriber<HttpTrade>
     private void handleTrade(final FullMessage<HttpRequest> fullreq, final HttpTrade trade, final Span span) {
         try {
             final Observable<? extends Object> outbound = this._registrar.buildResource(fullreq.message(), trade, span);
-            trade.outbound(outbound.doOnNext(DisposableWrapperUtil.disposeOnForAny(trade)).doOnTerminate(() -> span.finish()));
+            trade.outbound(outbound.doOnNext(DisposableWrapperUtil.disposeOnForAny(trade)));
         } catch (final Exception e) {
             LOG.warn("exception when buildResource, detail:{}",
                     ExceptionUtils.exception2detail(e));
