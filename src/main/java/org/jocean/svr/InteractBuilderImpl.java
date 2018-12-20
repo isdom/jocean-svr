@@ -3,7 +3,9 @@ package org.jocean.svr;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -32,11 +34,15 @@ import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMessage;
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.opentracing.Span;
 import io.opentracing.Tracer;
+import io.opentracing.propagation.Format;
+import io.opentracing.propagation.TextMap;
+import io.opentracing.tag.Tags;
 import rx.Observable;
 import rx.Observable.Transformer;
 import rx.functions.Action1;
@@ -69,6 +75,10 @@ public class InteractBuilderImpl implements InteractBuilder {
 
     @Override
     public Observable<Interact> interact(final HttpClient client) {
+        return this._getTracer.map(tracer -> interact(client, tracer));
+    }
+
+    public Interact interact(final HttpClient client, final Tracer tracer) {
         final InitiatorBuilder _initiatorBuilder = client.initiator();
         final AtomicBoolean _isSSLEnabled = new AtomicBoolean(false);
         final AtomicReference<Observable<Object>> _obsreqRef = new AtomicReference<>(
@@ -76,8 +86,15 @@ public class InteractBuilderImpl implements InteractBuilder {
 
         final List<String> _nvs = new ArrayList<>();
         final AtomicReference<URI> _uriRef = new AtomicReference<>();
+        final Span span = tracer.buildSpan("interact")
+                .withTag(Tags.COMPONENT.getKey(), "jocean-http")
+                .withTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_CLIENT)
+//              .withTag(Tags.HTTP_URL.getKey(), request.uri())
+                .withTag(Tags.HTTP_METHOD.getKey(), HttpMethod.GET.name())
+                .asChildOf(this._span)
+                .start();
 
-        return Observable.just(new Interact() {
+        return new Interact() {
             private void updateObsRequest(final Action1<Object> action) {
                 _obsreqRef.set(_obsreqRef.get().doOnNext(action));
             }
@@ -127,6 +144,7 @@ public class InteractBuilderImpl implements InteractBuilder {
             @Override
             public Interact method(final HttpMethod method) {
                 updateObsRequest(MessageUtil.setMethod(method));
+                span.setTag(Tags.HTTP_METHOD.getKey(), method.name());
                 return this;
             }
 
@@ -137,6 +155,11 @@ public class InteractBuilderImpl implements InteractBuilder {
                     _uriRef.set(uri);
                     _initiatorBuilder.remoteAddress(MessageUtil.uri2addr(uri));
                     updateObsRequest(MessageUtil.setHost(uri));
+
+                    span.setTag(Tags.PEER_HOST_IPV4.getKey(), uri.getHost());
+                    span.setTag(Tags.PEER_HOSTNAME.getKey(), uri.getHost());
+                    span.setTag(Tags.PEER_PORT.getKey(), uri.getPort());
+
                 } catch (final URISyntaxException e) {
                     throw new RuntimeException(e);
                 }
@@ -146,6 +169,7 @@ public class InteractBuilderImpl implements InteractBuilder {
             @Override
             public Interact path(final String path) {
                 updateObsRequest(MessageUtil.setPath(path));
+                span.setOperationName(path);
                 return this;
             }
 
@@ -191,7 +215,10 @@ public class InteractBuilderImpl implements InteractBuilder {
             }
 
             private Observable<FullMessage<HttpResponse>> defineInteraction(final HttpInitiator initiator) {
-                return initiator.defineInteraction(_obsreqRef.get());
+                return initiator.defineInteraction(_obsreqRef.get())
+                        .doOnNext(fullresp -> span.setTag(Tags.HTTP_STATUS.getKey(), fullresp.message().status().code()))
+                        .doOnTerminate(() -> span.finish())
+                        ;
             }
 
             @Override
@@ -203,6 +230,14 @@ public class InteractBuilderImpl implements InteractBuilder {
                             if ( null != _terminable) {
                                 _terminable.doOnTerminate(initiator.closer());
                             }
+
+                            initiator.writeCtrl().sending().subscribe(obj -> {
+                                if (obj instanceof HttpRequest) {
+                                    final HttpRequest req = (HttpRequest)obj;
+                                    tracer.inject(span.context(), Format.Builtin.HTTP_HEADERS, message2textmap(req));
+                                }
+                            });
+
                             final Observable<FullMessage<HttpResponse>> interaction = defineInteraction(initiator);
                             return new Interaction() {
                                 @Override
@@ -217,7 +252,21 @@ public class InteractBuilderImpl implements InteractBuilder {
                         }
                     );
             }
-        });
+        };
+    }
+
+    // TODO move to util class
+    private static TextMap message2textmap(final HttpMessage message) {
+        return new TextMap() {
+            @Override
+            public Iterator<Entry<String, String>> iterator() {
+                return message.headers().iteratorAsString();
+            }
+
+            @Override
+            public void put(final String key, final String value) {
+                message.headers().set(key, value);
+            }};
     }
 
     private Observable<? extends MessageBody> tobody(final Object bean, final ContentEncoder contentEncoder) {
