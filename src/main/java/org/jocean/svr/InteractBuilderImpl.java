@@ -46,7 +46,6 @@ import io.opentracing.tag.Tags;
 import rx.Observable;
 import rx.Observable.Transformer;
 import rx.functions.Action1;
-import rx.functions.Func0;
 
 public class InteractBuilderImpl implements InteractBuilder {
 
@@ -89,7 +88,6 @@ public class InteractBuilderImpl implements InteractBuilder {
         final Span span = tracer.buildSpan("interact")
                 .withTag(Tags.COMPONENT.getKey(), "jocean-http")
                 .withTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_CLIENT)
-//              .withTag(Tags.HTTP_URL.getKey(), request.uri())
                 .withTag(Tags.HTTP_METHOD.getKey(), HttpMethod.GET.name())
                 .asChildOf(this._span)
                 .start();
@@ -195,7 +193,7 @@ public class InteractBuilderImpl implements InteractBuilder {
 
             @Override
             public Interact body(final Object bean, final ContentEncoder contentEncoder) {
-                _obsreqRef.set(_obsreqRef.get().compose(addBody(tobody(bean, contentEncoder))));
+                _obsreqRef.set(_obsreqRef.get().compose(addBody(tobody(bean, contentEncoder, span))));
                 return this;
             }
 
@@ -269,38 +267,35 @@ public class InteractBuilderImpl implements InteractBuilder {
             }};
     }
 
-    private Observable<? extends MessageBody> tobody(final Object bean, final ContentEncoder contentEncoder) {
-        final Func0<BufsOutputStream<DisposableWrapper<ByteBuf>>> creator =
-                ()->new BufsOutputStream<>(MessageUtil.pooledAllocator(this._terminable, 8192), dwb->dwb.unwrap());
+    private Observable<? extends MessageBody> tobody(final Object bean, final ContentEncoder contentEncoder, final Span span) {
+        return Observable.defer(() -> {
+            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout =
+                    new BufsOutputStream<>(MessageUtil.pooledAllocator(this._terminable, 8192), dwb->dwb.unwrap());
+            final Iterable<? extends DisposableWrapper<? extends ByteBuf>> dwbs = MessageUtil.out2dwbs(bufout,
+                    out -> contentEncoder.encoder((object, name, value) -> span.setTag("param." + name, value.toString()))
+                        .call(bean, out));
 
-        return Observable.just(new MessageBody() {
-            @Override
-            public String contentType() {
-                return contentEncoder.contentType();
-            }
-            @Override
-            public int contentLength() {
-                return -1;
-            }
-            @Override
-            public Observable<? extends ByteBufSlice> content() {
-                return Observable.just(new ByteBufSlice() {
+            return Observable.just((MessageBody)new MessageBody() {
+                @Override
+                public String contentType() {
+                    return contentEncoder.contentType();
+                }
+                @Override
+                public int contentLength() {
+                    return -1;
+                }
+                @Override
+                public Observable<? extends ByteBufSlice> content() {
+                    return Observable.just(new ByteBufSlice() {
+                        @Override
+                        public void step() {}
 
-                    @Override
-                    public void step() {}
-
-                    @Override
-                    public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                        final List<DisposableWrapper<ByteBuf>> dwbs = new ArrayList<>();
-                        try (final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = creator.call()) {
-                            bufout.setOutput(dwb -> dwbs.add(dwb));
-                            contentEncoder.encoder().call(bean, bufout);
-                        } catch (final Exception e) {
-                            throw new RuntimeException(e);
-                        }
-                        return dwbs;
-                    }});
-            }});
+                        @Override
+                        public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                            return dwbs;
+                        }});
+                }});
+        });
     }
 
     public static Transformer<Object, Object> addBody(final Observable<? extends MessageBody> obsbody) {
