@@ -737,7 +737,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     dwb->dwb.unwrap());
             // TODO, fill span
             final Iterable<? extends DisposableWrapper<? extends ByteBuf>> dwbs = MessageUtil.out2dwbs(bufout,
-                    out -> encoder.encoder((object, name, value) -> span.setTag("param." + name, value.toString()))
+                    out -> encoder.encoder((object, name, value) -> span.setTag("resp." + name, value.toString()))
                         .call(content, out));
             final int size = sizeOf(dwbs);
             return Observable.just(new MessageBody() {
