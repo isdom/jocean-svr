@@ -6,8 +6,8 @@ import io.opentracing.Tracer;
 
 public class JaegerTracerBuilder {
 
-    @Value("${servicename}")
-    String _serviceName;
+    @Value("${app.name}")
+    String _serviceName = "unknown";
 
     @Value("${endpoint}")
     String _endpoint;
