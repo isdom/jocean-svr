@@ -5,7 +5,6 @@ package org.jocean.svr;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
-import java.io.IOException;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -462,15 +461,15 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             } else if (gt1st.equals(String.class)) {
                 return strings2Response((Observable<String>)returnValue, request);
             } else /*if (gt1st.equals(Object.class))*/ {
-                return objs2Response((Observable<Object>)returnValue, buildTradeContext(trade, span), processor, request.protocolVersion());
+                return objs2Response((Observable<Object>)returnValue, buildTradeContext(trade, span), processor, request.protocolVersion(), span);
             }
         } else if (null != returnValue) {
             if (returnValue instanceof Observable) {
-                return objs2Response((Observable<Object>)returnValue, buildTradeContext(trade, span), processor, request.protocolVersion());
+                return objs2Response((Observable<Object>)returnValue, buildTradeContext(trade, span), processor, request.protocolVersion(), span);
             } else if (String.class.equals(returnValue.getClass())) {
                 return strings2Response(Observable.just((String)returnValue), request);
             } else {
-                return fullmsg2hobjs(fullmsgOf(returnValue, request.protocolVersion(), buildTradeContext(trade, span), processor));
+                return fullmsg2hobjs(fullmsgOf(returnValue, request.protocolVersion(), buildTradeContext(trade, span), processor, span));
             }
             // return is NOT Observable<?>
         }
@@ -633,7 +632,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private Observable<? extends Object> objs2Response(final Observable<Object> objs,
             final TradeContext tradeContext,
             final Method processor,
-            final HttpVersion version) {
+            final HttpVersion version,
+            final Span span) {
         return objs.flatMap(obj -> {
                 if (obj instanceof HttpObject) {
                     return Observable.just(obj);
@@ -648,7 +648,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     final Stepable<Object> stepable = (Stepable<Object>)obj;
                     return Observable.just(stepable);
                 } else {
-                    return fullmsg2hobjs(fullmsgOf(obj, version, tradeContext, processor));
+                    return fullmsg2hobjs(fullmsgOf(obj, version, tradeContext, processor, span));
                 }
             });
     }
@@ -657,7 +657,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final Object obj,
             final HttpVersion version,
             final TradeContext tradeContext,
-            final Method processor) {
+            final Method processor,
+            final Span span) {
         final HttpResponse resp = new DefaultHttpResponse(version, HttpResponseStatus.OK);
         Observable<? extends MessageBody> body = Observable.empty();
 
@@ -670,7 +671,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 fillHeaders(responseBean.withHeader(), resp);
             }
             if (responseBean.withBody() != null) {
-                body = buildBody(responseBean.withBody(), tradeContext, processor);
+                body = buildBody(responseBean.withBody(), tradeContext, processor, span);
             }
         } else {
             if (obj instanceof WithStatus) {
@@ -678,10 +679,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
             fillHeaders(obj, resp);
             if (obj instanceof WithBody) {
-                body = buildBody((WithBody)obj, tradeContext, processor);
+                body = buildBody((WithBody)obj, tradeContext, processor, span);
             } else {
                 // not withBody instance
-                body = fromContent(obj, null, tradeContext, processor);
+                body = fromContent(obj, null, tradeContext, processor, span);
             }
         }
 
@@ -701,11 +702,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private Observable<? extends MessageBody> buildBody(
             final WithBody withBody,
             final TradeContext tradeContext,
-            final Method processor) {
+            final Method processor,
+            final Span span) {
         if (withBody instanceof WithRawBody) {
             return ((WithRawBody)withBody).body();
         } else if (withBody instanceof WithContent) {
-            return fromContent(((WithContent)withBody).content(), ((WithContent)withBody).contentType(), tradeContext, processor);
+            return fromContent(((WithContent)withBody).content(), ((WithContent)withBody).contentType(), tradeContext, processor, span);
         } else if (withBody instanceof WithStepable) {
             return fromStepable((WithStepable<?>)withBody, tradeContext);
         } else if (withBody instanceof WithSlice) {
@@ -725,26 +727,18 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final Object content,
             final String contentType,
             final TradeContext tradeContext,
-            final Method processor) {
+            final Method processor,
+            final Span span) {
         if (null != content) {
             final ContentEncoder encoder = getEncoder(contentType, processor);
 
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(
                     tradeContext.allocatorBuilder().build(512),
                     dwb->dwb.unwrap());
-            final List<DisposableWrapper<ByteBuf>> dwbs = new ArrayList<>();
-            bufout.setOutput(dwb -> dwbs.add(dwb));
-
-            try {
-                encoder.encoder().call(content, bufout);
-            } finally {
-                try {
-                    bufout.flush();
-                    bufout.close();
-                } catch (final IOException e) {
-                }
-            }
-
+            // TODO, fill span
+            final Iterable<? extends DisposableWrapper<? extends ByteBuf>> dwbs = MessageUtil.out2dwbs(bufout,
+                    out -> encoder.encoder((object, name, value) -> span.setTag("param." + name, value.toString()))
+                        .call(content, out));
             final int size = sizeOf(dwbs);
             return Observable.just(new MessageBody() {
                 @Override
@@ -777,9 +771,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 : produces != null ? encoderOf(produces.value()) : ContentUtil.TOJSON;
     }
 
-    private int sizeOf(final List<DisposableWrapper<ByteBuf>> dwbs) {
+    private int sizeOf(final Iterable<? extends DisposableWrapper<? extends ByteBuf>> dwbs) {
         int size = 0;
-        for (final DisposableWrapper<ByteBuf> dwb : dwbs) {
+        for (final DisposableWrapper<? extends ByteBuf> dwb : dwbs) {
             size += dwb.unwrap().readableBytes();
         }
         return size;
