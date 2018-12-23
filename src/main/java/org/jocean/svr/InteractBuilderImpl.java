@@ -175,6 +175,7 @@ public class InteractBuilderImpl implements InteractBuilder {
             public Interact paramAsQuery(final String name, final String value) {
                 _nvs.add(name);
                 _nvs.add(value);
+                span.setTag("param." + name, value);
                 return this;
             }
 
