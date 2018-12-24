@@ -219,17 +219,13 @@ public class InteractBuilderImpl implements InteractBuilder {
                             final int statusCode = fullresp.message().status().code();
                             span.setTag(Tags.HTTP_STATUS.getKey(), statusCode);
                             if (statusCode >= 300 && statusCode < 400) {
-                                final String location = fullresp.message().headers().get(HttpHeaderNames.LOCATION);
-                                if (null != location) {
-                                    span.setTag("http.location", location);
-                                }
+                                addTagNotNull(span, "http.location", fullresp.message().headers().get(HttpHeaderNames.LOCATION));
                             }
                             if (statusCode >= 400) {
                                 span.setTag(Tags.ERROR.getKey(), true);
                             }
                         })
-                        .doOnTerminate(() -> span.finish())
-                        ;
+                        .doOnTerminate(() -> span.finish());
             }
 
             @Override
@@ -246,6 +242,7 @@ public class InteractBuilderImpl implements InteractBuilder {
                                 if (obj instanceof HttpRequest) {
                                     final HttpRequest req = (HttpRequest)obj;
                                     tracer.inject(span.context(), Format.Builtin.HTTP_HEADERS, message2textmap(req));
+                                    addTagNotNull(span, "http.host", req.headers().get(HttpHeaderNames.HOST));
                                 }
                             });
 
@@ -264,6 +261,13 @@ public class InteractBuilderImpl implements InteractBuilder {
                     );
             }
         };
+    }
+
+    // TODO move to util class
+    private static void addTagNotNull(final Span span, final String tag, final String value) {
+        if (null != value) {
+            span.setTag(tag, value);
+        }
     }
 
     // TODO move to util class

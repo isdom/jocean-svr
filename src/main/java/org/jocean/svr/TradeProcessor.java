@@ -107,11 +107,13 @@ public class TradeProcessor extends Subscriber<HttpTrade>
 //                    .withTag(Tags.PEER_HOST_IPV4.getKey(), )
                     .start());
             })).subscribe( req_tracer_span -> {
+                final HttpRequest request = req_tracer_span.first.message();
                 final Tracer tracer = req_tracer_span.second;
                 final Span span = req_tracer_span.third;
 
                 hook4httpstatus(trade.writeCtrl(), span);
                 trade.doOnTerminate(() -> span.finish());
+                addTagNotNull(span, "http.host", request.headers().get(HttpHeaderNames.HOST));
 
                 if ( this._maxContentLengthForAutoread <= 0) {
                     LOG.debug("disable autoread full request, handle raw {}.", trade);
@@ -120,6 +122,12 @@ public class TradeProcessor extends Subscriber<HttpTrade>
                     tryHandleTradeWithAutoread(req_tracer_span.first, trade, tracer, span);
                 }
             }, e -> LOG.warn("SOURCE_CANCELED\nfor cause:[{}]", ExceptionUtils.exception2detail(e)));
+    }
+
+    private static void addTagNotNull(final Span span, final String tag, final String value) {
+        if (null != value) {
+            span.setTag(tag, value);
+        }
     }
 
     private Observable<Tracer> getTracer() {
