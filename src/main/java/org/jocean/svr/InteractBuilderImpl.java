@@ -215,7 +215,19 @@ public class InteractBuilderImpl implements InteractBuilder {
 
             private Observable<FullMessage<HttpResponse>> defineInteraction(final HttpInitiator initiator) {
                 return initiator.defineInteraction(_obsreqRef.get())
-                        .doOnNext(fullresp -> span.setTag(Tags.HTTP_STATUS.getKey(), fullresp.message().status().code()))
+                        .doOnNext(fullresp -> {
+                            final int statusCode = fullresp.message().status().code();
+                            span.setTag(Tags.HTTP_STATUS.getKey(), statusCode);
+                            if (statusCode >= 300 && statusCode < 400) {
+                                final String location = fullresp.message().headers().get(HttpHeaderNames.LOCATION);
+                                if (null != location) {
+                                    span.setTag("http.location", location);
+                                }
+                            }
+                            if (statusCode >= 400) {
+                                span.setTag(Tags.ERROR.getKey(), true);
+                            }
+                        })
                         .doOnTerminate(() -> span.finish())
                         ;
             }

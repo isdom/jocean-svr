@@ -17,7 +17,7 @@ import org.jocean.http.server.HttpServerBuilder.HttpTrade;
 import org.jocean.idiom.BeanFinder;
 import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.ExceptionUtils;
-import org.jocean.idiom.Pair;
+import org.jocean.idiom.Triple;
 import org.jocean.idiom.jmx.MBeanRegister;
 import org.jocean.idiom.jmx.MBeanRegisterAware;
 import org.jocean.idiom.rx.RxSubscribers;
@@ -26,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMessage;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
@@ -33,10 +34,10 @@ import io.netty.handler.codec.http.HttpUtil;
 import io.opentracing.Span;
 import io.opentracing.SpanContext;
 import io.opentracing.Tracer;
+import io.opentracing.noop.NoopTracerFactory;
 import io.opentracing.propagation.Format;
 import io.opentracing.propagation.TextMap;
 import io.opentracing.tag.Tags;
-import io.opentracing.util.GlobalTracer;
 import rx.Completable;
 import rx.Observable;
 import rx.Subscriber;
@@ -99,62 +100,74 @@ public class TradeProcessor extends Subscriber<HttpTrade>
                 }
                 final HttpRequest request = fullreq.message();
 
-                return Pair.of(fullreq, spanBuilder.withTag(Tags.COMPONENT.getKey(), "jocean-http")
+                return Triple.of(fullreq, tracer, spanBuilder.withTag(Tags.COMPONENT.getKey(), "jocean-http")
                     .withTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_SERVER)
                     .withTag(Tags.HTTP_URL.getKey(), request.uri())
                     .withTag(Tags.HTTP_METHOD.getKey(), request.method().name())
 //                    .withTag(Tags.PEER_HOST_IPV4.getKey(), )
                     .start());
-            })).subscribe( reqAndSpan -> {
-                final Span span = reqAndSpan.second;
+            })).subscribe( req_tracer_span -> {
+                final Tracer tracer = req_tracer_span.second;
+                final Span span = req_tracer_span.third;
 
                 hook4httpstatus(trade.writeCtrl(), span);
                 trade.doOnTerminate(() -> span.finish());
 
                 if ( this._maxContentLengthForAutoread <= 0) {
                     LOG.debug("disable autoread full request, handle raw {}.", trade);
-                    handleTrade(reqAndSpan.first, trade, span);
+                    handleTrade(req_tracer_span.first, trade, tracer, span);
                 } else {
-                    tryHandleTradeWithAutoread(reqAndSpan.first, trade, span);
+                    tryHandleTradeWithAutoread(req_tracer_span.first, trade, tracer, span);
                 }
             }, e -> LOG.warn("SOURCE_CANCELED\nfor cause:[{}]", ExceptionUtils.exception2detail(e)));
     }
 
     private Observable<Tracer> getTracer() {
-        return this._finder.find(Tracer.class).onErrorReturn(e -> GlobalTracer.get());
+        return this._tracingEnabled ? this._finder.find(Tracer.class).onErrorReturn(e -> noopTracer)
+                : Observable.just(noopTracer);
     }
 
     private void hook4httpstatus(final WriteCtrl writeCtrl, final Span span) {
         writeCtrl.sending().subscribe(obj -> {
             if ( obj instanceof HttpResponse) {
                 final HttpResponse resp = (HttpResponse)obj;
-                span.setTag(Tags.HTTP_STATUS.getKey(), resp.status().code());
+                final int statusCode = resp.status().code();
+                span.setTag(Tags.HTTP_STATUS.getKey(), statusCode);
+                if (statusCode >= 300 && statusCode < 400) {
+                    final String location = resp.headers().get(HttpHeaderNames.LOCATION);
+                    if (null != location) {
+                        span.setTag("http.location", location);
+                    }
+                }
+                if (statusCode >= 400) {
+                    span.setTag(Tags.ERROR.getKey(), true);
+                }
             }
         });
     }
 
-    private void tryHandleTradeWithAutoread(final FullMessage<HttpRequest> fullreq, final HttpTrade trade, final Span span) {
+    private void tryHandleTradeWithAutoread(final FullMessage<HttpRequest> fullreq, final HttpTrade trade, final Tracer tracer, final Span span) {
         if (HttpUtil.isTransferEncodingChunked(fullreq.message())) {
             // chunked
             // output log and using raw trade
             LOG.info("chunked request, handle raw {}.", trade);
-            handleTrade(fullreq, trade, span);
+            handleTrade(fullreq, trade, tracer, span);
         } else if (!HttpUtil.isContentLengthSet(fullreq.message())) {
             LOG.debug("content-length not set, handle raw {}.", trade);
             // not set content-length and not chunked
-            handleTrade(fullreq, trade, span);
+            handleTrade(fullreq, trade, tracer, span);
         } else {
             final long contentLength = HttpUtil.getContentLength(fullreq.message());
             if (contentLength <= this._maxContentLengthForAutoread) {
                 LOG.debug("content-length is {} <= {}, enable autoread full request for {}.",
                         contentLength, this._maxContentLengthForAutoread, trade);
                 // auto read all request
-                handleTrade(fullreq, enableAutoread(trade), span);
+                handleTrade(fullreq, enableAutoread(trade), tracer, span);
             } else {
                 // content-length > max content-length
                 LOG.debug("content-length is {} > {}, handle raw {}.",
                         contentLength, this._maxContentLengthForAutoread, trade);
-                handleTrade(fullreq, trade, span);
+                handleTrade(fullreq, trade, tracer, span);
             }
         }
     }
@@ -272,9 +285,9 @@ public class TradeProcessor extends Subscriber<HttpTrade>
             }};
     }
 
-    private void handleTrade(final FullMessage<HttpRequest> fullreq, final HttpTrade trade, final Span span) {
+    private void handleTrade(final FullMessage<HttpRequest> fullreq, final HttpTrade trade, final Tracer tracer, final Span span) {
         try {
-            final Observable<? extends Object> outbound = this._registrar.buildResource(fullreq.message(), trade, span);
+            final Observable<? extends Object> outbound = this._registrar.buildResource(fullreq.message(), trade, tracer, span);
             trade.outbound(outbound.doOnNext(DisposableWrapperUtil.disposeOnForAny(trade)));
         } catch (final Exception e) {
             LOG.warn("exception when buildResource, detail:{}",
@@ -282,8 +295,13 @@ public class TradeProcessor extends Subscriber<HttpTrade>
         }
     }
 
+    private static volatile Tracer noopTracer = NoopTracerFactory.create();
+
     @Inject
     BeanFinder _finder;
+
+    @Value("${tracing.enabled}")
+    boolean _tracingEnabled = true;
 
     private final RestinMXBean _restin;
 

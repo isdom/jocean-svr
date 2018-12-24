@@ -104,7 +104,6 @@ import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder;
 import io.opentracing.Span;
 import io.opentracing.Tracer;
-import io.opentracing.util.GlobalTracer;
 import rx.Completable;
 import rx.Observable;
 import rx.functions.Func0;
@@ -345,6 +344,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     public Observable<? extends Object> buildResource(
             final HttpRequest request,
             final HttpTrade trade,
+            final Tracer tracer,
             final Span span) throws Exception {
 
         // try direct path match
@@ -404,6 +404,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             resource,
                             processor,
                             argctx,
+                            tracer,
                             span);
                     return doPostInvoke(interceptors,
                         copyCtxOverrideResponse(interceptorCtx, obsResponse));
@@ -421,16 +422,18 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final Object resource,
             final Method processor,
             final ArgsCtx argsctx,
+            final Tracer tracer,
             final Span span
             ) {
         try {
-            final Object returnValue = processor.invoke(resource, buildArgs(resource, argsctx, span));
+            final Object returnValue = processor.invoke(resource, buildArgs(resource, argsctx, tracer, span));
             if (null!=returnValue) {
                 final Observable<? extends Object> obsResponse = returnValue2ObsResponse(
                         trade,
                         request,
                         processor,
                         returnValue,
+                        tracer,
                         span);
                 if (null!=obsResponse) {
                     return obsResponse;
@@ -452,6 +455,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final HttpRequest request,
             final Method processor,
             final Object returnValue,
+            final Tracer tracer,
             final Span span) {
         if (isObservableType(processor.getGenericReturnType())) {
             //  return type is Observable<XXX>
@@ -461,15 +465,15 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             } else if (gt1st.equals(String.class)) {
                 return strings2Response((Observable<String>)returnValue, request);
             } else /*if (gt1st.equals(Object.class))*/ {
-                return objs2Response((Observable<Object>)returnValue, buildTradeContext(trade, span), processor, request.protocolVersion(), span);
+                return objs2Response((Observable<Object>)returnValue, buildTradeContext(trade, tracer, span), processor, request.protocolVersion(), span);
             }
         } else if (null != returnValue) {
             if (returnValue instanceof Observable) {
-                return objs2Response((Observable<Object>)returnValue, buildTradeContext(trade, span), processor, request.protocolVersion(), span);
+                return objs2Response((Observable<Object>)returnValue, buildTradeContext(trade, tracer, span), processor, request.protocolVersion(), span);
             } else if (String.class.equals(returnValue.getClass())) {
                 return strings2Response(Observable.just((String)returnValue), request);
             } else {
-                return fullmsg2hobjs(fullmsgOf(returnValue, request.protocolVersion(), buildTradeContext(trade, span), processor, span));
+                return fullmsg2hobjs(fullmsgOf(returnValue, request.protocolVersion(), buildTradeContext(trade, tracer, span), processor, span));
             }
             // return is NOT Observable<?>
         }
@@ -735,7 +739,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(
                     tradeContext.allocatorBuilder().build(512),
                     dwb->dwb.unwrap());
-            // TODO, fill span
             final Iterable<? extends DisposableWrapper<? extends ByteBuf>> dwbs = MessageUtil.out2dwbs(bufout,
                     out -> encoder.encoder((object, name, value) -> span.setTag("resp." + name, value.toString()))
                         .call(content, out));
@@ -903,7 +906,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 .concatWith(Observable.just(LastHttpContent.EMPTY_LAST_CONTENT));
     }
 
-    private Object[] buildArgs(final Object resource, final ArgsCtx argCtx, final Span span) {
+    private Object[] buildArgs(final Object resource, final ArgsCtx argCtx, final Tracer tracer, final Span span) {
         final List<Object> args = new ArrayList<>();
         int idx = 0;
         for (final Type argType : argCtx.genericParameterTypes) {
@@ -915,6 +918,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     argCtx.request,
                     argCtx.pathParams,
                     argCtx.interceptors,
+                    tracer,
                     span));
             idx++;
         }
@@ -930,6 +934,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final HttpRequest request,
             final Map<String, String> pathParams,
             final MethodInterceptor[] interceptors,
+            final Tracer tracer,
             final Span span) {
         if (argType instanceof Class<?>) {
             if (null != getAnnotation(argAnnotations, BeanParam.class)) {
@@ -976,15 +981,15 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         } else if (argType.equals(AllocatorBuilder.class)) {
             return buildAllocatorBuilder(trade);
         } else if (argType.equals(InteractBuilder.class)) {
-            return buildInteractBuilder(trade, span);
+            return buildInteractBuilder(trade, tracer, span);
         } else if (argType.equals(TradeContext.class)) {
-            return buildTradeContext(trade, span);
+            return buildTradeContext(trade, tracer, span);
         } else if (argType.equals(ZipBuilder.class)) {
-            return buildZipBuilder(trade, span);
+            return buildZipBuilder(trade, tracer, span);
         } else if (argType.equals(BeanFinder.class)) {
             return this._finder;
         } else if (argType.equals(RpcExecutor.class)) {
-            return buildRpcExecutor(processor, trade, span);
+            return buildRpcExecutor(processor, trade, tracer, span);
         } else {
             for (final MethodInterceptor interceptor : interceptors) {
                 if (interceptor instanceof ArgumentBuilder) {
@@ -999,9 +1004,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return null;
     }
 
-    private RpcExecutor buildRpcExecutor(final Method processor, final HttpTrade trade, final Span span) {
+    private RpcExecutor buildRpcExecutor(final Method processor, final HttpTrade trade, final Tracer tracer, final Span span) {
         return new DefaultRpcExecutor(FinderUtil.rpc(this._finder, fromMethod(processor))
-                .ib(buildInteractBuilder(trade, span)).runner());
+                .ib(buildInteractBuilder(trade, tracer, span)).runner());
     }
 
     private static CallerContext fromMethod(final Method processor) {
@@ -1018,8 +1023,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }};
     }
 
-    private ZipBuilder buildZipBuilder(final HttpTrade trade, final Span span) {
-        final TradeContext tctx = buildTradeContext(trade, span);
+    private ZipBuilder buildZipBuilder(final HttpTrade trade, final Tracer tracer, final Span span) {
+        final TradeContext tctx = buildTradeContext(trade, tracer, span);
         return new ZipBuilder() {
             @Override
             public Zipper zip(final int pageSize, final int bufsize) {
@@ -1032,7 +1037,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }};
     }
 
-    private TradeContext buildTradeContext(final HttpTrade trade, final Span span) {
+    private TradeContext buildTradeContext(final HttpTrade trade, final Tracer tracer, final Span span) {
         return new TradeContext() {
 
             @Override
@@ -1052,7 +1057,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
             @Override
             public InteractBuilder interactBuilder() {
-                return buildInteractBuilder(trade, span);
+                return buildInteractBuilder(trade, tracer, span);
             }};
     }
 
@@ -1064,12 +1069,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }};
     }
 
-    private InteractBuilder buildInteractBuilder(final HttpTrade trade, final Span span) {
-        return new InteractBuilderImpl(trade, span, getTracer());
-    }
-
-    private Observable<Tracer> getTracer() {
-        return this._finder.find(Tracer.class).onErrorReturn(e -> GlobalTracer.get());
+    private InteractBuilder buildInteractBuilder(final HttpTrade trade, final Tracer tracer, final Span span) {
+        return new InteractBuilderImpl(trade, span, Observable.just(tracer));
     }
 
     private Observable<MessageBody> buildMessageBody(final HttpTrade trade, final HttpRequest request) {
