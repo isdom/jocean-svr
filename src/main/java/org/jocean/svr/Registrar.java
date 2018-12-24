@@ -740,8 +740,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     tradeContext.allocatorBuilder().build(512),
                     dwb->dwb.unwrap());
             final Iterable<? extends DisposableWrapper<? extends ByteBuf>> dwbs = MessageUtil.out2dwbs(bufout,
-                    out -> encoder.encoder((object, name, value) -> span.setTag("resp." + name, value.toString()))
-                        .call(content, out));
+                    out -> encoder.encoder((object, name, value) ->
+                        span.setTag("resp." + name, null != value ? value.toString() : "(null)"))
+                    .call(content, out));
             final int size = sizeOf(dwbs);
             return Observable.just(new MessageBody() {
                 @Override

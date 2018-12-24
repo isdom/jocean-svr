@@ -175,7 +175,7 @@ public class InteractBuilderImpl implements InteractBuilder {
             public Interact paramAsQuery(final String name, final String value) {
                 _nvs.add(name);
                 _nvs.add(value);
-                span.setTag("req." + name, value);
+                span.setTag("req." + name, null != value ? value.toString() : "(null)");
                 return this;
             }
 
@@ -285,8 +285,9 @@ public class InteractBuilderImpl implements InteractBuilder {
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout =
                     new BufsOutputStream<>(MessageUtil.pooledAllocator(this._terminable, 8192), dwb->dwb.unwrap());
             final Iterable<? extends DisposableWrapper<? extends ByteBuf>> dwbs = MessageUtil.out2dwbs(bufout,
-                    out -> contentEncoder.encoder((object, name, value) -> span.setTag("req." + name, value.toString()))
-                        .call(bean, out));
+                    out -> contentEncoder.encoder((object, name, value) ->
+                        span.setTag("req." + name, null != value ? value.toString() : "(null)"))
+                    .call(bean, out));
 
             return Observable.just((MessageBody)new MessageBody() {
                 @Override
