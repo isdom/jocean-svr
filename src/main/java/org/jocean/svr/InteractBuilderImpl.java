@@ -5,6 +5,7 @@ import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -37,6 +38,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.opentracing.Span;
 import io.opentracing.Tracer;
@@ -167,7 +169,6 @@ public class InteractBuilderImpl implements InteractBuilder {
             @Override
             public Interact path(final String path) {
                 updateObsRequest(MessageUtil.setPath(path));
-                span.setOperationName(path);
                 return this;
             }
 
@@ -175,7 +176,6 @@ public class InteractBuilderImpl implements InteractBuilder {
             public Interact paramAsQuery(final String name, final String value) {
                 _nvs.add(name);
                 _nvs.add(value);
-                span.setTag("req." + name, null != value ? value.toString() : "(null)");
                 return this;
             }
 
@@ -241,8 +241,18 @@ public class InteractBuilderImpl implements InteractBuilder {
                             initiator.writeCtrl().sending().subscribe(obj -> {
                                 if (obj instanceof HttpRequest) {
                                     final HttpRequest req = (HttpRequest)obj;
-                                    tracer.inject(span.context(), Format.Builtin.HTTP_HEADERS, message2textmap(req));
+
+                                    final QueryStringDecoder decoder = new QueryStringDecoder(req.uri());
+
+                                    span.setOperationName(decoder.path());
+                                    for (final Map.Entry<String, List<String>> entry : decoder.parameters().entrySet()) {
+                                        final String value = entry.getValue().size() == 1 ? entry.getValue().get(0)
+                                                : (entry.getValue().size() > 1  ? entry.getValue().toString() : "(null)");
+                                        span.setTag("req." + entry.getKey(), value);
+                                    }
+
                                     addTagNotNull(span, "http.host", req.headers().get(HttpHeaderNames.HOST));
+                                    tracer.inject(span.context(), Format.Builtin.HTTP_HEADERS, message2textmap(req));
                                 }
                             });
 
