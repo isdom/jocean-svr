@@ -232,7 +232,7 @@ public class InteractBuilderImpl implements InteractBuilder {
                             if (statusCode >= 400) {
                                 span.setTag(Tags.ERROR.getKey(), true);
                             }
-                            final int MAX_SIZE = 512;
+                            final int MAX_SIZE = 1024;
                             final BufsInputStream<ByteBuf> bufsin = new BufsInputStream<>(buf -> buf, buf -> {});
 
                             bufsin.markEOS();
@@ -262,17 +262,16 @@ public class InteractBuilderImpl implements InteractBuilder {
                                                     if (bodysize4span.get() < MAX_SIZE) {
                                                         final Iterator<? extends DisposableWrapper<? extends ByteBuf>> iter =
                                                                 bbs.element().iterator();
-                                                        for (;;) {
-                                                            if (iter.hasNext()) {
-                                                                final ByteBuf buf = iter.next().unwrap();
-                                                                if (buf.readableBytes() > 0 && bodysize4span.get() < MAX_SIZE) {
-                                                                    final int length = Math.min(MAX_SIZE - bodysize4span.get(), buf.readableBytes());
-                                                                    bufsin.appendBuf(buf.slice(0, length));
-                                                                    bodysize4span.addAndGet(length);
-                                                                }
-                                                                if (bodysize4span.get() >= MAX_SIZE) {
-                                                                    break;
-                                                                }
+                                                        for (;iter.hasNext();) {
+                                                            final ByteBuf buf = iter.next().unwrap();
+                                                            if (buf.readableBytes() > 0 && bodysize4span.get() < MAX_SIZE) {
+                                                                final int length = Math.min(MAX_SIZE - bodysize4span.get(),
+                                                                        buf.readableBytes());
+                                                                bufsin.appendBuf(buf.slice(0, length));
+                                                                bodysize4span.addAndGet(length);
+                                                            }
+                                                            if (bodysize4span.get() >= MAX_SIZE) {
+                                                                break;
                                                             }
                                                         }
                                                         try {
