@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.ws.rs.Path;
@@ -27,9 +28,13 @@ import org.jocean.http.client.HttpClient.InitiatorBuilder;
 import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Terminable;
+import org.jocean.netty.util.BufsInputStream;
 import org.jocean.netty.util.BufsOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.common.base.Charsets;
+import com.google.common.io.ByteStreams;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -214,8 +219,11 @@ public class InteractBuilderImpl implements InteractBuilder {
             }
 
             private Observable<FullMessage<HttpResponse>> defineInteraction(final HttpInitiator initiator) {
+                final StringBuilder bodysb4span = new StringBuilder();
+                final AtomicInteger bodysize4span = new AtomicInteger(0);
+
                 return initiator.defineInteraction(_obsreqRef.get())
-                        .doOnNext(fullresp -> {
+                        .map(fullresp -> {
                             final int statusCode = fullresp.message().status().code();
                             span.setTag(Tags.HTTP_STATUS.getKey(), statusCode);
                             if (statusCode >= 300 && statusCode < 400) {
@@ -224,8 +232,64 @@ public class InteractBuilderImpl implements InteractBuilder {
                             if (statusCode >= 400) {
                                 span.setTag(Tags.ERROR.getKey(), true);
                             }
+                            final int MAX_SIZE = 256;
+                            final BufsInputStream<ByteBuf> bufsin = new BufsInputStream<>(buf -> buf, buf -> {});
+
+                            bufsin.markEOS();
+
+                            return (FullMessage<HttpResponse>)new FullMessage<HttpResponse>() {
+                                @Override
+                                public HttpResponse message() {
+                                    return fullresp.message();
+                                }
+                                @Override
+                                public Observable<? extends MessageBody> body() {
+                                    return fullresp.body().map(body -> {
+                                        span.setTag("http.contenttype", body.contentType());
+                                        span.setTag("http.contentlength", body.contentLength());
+                                        return (MessageBody)new MessageBody() {
+                                            @Override
+                                            public String contentType() {
+                                                return body.contentType();
+                                            }
+                                            @Override
+                                            public int contentLength() {
+                                                return body.contentLength();
+                                            }
+                                            @Override
+                                            public Observable<? extends ByteBufSlice> content() {
+                                                return body.content().doOnNext(bbs -> {
+                                                    if (bodysize4span.get() < MAX_SIZE) {
+                                                        final Iterator<? extends DisposableWrapper<? extends ByteBuf>> iter =
+                                                                bbs.element().iterator();
+                                                        for (;;) {
+                                                            if (iter.hasNext()) {
+                                                                final ByteBuf buf = iter.next().unwrap();
+                                                                if (buf.readableBytes() > 0 && bodysize4span.get() < MAX_SIZE) {
+                                                                    final int length = Math.min(MAX_SIZE - bodysize4span.get(), buf.readableBytes());
+                                                                    bufsin.appendBuf(buf.readSlice(length));
+                                                                    bodysize4span.addAndGet(length);
+                                                                }
+                                                                if (bodysize4span.get() >= MAX_SIZE) {
+                                                                    break;
+                                                                }
+                                                            }
+                                                        }
+                                                        try {
+                                                            bodysb4span.append(new String(ByteStreams.toByteArray(bufsin), Charsets.UTF_8));
+                                                        } catch (final Exception e) {}
+                                                    }
+                                                });
+                                            }};
+                                    });
+                                }};
                         })
-                        .doOnTerminate(() -> span.finish());
+                        .doOnTerminate(() -> {
+                            if (bodysize4span.get() > 0) {
+                                span.setTag("http.resp.raw", bodysb4span.toString());
+                            }
+                            span.finish();
+                        });
             }
 
             @Override
