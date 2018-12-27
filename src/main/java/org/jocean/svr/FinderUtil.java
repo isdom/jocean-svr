@@ -11,11 +11,6 @@ import org.jocean.idiom.BeanFinder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.netflix.hystrix.HystrixCommandGroupKey;
-import com.netflix.hystrix.HystrixCommandKey;
-import com.netflix.hystrix.HystrixCommandProperties;
-import com.netflix.hystrix.HystrixObservableCommand;
-
 import rx.Observable;
 import rx.Observable.Transformer;
 import rx.functions.Func1;
@@ -221,10 +216,17 @@ public class FinderUtil {
             final TypedSPI spi,
             final String name,
             final Func1<Interact, Observable<T>> invoker) {
+
         final String group = getSimpleClassName(ctx.className()) + "." + ctx.methodName();
 
         final String key = (null != spi ? spi.type() : "(api)") + "." + (null != name ? name : "(unname)");
 
+        Observable<? extends Interact> inters = interacts;
+        if (null != spi) {
+            inters = inters.compose(FinderUtil.endpoint(finder, spi));
+        }
+        return inters.flatMap(invoker).compose(withAfter(finder, ctx));
+        /*
         return new HystrixObservableCommand<T>(
                 HystrixObservableCommand.Setter.withGroupKey(HystrixCommandGroupKey.Factory.asKey(group))
                         .andCommandKey(HystrixCommandKey.Factory.asKey(key))
@@ -241,6 +243,7 @@ public class FinderUtil {
                 return inters.flatMap(invoker).compose(withAfter(finder, ctx));
             }
         }.toObservable();
+        */
     }
 
     private static String getSimpleClassName(final String className) {
