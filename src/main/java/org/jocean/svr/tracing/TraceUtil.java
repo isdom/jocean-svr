@@ -2,13 +2,18 @@ package org.jocean.svr.tracing;
 
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apache.commons.beanutils.BeanUtils;
 import org.jocean.http.ByteBufSlice;
 import org.jocean.http.FullMessage;
 import org.jocean.http.MessageBody;
 import org.jocean.idiom.DisposableWrapper;
+import org.jocean.idiom.ExceptionUtils;
 import org.jocean.netty.util.BufsInputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Charsets;
 import com.google.common.io.ByteStreams;
@@ -18,8 +23,28 @@ import io.netty.handler.codec.http.HttpMessage;
 import io.opentracing.Span;
 import rx.Observable;
 import rx.Observable.Transformer;
+import rx.functions.Action1;
 
-public class SpanUtil {
+public class TraceUtil {
+    private static final Logger LOG = LoggerFactory.getLogger(TraceUtil.class);
+
+    public static Action1<Object> hook4bean(final Span span, final String prefix, final String logexception) {
+        return bean -> {
+            try {
+                final Map<String, String> map = BeanUtils.describe(bean);
+
+                for (final Map.Entry<String, String> entry : map.entrySet()) {
+                    if (!entry.getKey().equals("class")) {
+                        span.setTag(prefix + entry.getKey(), entry.getValue());
+                    }
+                }
+            } catch (final Exception e) {
+                span.log(Collections.singletonMap(logexception, ExceptionUtils.exception2detail(e)));
+                LOG.warn("exception when record bean, detail: {}", ExceptionUtils.exception2detail(e));
+            }
+        };
+    }
+
     public static <MSG extends HttpMessage> Transformer<FullMessage<MSG>, FullMessage<MSG>> logbody(
             final Span span, final String logname, final int maxLogSize) {
         final StringBuilder bodysb4span = new StringBuilder();

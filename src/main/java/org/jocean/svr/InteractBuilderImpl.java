@@ -28,7 +28,7 @@ import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Terminable;
 import org.jocean.netty.util.BufsOutputStream;
-import org.jocean.svr.tracing.SpanUtil;
+import org.jocean.svr.tracing.TraceUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -217,7 +217,7 @@ public class InteractBuilderImpl implements InteractBuilder {
             private Observable<FullMessage<HttpResponse>> defineInteraction(final HttpInitiator initiator) {
                 return initiator.defineInteraction(_obsreqRef.get())
                         .doOnNext(hookhttpresp(span))
-                        .compose(SpanUtil.logbody(span, "http.resp.raw", 1024))
+                        .compose(TraceUtil.logbody(span, "http.resp.raw", 1024))
                         .doOnTerminate(() -> span.finish());
             }
 

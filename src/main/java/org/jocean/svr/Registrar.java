@@ -12,7 +12,6 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -39,7 +38,6 @@ import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
 
-import org.apache.commons.beanutils.BeanUtils;
 import org.jocean.http.ByteBufSlice;
 import org.jocean.http.ContentDecoder;
 import org.jocean.http.ContentEncoder;
@@ -52,14 +50,12 @@ import org.jocean.http.RpcExecutor;
 import org.jocean.http.WriteCtrl;
 import org.jocean.http.internal.DefaultRpcExecutor;
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
-import org.jocean.http.util.Nettys;
 import org.jocean.http.util.RxNettys;
 import org.jocean.idiom.BeanFinder;
 import org.jocean.idiom.BeanHolder;
 import org.jocean.idiom.BeanHolderAware;
 import org.jocean.idiom.Beans;
 import org.jocean.idiom.DisposableWrapper;
-import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Pair;
 import org.jocean.idiom.ReflectUtils;
@@ -73,11 +69,13 @@ import org.jocean.j2se.spring.SpringBeanHolder;
 import org.jocean.j2se.unit.UnitAgent;
 import org.jocean.j2se.unit.UnitListener;
 import org.jocean.j2se.util.BeanHolders;
+import org.jocean.netty.util.BufsInputStream;
 import org.jocean.netty.util.BufsOutputStream;
 import org.jocean.svr.FinderUtil.CallerContext;
 import org.jocean.svr.ZipUtil.Unzipper;
 import org.jocean.svr.ZipUtil.ZipBuilder;
 import org.jocean.svr.ZipUtil.Zipper;
+import org.jocean.svr.tracing.TraceUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -107,11 +105,11 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder;
-import io.netty.util.ReferenceCountUtil;
 import io.opentracing.Span;
 import io.opentracing.Tracer;
 import rx.Completable;
 import rx.Observable;
+import rx.Observable.Transformer;
 import rx.functions.Func0;
 
 /**
@@ -727,12 +725,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
-    static final ContentEncoder[] _encoders = new ContentEncoder[]{
-            ContentUtil.TOJSON,
-            ContentUtil.TOXML,
-            ContentUtil.TOTEXT,
-            ContentUtil.TOHTML};
-
     private Observable<MessageBody> fromContent(
             final Object content,
             final String contentType,
@@ -777,7 +769,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private ContentEncoder getEncoder(final String contentType, final Method processor) {
         final Produces produces = processor.getAnnotation(Produces.class);
         return contentType != null
-                ? encoderOf(new String[]{contentType})
+                ? encoderOf(contentType)
                 : produces != null ? encoderOf(produces.value()) : ContentUtil.TOJSON;
     }
 
@@ -789,15 +781,14 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return size;
     }
 
-    private ContentEncoder encoderOf(final String[] mimeTypes) {
-        for (final String type : mimeTypes) {
-            for (final ContentEncoder encoder : _encoders) {
-                if (encoder.contentType().equals(type)) {
-                    return encoder;
-                }
-            }
-        }
-        return ContentUtil.TOJSON;
+    private static ContentEncoder encoderOf(final String... mimeTypes) {
+        final ContentEncoder encoder = ContentUtil.selectCodec(mimeTypes, ContentUtil.DEFAULT_ENCODERS);
+        return null != encoder ? encoder : ContentUtil.TOJSON;
+    }
+
+    private static ContentDecoder decoderOf(final String... mimeTypes) {
+        final ContentDecoder decoder = ContentUtil.selectCodec(mimeTypes, ContentUtil.DEFAULT_DECODERS);
+        return null != decoder ? decoder : ContentUtil.ASJSON;
     }
 
     private Observable<MessageBody> fromStepable(@SuppressWarnings("rawtypes") final WithStepable withStepable,
@@ -1069,31 +1060,50 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
             @Override
             public <T> Observable<T> decodeBodyAs(final ContentDecoder decoder, final Class<T> type) {
-                return trade.inbound().flatMap(fullreq -> fullreq.body()).flatMap(body -> {
-                    return body.content().compose(MessageUtil.AUTOSTEP2DWB).map(DisposableWrapperUtil.<ByteBuf>unwrap())
-                            .toList().map(bufs -> {
-                                final ByteBuf buf = Nettys.composite(bufs);
-                                try {
-                                    return (T)decoder.decoder().call(MessageUtil.contentAsInputStream(buf), type);
-                                } finally {
-                                    ReferenceCountUtil.release(buf);
-                                }
-                            });
-                    }).doOnNext(bean -> {
-                        try {
-                            final Map<String, String> map = BeanUtils.describe(bean);
+                return trade.inbound().flatMap(fullreq -> fullreq.body()).compose(body2bean(decoder, type))
+                        .doOnNext(TraceUtil.hook4bean(span, "req.", "record.reqbean.error"));
+            }
 
-                            for (final Map.Entry<String, String> entry : map.entrySet()) {
-                                if (!entry.getKey().equals("class")) {
-                                    span.setTag("req." + entry.getKey(), entry.getValue());
-                                }
-                            }
-                        } catch (final Exception e) {
-                            span.log(Collections.singletonMap("record.reqbean.error", ExceptionUtils.exception2detail(e)));
-                            LOG.warn("exception when record reqbean, detail: {}", ExceptionUtils.exception2detail(e));
-                        }
-                    });
+            @Override
+            public <T> Observable<T> decodeBodyAs(final Class<T> type) {
+                return trade.inbound().flatMap(fullreq -> fullreq.body()).compose(body2bean(type))
+                        .doOnNext(TraceUtil.hook4bean(span, "req.", "record.reqbean.error"));
             }};
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> Transformer<MessageBody, T> body2bean(final Class<T> type) {
+        final BufsInputStream<DisposableWrapper<? extends ByteBuf>> is =
+                new BufsInputStream<>(dwb->dwb.unwrap(), dwb->dwb.dispose());
+        return bodys -> bodys.flatMap(body -> {
+            final ContentDecoder decoder = decoderOf(body.contentType());
+            return body.content().doOnNext(bbs -> {
+                try {
+                    is.appendIterable(bbs.element());
+                } finally {
+                    bbs.step();
+                }
+            }).last().map(any -> {
+                is.markEOS();
+                return (T)decoder.decoder().call(is, type);
+            });
+        });
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> Transformer<MessageBody, T> body2bean(final ContentDecoder decoder, final Class<T> type) {
+        final BufsInputStream<DisposableWrapper<? extends ByteBuf>> is =
+                new BufsInputStream<>(dwb->dwb.unwrap(), dwb->dwb.dispose());
+        return bodys -> bodys.flatMap(body -> body.content().doOnNext(bbs -> {
+                try {
+                    is.appendIterable(bbs.element());
+                } finally {
+                    bbs.step();
+                }
+            }).last().map(any -> {
+                is.markEOS();
+                return (T)decoder.decoder().call(is, type);
+            }));
     }
 
     private AllocatorBuilder buildAllocatorBuilder(final HttpTrade trade) {

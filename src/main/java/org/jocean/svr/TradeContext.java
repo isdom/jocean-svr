@@ -13,4 +13,5 @@ public interface TradeContext {
     public AllocatorBuilder allocatorBuilder();
     public InteractBuilder  interactBuilder();
     public <T> Observable<T>  decodeBodyAs(final ContentDecoder decoder, final Class<T> type);
+    public <T> Observable<T>  decodeBodyAs(final Class<T> type);
 }
