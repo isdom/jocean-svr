@@ -28,21 +28,23 @@ import rx.functions.Action1;
 public class TraceUtil {
     private static final Logger LOG = LoggerFactory.getLogger(TraceUtil.class);
 
-    public static Action1<Object> hook4bean(final Span span, final String prefix, final String logexception) {
-        return bean -> {
-            try {
-                final Map<String, String> map = BeanUtils.describe(bean);
+    public static void setTag4bean(final Object bean, final Span span, final String prefix, final String logexception) {
+        try {
+            final Map<String, String> map = BeanUtils.describe(bean);
 
-                for (final Map.Entry<String, String> entry : map.entrySet()) {
-                    if (!entry.getKey().equals("class")) {
-                        span.setTag(prefix + entry.getKey(), entry.getValue());
-                    }
+            for (final Map.Entry<String, String> entry : map.entrySet()) {
+                if (!entry.getKey().equals("class")) {
+                    span.setTag(prefix + entry.getKey(), entry.getValue());
                 }
-            } catch (final Exception e) {
-                span.log(Collections.singletonMap(logexception, ExceptionUtils.exception2detail(e)));
-                LOG.warn("exception when record bean, detail: {}", ExceptionUtils.exception2detail(e));
             }
-        };
+        } catch (final Exception e) {
+            span.log(Collections.singletonMap(logexception, ExceptionUtils.exception2detail(e)));
+            LOG.warn("exception when record bean, detail: {}", ExceptionUtils.exception2detail(e));
+        }
+    }
+
+    public static Action1<Object> setTag4bean(final Span span, final String prefix, final String logexception) {
+        return bean -> setTag4bean(bean, span, prefix, logexception);
     }
 
     public static <MSG extends HttpMessage> Transformer<FullMessage<MSG>, FullMessage<MSG>> logbody(

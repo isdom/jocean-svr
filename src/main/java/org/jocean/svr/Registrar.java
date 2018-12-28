@@ -732,15 +732,15 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final Method processor,
             final Span span) {
         if (null != content) {
+            TraceUtil.setTag4bean(content, span, "resp.", "record.respbean.error");
+
             final ContentEncoder encoder = getEncoder(contentType, processor);
 
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(
                     tradeContext.allocatorBuilder().build(512),
                     dwb->dwb.unwrap());
             final Iterable<? extends DisposableWrapper<? extends ByteBuf>> dwbs = MessageUtil.out2dwbs(bufout,
-                    out -> encoder.encoder((object, name, value) ->
-                        span.setTag("resp." + name, null != value ? value.toString() : "(null)"))
-                    .call(content, out));
+                    out -> encoder.encoder().call(content, out));
             final int size = sizeOf(dwbs);
             return Observable.just(new MessageBody() {
                 @Override
@@ -762,6 +762,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         }});
                 }});
         } else {
+            span.setTag("resp_body", "(empty)");
             return Observable.empty();
         }
     }
@@ -1061,13 +1062,13 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             @Override
             public <T> Observable<T> decodeBodyAs(final ContentDecoder decoder, final Class<T> type) {
                 return trade.inbound().flatMap(fullreq -> fullreq.body()).compose(body2bean(decoder, type))
-                        .doOnNext(TraceUtil.hook4bean(span, "req.", "record.reqbean.error"));
+                        .doOnNext(TraceUtil.setTag4bean(span, "req.", "record.reqbean.error"));
             }
 
             @Override
             public <T> Observable<T> decodeBodyAs(final Class<T> type) {
                 return trade.inbound().flatMap(fullreq -> fullreq.body()).compose(body2bean(type))
-                        .doOnNext(TraceUtil.hook4bean(span, "req.", "record.reqbean.error"));
+                        .doOnNext(TraceUtil.setTag4bean(span, "req.", "record.reqbean.error"));
             }};
     }
 
