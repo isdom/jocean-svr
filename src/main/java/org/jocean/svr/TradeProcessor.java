@@ -3,6 +3,7 @@
  */
 package org.jocean.svr;
 
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map.Entry;
 
@@ -296,7 +297,10 @@ public class TradeProcessor extends Subscriber<HttpTrade>
     private void handleTrade(final FullMessage<HttpRequest> fullreq, final HttpTrade trade, final Tracer tracer, final Span span) {
         try {
             final Observable<? extends Object> outbound = this._registrar.buildResource(fullreq.message(), trade, tracer, span);
-            trade.outbound(outbound.doOnNext(DisposableWrapperUtil.disposeOnForAny(trade)));
+            trade.outbound(outbound.doOnNext(DisposableWrapperUtil.disposeOnForAny(trade)).doOnError(error -> {
+                span.setTag(Tags.ERROR.getKey(), true);
+                span.log(Collections.singletonMap("error.detail", ExceptionUtils.exception2detail(error)));
+            }) );
         } catch (final Exception e) {
             LOG.warn("exception when buildResource, detail:{}",
                     ExceptionUtils.exception2detail(e));
