@@ -3,6 +3,7 @@ package org.jocean.svr.tracing;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.commons.beanutils.BeanUtils;
@@ -19,14 +20,50 @@ import com.google.common.base.Charsets;
 import com.google.common.io.ByteStreams;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMessage;
+import io.netty.handler.codec.http.HttpResponse;
 import io.opentracing.Span;
+import io.opentracing.propagation.TextMap;
+import io.opentracing.tag.Tags;
 import rx.Observable;
 import rx.Observable.Transformer;
 import rx.functions.Action1;
 
 public class TraceUtil {
     private static final Logger LOG = LoggerFactory.getLogger(TraceUtil.class);
+
+    public static Action1<FullMessage<HttpResponse>> hookhttpresp(final Span span) {
+        return fullresp -> {
+            final int statusCode = fullresp.message().status().code();
+            span.setTag(Tags.HTTP_STATUS.getKey(), statusCode);
+            if (statusCode >= 300 && statusCode < 400) {
+                addTagNotNull(span, "http.location", fullresp.message().headers().get(HttpHeaderNames.LOCATION));
+            }
+            if (statusCode >= 400) {
+                span.setTag(Tags.ERROR.getKey(), true);
+            }
+        };
+    }
+
+    public static void addTagNotNull(final Span span, final String tag, final String value) {
+        if (null != value) {
+            span.setTag(tag, value);
+        }
+    }
+
+    public static TextMap message2textmap(final HttpMessage message) {
+        return new TextMap() {
+            @Override
+            public Iterator<Entry<String, String>> iterator() {
+                return message.headers().iteratorAsString();
+            }
+
+            @Override
+            public void put(final String key, final String value) {
+                message.headers().set(key, value);
+            }};
+    }
 
     public static void setTag4bean(final Object bean, final Span span, final String prefix, final String logexception) {
         try {

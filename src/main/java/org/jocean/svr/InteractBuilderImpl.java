@@ -3,16 +3,15 @@ package org.jocean.svr;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.ws.rs.Path;
 
 import org.jocean.http.ByteBufSlice;
+import org.jocean.http.ContentDecoder;
 import org.jocean.http.ContentEncoder;
 import org.jocean.http.Feature;
 import org.jocean.http.FullMessage;
@@ -21,6 +20,7 @@ import org.jocean.http.InteractBuilder;
 import org.jocean.http.Interaction;
 import org.jocean.http.MessageBody;
 import org.jocean.http.MessageUtil;
+import org.jocean.http.WriteCtrl;
 import org.jocean.http.client.HttpClient;
 import org.jocean.http.client.HttpClient.HttpInitiator;
 import org.jocean.http.client.HttpClient.InitiatorBuilder;
@@ -44,7 +44,6 @@ import io.netty.handler.ssl.SslContextBuilder;
 import io.opentracing.Span;
 import io.opentracing.Tracer;
 import io.opentracing.propagation.Format;
-import io.opentracing.propagation.TextMap;
 import io.opentracing.tag.Tags;
 import rx.Observable;
 import rx.Observable.Transformer;
@@ -216,9 +215,8 @@ public class InteractBuilderImpl implements InteractBuilder {
 
             private Observable<FullMessage<HttpResponse>> defineInteraction(final HttpInitiator initiator) {
                 return initiator.defineInteraction(_obsreqRef.get())
-                        .doOnNext(hookhttpresp(span))
-                        .compose(TraceUtil.logbody(span, "http.resp.raw", 1024))
-                        .doOnTerminate(() -> span.finish());
+                        .doOnNext(TraceUtil.hookhttpresp(span))
+                        .compose(TraceUtil.logbody(span, "http.resp.raw", 1024));
             }
 
             @Override
@@ -231,25 +229,10 @@ public class InteractBuilderImpl implements InteractBuilder {
                                 _terminable.doOnTerminate(initiator.closer());
                             }
 
-                            initiator.writeCtrl().sending().subscribe(obj -> {
-                                if (obj instanceof HttpRequest) {
-                                    final HttpRequest req = (HttpRequest)obj;
+                            traceAndInjectRequest(initiator.writeCtrl(), tracer, span);
 
-                                    final QueryStringDecoder decoder = new QueryStringDecoder(req.uri());
-
-                                    span.setOperationName(decoder.path());
-                                    for (final Map.Entry<String, List<String>> entry : decoder.parameters().entrySet()) {
-                                        final String value = entry.getValue().size() == 1 ? entry.getValue().get(0)
-                                                : (entry.getValue().size() > 1  ? entry.getValue().toString() : "(null)");
-                                        span.setTag("req." + entry.getKey(), value);
-                                    }
-
-                                    addTagNotNull(span, "http.host", req.headers().get(HttpHeaderNames.HOST));
-                                    tracer.inject(span.context(), Format.Builtin.HTTP_HEADERS, message2textmap(req));
-                                }
-                            });
-
-                            final Observable<FullMessage<HttpResponse>> interaction = defineInteraction(initiator);
+                            final Observable<FullMessage<HttpResponse>> interaction = defineInteraction(initiator)
+                                    .doOnTerminate(() -> span.finish());
                             return new Interaction() {
                                 @Override
                                 public HttpInitiator initiator() {
@@ -263,54 +246,42 @@ public class InteractBuilderImpl implements InteractBuilder {
                         }
                     );
             }
-        };
-    }
 
-    // TODO move to util class
-    private static Action1<FullMessage<HttpResponse>> hookhttpresp(final Span span) {
-        return fullresp -> {
-            final int statusCode = fullresp.message().status().code();
-            span.setTag(Tags.HTTP_STATUS.getKey(), statusCode);
-            if (statusCode >= 300 && statusCode < 400) {
-                addTagNotNull(span, "http.location", fullresp.message().headers().get(HttpHeaderNames.LOCATION));
-            }
-            if (statusCode >= 400) {
-                span.setTag(Tags.ERROR.getKey(), true);
-            }
-        };
-    }
-
-    // TODO move to util class
-
-    // TODO move to util class
-    private static void addTagNotNull(final Span span, final String tag, final String value) {
-        if (null != value) {
-            span.setTag(tag, value);
-        }
-    }
-
-    // TODO move to util class
-    private static TextMap message2textmap(final HttpMessage message) {
-        return new TextMap() {
             @Override
-            public Iterator<Entry<String, String>> iterator() {
-                return message.headers().iteratorAsString();
+            public <T> Observable<T> responseAs(final ContentDecoder decoder, final Class<T> type) {
+                checkAddr();
+                addQueryParams();
+                return addSSLFeatureIfNeed(_initiatorBuilder).build()
+                        .flatMap(initiator -> {
+                            if ( null != _terminable) {
+                                _terminable.doOnTerminate(initiator.closer());
+                            }
+
+                            traceAndInjectRequest(initiator.writeCtrl(), tracer, span);
+
+                            return defineInteraction(initiator).flatMap(MessageUtil.fullmsg2body())
+                                        .compose(MessageUtil.body2bean(decoder, type))
+                                        .doOnNext(TraceUtil.setTag4bean(span, "resp.", "record.respbean.error"))
+                                        .doOnTerminate(() -> span.finish());
+                        }
+                    );
             }
 
             @Override
-            public void put(final String key, final String value) {
-                message.headers().set(key, value);
-            }};
+            public <T> Observable<T> responseAs(final Class<T> type) {
+                return responseAs(null, type);
+            }
+        };
     }
 
     private Observable<? extends MessageBody> tobody(final Object bean, final ContentEncoder contentEncoder, final Span span) {
         return Observable.defer(() -> {
+            TraceUtil.setTag4bean(bean, span, "req.bd.", "record.reqbean.error");
+
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout =
                     new BufsOutputStream<>(MessageUtil.pooledAllocator(this._terminable, 8192), dwb->dwb.unwrap());
             final Iterable<? extends DisposableWrapper<? extends ByteBuf>> dwbs = MessageUtil.out2dwbs(bufout,
-                    out -> contentEncoder.encoder((object, name, value) ->
-                        span.setTag("req." + name, null != value ? value.toString() : "(null)"))
-                    .call(bean, out));
+                    out -> contentEncoder.encoder().call(bean, out));
 
             return Observable.just((MessageBody)new MessageBody() {
                 @Override
@@ -332,6 +303,26 @@ public class InteractBuilderImpl implements InteractBuilder {
                             return dwbs;
                         }});
                 }});
+        });
+    }
+
+    private void traceAndInjectRequest(final WriteCtrl writeCtrl, final Tracer tracer, final Span span) {
+        writeCtrl.sending().subscribe(obj -> {
+            if (obj instanceof HttpRequest) {
+                final HttpRequest req = (HttpRequest) obj;
+
+                final QueryStringDecoder decoder = new QueryStringDecoder(req.uri());
+
+                span.setOperationName(decoder.path());
+                for (final Map.Entry<String, List<String>> entry : decoder.parameters().entrySet()) {
+                    final String value = entry.getValue().size() == 1 ? entry.getValue().get(0)
+                            : (entry.getValue().size() > 1 ? entry.getValue().toString() : "(null)");
+                    span.setTag("req.qs." + entry.getKey(), value);
+                }
+
+                TraceUtil.addTagNotNull(span, "http.host", req.headers().get(HttpHeaderNames.HOST));
+                tracer.inject(span.context(), Format.Builtin.HTTP_HEADERS, TraceUtil.message2textmap(req));
+            }
         });
     }
 
