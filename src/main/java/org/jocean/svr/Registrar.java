@@ -69,7 +69,6 @@ import org.jocean.j2se.spring.SpringBeanHolder;
 import org.jocean.j2se.unit.UnitAgent;
 import org.jocean.j2se.unit.UnitListener;
 import org.jocean.j2se.util.BeanHolders;
-import org.jocean.netty.util.BufsInputStream;
 import org.jocean.netty.util.BufsOutputStream;
 import org.jocean.svr.FinderUtil.CallerContext;
 import org.jocean.svr.ZipUtil.Unzipper;
@@ -109,7 +108,6 @@ import io.opentracing.Span;
 import io.opentracing.Tracer;
 import rx.Completable;
 import rx.Observable;
-import rx.Observable.Transformer;
 import rx.functions.Func0;
 
 /**
@@ -787,11 +785,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return null != encoder ? encoder : ContentUtil.TOJSON;
     }
 
-    private static ContentDecoder decoderOf(final String... mimeTypes) {
-        final ContentDecoder decoder = ContentUtil.selectCodec(mimeTypes, ContentUtil.DEFAULT_DECODERS);
-        return null != decoder ? decoder : ContentUtil.ASJSON;
-    }
-
     private Observable<MessageBody> fromStepable(@SuppressWarnings("rawtypes") final WithStepable withStepable,
             final TradeContext tradeContext) {
         return Observable.just(new MessageBody() {
@@ -1061,50 +1054,14 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
             @Override
             public <T> Observable<T> decodeBodyAs(final ContentDecoder decoder, final Class<T> type) {
-                return trade.inbound().flatMap(fullreq -> fullreq.body()).compose(body2bean(decoder, type))
-                        .doOnNext(TraceUtil.setTag4bean(span, "req.", "record.reqbean.error"));
+                return trade.inbound().flatMap(MessageUtil.fullmsg2body()).compose(MessageUtil.body2bean(decoder, type))
+                        .doOnNext(TraceUtil.setTag4bean(span, "req.bd.", "record.reqbean.error"));
             }
 
             @Override
             public <T> Observable<T> decodeBodyAs(final Class<T> type) {
-                return trade.inbound().flatMap(fullreq -> fullreq.body()).compose(body2bean(type))
-                        .doOnNext(TraceUtil.setTag4bean(span, "req.", "record.reqbean.error"));
+                return decodeBodyAs(null, type);
             }};
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <T> Transformer<MessageBody, T> body2bean(final Class<T> type) {
-        final BufsInputStream<DisposableWrapper<? extends ByteBuf>> is =
-                new BufsInputStream<>(dwb->dwb.unwrap(), dwb->dwb.dispose());
-        return bodys -> bodys.flatMap(body -> {
-            final ContentDecoder decoder = decoderOf(body.contentType());
-            return body.content().doOnNext(bbs -> {
-                try {
-                    is.appendIterable(bbs.element());
-                } finally {
-                    bbs.step();
-                }
-            }).last().map(any -> {
-                is.markEOS();
-                return (T)decoder.decoder().call(is, type);
-            });
-        });
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <T> Transformer<MessageBody, T> body2bean(final ContentDecoder decoder, final Class<T> type) {
-        final BufsInputStream<DisposableWrapper<? extends ByteBuf>> is =
-                new BufsInputStream<>(dwb->dwb.unwrap(), dwb->dwb.dispose());
-        return bodys -> bodys.flatMap(body -> body.content().doOnNext(bbs -> {
-                try {
-                    is.appendIterable(bbs.element());
-                } finally {
-                    bbs.step();
-                }
-            }).last().map(any -> {
-                is.markEOS();
-                return (T)decoder.decoder().call(is, type);
-            }));
     }
 
     private AllocatorBuilder buildAllocatorBuilder(final HttpTrade trade) {

@@ -4,8 +4,6 @@
 package org.jocean.svr;
 
 import java.util.Collections;
-import java.util.Iterator;
-import java.util.Map.Entry;
 
 import javax.inject.Inject;
 
@@ -23,21 +21,19 @@ import org.jocean.idiom.jmx.MBeanRegister;
 import org.jocean.idiom.jmx.MBeanRegisterAware;
 import org.jocean.idiom.rx.RxSubscribers;
 import org.jocean.svr.mbean.RestinMXBean;
+import org.jocean.svr.tracing.TraceUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 
 import io.netty.handler.codec.http.HttpHeaderNames;
-import io.netty.handler.codec.http.HttpMessage;
 import io.netty.handler.codec.http.HttpRequest;
-import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpUtil;
 import io.opentracing.Span;
 import io.opentracing.SpanContext;
 import io.opentracing.Tracer;
 import io.opentracing.noop.NoopTracerFactory;
 import io.opentracing.propagation.Format;
-import io.opentracing.propagation.TextMap;
 import io.opentracing.tag.Tags;
 import rx.Completable;
 import rx.Observable;
@@ -70,27 +66,14 @@ public class TradeProcessor extends Subscriber<HttpTrade>
         LOG.warn("fatal error with {} restin.", ExceptionUtils.exception2detail(e));
     }
 
-    // TODO extract to Util class
-    private static TextMap message2textmap(final HttpMessage message) {
-        return new TextMap() {
-            @Override
-            public Iterator<Entry<String, String>> iterator() {
-                return message.headers().iteratorAsString();
-            }
-
-            @Override
-            public void put(final String key, final String value) {
-                message.headers().set(key, value);
-            }};
-    }
-
     @Override
     public void onNext(final HttpTrade trade) {
         trade.inbound().first().flatMap(fullreq ->
             getTracer().map(tracer -> {
                 Tracer.SpanBuilder spanBuilder;
-                final SpanContext parentSpanCtx = tracer.extract(Format.Builtin.HTTP_HEADERS, message2textmap(fullreq.message()));
                 try {
+                    final SpanContext parentSpanCtx = tracer.extract(Format.Builtin.HTTP_HEADERS,
+                            TraceUtil.message2textmap(fullreq.message()));
                     if (parentSpanCtx == null) {
                         spanBuilder = tracer.buildSpan("(unknown)");
                     } else {
@@ -112,9 +95,9 @@ public class TradeProcessor extends Subscriber<HttpTrade>
                 final Tracer tracer = req_tracer_span.second;
                 final Span span = req_tracer_span.third;
 
-                hook4httpstatus(trade.writeCtrl(), span);
+                TraceUtil.hook4serversend(trade.writeCtrl(), span);
                 trade.doOnTerminate(() -> span.finish());
-                addTagNotNull(span, "http.host", request.headers().get(HttpHeaderNames.HOST));
+                TraceUtil.addTagNotNull(span, "http.host", request.headers().get(HttpHeaderNames.HOST));
 
                 if ( this._maxContentLengthForAutoread <= 0) {
                     LOG.debug("disable autoread full request, handle raw {}.", trade);
@@ -125,34 +108,9 @@ public class TradeProcessor extends Subscriber<HttpTrade>
             }, e -> LOG.warn("SOURCE_CANCELED\nfor cause:[{}]", ExceptionUtils.exception2detail(e)));
     }
 
-    private static void addTagNotNull(final Span span, final String tag, final String value) {
-        if (null != value) {
-            span.setTag(tag, value);
-        }
-    }
-
     private Observable<Tracer> getTracer() {
         return this._tracingEnabled ? this._finder.find(Tracer.class).onErrorReturn(e -> noopTracer)
                 : Observable.just(noopTracer);
-    }
-
-    private void hook4httpstatus(final WriteCtrl writeCtrl, final Span span) {
-        writeCtrl.sending().subscribe(obj -> {
-            if ( obj instanceof HttpResponse) {
-                final HttpResponse resp = (HttpResponse)obj;
-                final int statusCode = resp.status().code();
-                span.setTag(Tags.HTTP_STATUS.getKey(), statusCode);
-                if (statusCode >= 300 && statusCode < 400) {
-                    final String location = resp.headers().get(HttpHeaderNames.LOCATION);
-                    if (null != location) {
-                        span.setTag("http.location", location);
-                    }
-                }
-                if (statusCode >= 400) {
-                    span.setTag(Tags.ERROR.getKey(), true);
-                }
-            }
-        });
     }
 
     private void tryHandleTradeWithAutoread(final FullMessage<HttpRequest> fullreq, final HttpTrade trade, final Tracer tracer, final Span span) {

@@ -10,6 +10,7 @@ import org.apache.commons.beanutils.BeanUtils;
 import org.jocean.http.ByteBufSlice;
 import org.jocean.http.FullMessage;
 import org.jocean.http.MessageBody;
+import org.jocean.http.WriteCtrl;
 import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.netty.util.BufsInputStream;
@@ -32,6 +33,25 @@ import rx.functions.Action1;
 
 public class TraceUtil {
     private static final Logger LOG = LoggerFactory.getLogger(TraceUtil.class);
+
+    public static void hook4serversend(final WriteCtrl writeCtrl, final Span span) {
+        writeCtrl.sending().subscribe(obj -> {
+            if ( obj instanceof HttpResponse) {
+                final HttpResponse resp = (HttpResponse)obj;
+                final int statusCode = resp.status().code();
+                span.setTag(Tags.HTTP_STATUS.getKey(), statusCode);
+                if (statusCode >= 300 && statusCode < 400) {
+                    final String location = resp.headers().get(HttpHeaderNames.LOCATION);
+                    if (null != location) {
+                        span.setTag("http.location", location);
+                    }
+                }
+                if (statusCode >= 400) {
+                    span.setTag(Tags.ERROR.getKey(), true);
+                }
+            }
+        });
+    }
 
     public static Action1<FullMessage<HttpResponse>> hookhttpresp(final Span span) {
         return fullresp -> {
