@@ -428,9 +428,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final Span span
             ) {
         try {
-            final Object returnValue = processor.invoke(resource, buildArgs(resource, argsctx, tracer, span));
+            final TradeContext tradeCtx = buildTradeContext(trade, tracer, span);
+            final Object returnValue = processor.invoke(resource, buildArgs(resource, tradeCtx, argsctx));
             if (null!=returnValue) {
                 final Observable<? extends Object> obsResponse = returnValue2ObsResponse(
+                        tradeCtx,
                         trade,
                         request,
                         processor,
@@ -453,6 +455,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     @SuppressWarnings("unchecked")
     private Observable<? extends Object> returnValue2ObsResponse(
+            final TradeContext tradeCtx,
             final HttpTrade trade,
             final HttpRequest request,
             final Method processor,
@@ -467,15 +470,15 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             } else if (gt1st.equals(String.class)) {
                 return strings2Response((Observable<String>)returnValue, request);
             } else /*if (gt1st.equals(Object.class))*/ {
-                return objs2Response((Observable<Object>)returnValue, buildTradeContext(trade, tracer, span), processor, request.protocolVersion(), span);
+                return objs2Response((Observable<Object>)returnValue, tradeCtx, processor, request.protocolVersion(), span);
             }
         } else if (null != returnValue) {
             if (returnValue instanceof Observable) {
-                return objs2Response((Observable<Object>)returnValue, buildTradeContext(trade, tracer, span), processor, request.protocolVersion(), span);
+                return objs2Response((Observable<Object>)returnValue, tradeCtx, processor, request.protocolVersion(), span);
             } else if (String.class.equals(returnValue.getClass())) {
                 return strings2Response(Observable.just((String)returnValue), request);
             } else {
-                return fullmsg2hobjs(fullmsgOf(returnValue, request.protocolVersion(), buildTradeContext(trade, tracer, span), processor, span));
+                return fullmsg2hobjs(fullmsgOf(returnValue, request.protocolVersion(), tradeCtx, processor, span));
             }
             // return is NOT Observable<?>
         }
@@ -898,36 +901,32 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 .concatWith(Observable.just(LastHttpContent.EMPTY_LAST_CONTENT));
     }
 
-    private Object[] buildArgs(final Object resource, final ArgsCtx argCtx, final Tracer tracer, final Span span) {
+    private Object[] buildArgs(final Object resource, final TradeContext tradeCtx, final ArgsCtx argCtx) {
         final List<Object> args = new ArrayList<>();
         int idx = 0;
         for (final Type argType : argCtx.genericParameterTypes) {
-            args.add(buildArgByType(resource,
-                    argCtx.processor,
-                    argType,
-                    argCtx.parameterAnnotations[idx],
-                    argCtx.trade,
-                    argCtx.request,
-                    argCtx.pathParams,
-                    argCtx.interceptors,
-                    tracer,
-                    span));
+            args.add(buildArgByType(argType,
+                    resource,
+                    tradeCtx,
+                    argCtx,
+                    argCtx.parameterAnnotations[idx]));
             idx++;
         }
         return args.toArray();
     }
 
     //  TBD: 查表实现
-    private Object buildArgByType(final Object resource,
-            final Method processor,
-            final Type argType,
-            final Annotation[] argAnnotations,
-            final HttpTrade trade,
-            final HttpRequest request,
-            final Map<String, String> pathParams,
-            final MethodInterceptor[] interceptors,
-            final Tracer tracer,
-            final Span span) {
+    private Object buildArgByType(final Type argType,
+            final Object resource,
+            final TradeContext tradeCtx,
+            final ArgsCtx argsCtx,
+            final Annotation[] argAnnotations) {
+        final HttpRequest request = argsCtx.request;
+        final Map<String, String> pathParams = argsCtx.pathParams;
+        final HttpTrade trade = argsCtx.trade;
+        final MethodInterceptor[] interceptors = argsCtx.interceptors;
+        final Method processor = argsCtx.processor;
+
         if (argType instanceof Class<?>) {
             if (null != getAnnotation(argAnnotations, BeanParam.class)) {
                 return buildBeanParam(request, (Class<?>)argType);
@@ -971,17 +970,17 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         } else if (argType.equals(WriteCtrl.class)) {
             return trade.writeCtrl();
         } else if (argType.equals(AllocatorBuilder.class)) {
-            return buildAllocatorBuilder(trade);
+            return tradeCtx.allocatorBuilder();
         } else if (argType.equals(InteractBuilder.class)) {
-            return buildInteractBuilder(trade, tracer, span);
+            return tradeCtx.interactBuilder();
         } else if (argType.equals(TradeContext.class)) {
-            return buildTradeContext(trade, tracer, span);
+            return tradeCtx;
         } else if (argType.equals(ZipBuilder.class)) {
-            return buildZipBuilder(trade, tracer, span);
+            return buildZipBuilder(tradeCtx);
         } else if (argType.equals(BeanFinder.class)) {
             return this._finder;
         } else if (argType.equals(RpcExecutor.class)) {
-            return buildRpcExecutor(processor, trade, tracer, span);
+            return buildRpcExecutor(processor, tradeCtx.interactBuilder());
         } else {
             for (final MethodInterceptor interceptor : interceptors) {
                 if (interceptor instanceof ArgumentBuilder) {
@@ -996,9 +995,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return null;
     }
 
-    private RpcExecutor buildRpcExecutor(final Method processor, final HttpTrade trade, final Tracer tracer, final Span span) {
-        return new DefaultRpcExecutor(FinderUtil.rpc(this._finder, fromMethod(processor))
-                .ib(buildInteractBuilder(trade, tracer, span)).runner());
+    private RpcExecutor buildRpcExecutor(final Method processor, final InteractBuilder ib) {
+        return new DefaultRpcExecutor(FinderUtil.rpc(this._finder, fromMethod(processor)).ib(ib).runner());
     }
 
     private static CallerContext fromMethod(final Method processor) {
@@ -1015,17 +1013,16 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }};
     }
 
-    private ZipBuilder buildZipBuilder(final HttpTrade trade, final Tracer tracer, final Span span) {
-        final TradeContext tctx = buildTradeContext(trade, tracer, span);
+    private ZipBuilder buildZipBuilder(final TradeContext tradeCtx) {
         return new ZipBuilder() {
             @Override
             public Zipper zip(final int pageSize, final int bufsize) {
-                return ZipUtil.zipEntities(tctx.allocatorBuilder().build(pageSize), tctx.terminable(), bufsize, dwb->dwb.dispose());
+                return ZipUtil.zipEntities(tradeCtx.allocatorBuilder().build(pageSize), tradeCtx.terminable(), bufsize, dwb->dwb.dispose());
             }
 
             @Override
             public Unzipper unzip(final int pageSize, final int bufsize) {
-                return ZipUtil.unzipToEntities(tctx.allocatorBuilder().build(pageSize), tctx.terminable(), bufsize, dwb->dwb.dispose());
+                return ZipUtil.unzipToEntities(tradeCtx.allocatorBuilder().build(pageSize), tradeCtx.terminable(), bufsize, dwb->dwb.dispose());
             }};
     }
 
