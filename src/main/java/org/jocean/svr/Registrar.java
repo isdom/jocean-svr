@@ -477,7 +477,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (null!=returnValue) {
                 final Observable<? extends Object> obsResponse = returnValue2ObsResponse(
                         tctx,
-                        trade,
                         request,
                         processor,
                         returnValue);
@@ -498,7 +497,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     @SuppressWarnings("unchecked")
     private Observable<? extends Object> returnValue2ObsResponse(
             final DefaultTradeContext tctx,
-            final HttpTrade trade,
             final HttpRequest request,
             final Method processor,
             final Object returnValue) {
