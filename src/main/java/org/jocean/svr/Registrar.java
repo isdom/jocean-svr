@@ -25,6 +25,7 @@ import java.util.regex.Pattern;
 import javax.inject.Inject;
 import javax.inject.Named;
 import javax.ws.rs.BeanParam;
+import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.GET;
 import javax.ws.rs.HEAD;
@@ -86,6 +87,7 @@ import org.springframework.stereotype.Controller;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 
@@ -508,15 +510,15 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             } else if (gt1st.equals(String.class)) {
                 return strings2Response((Observable<String>)returnValue, request);
             } else /*if (gt1st.equals(Object.class))*/ {
-                return objs2Response((Observable<Object>)returnValue, tctx, processor, request.protocolVersion());
+                return objs2Response((Observable<Object>)returnValue, tctx, produceTypes(processor), request.protocolVersion());
             }
         } else if (null != returnValue) {
             if (returnValue instanceof Observable) {
-                return objs2Response((Observable<Object>)returnValue, tctx, processor, request.protocolVersion());
+                return objs2Response((Observable<Object>)returnValue, tctx, produceTypes(processor), request.protocolVersion());
             } else if (String.class.equals(returnValue.getClass())) {
                 return strings2Response(Observable.just((String)returnValue), request);
             } else {
-                return fullmsg2hobjs(fullmsgOf(returnValue, request.protocolVersion(), tctx, processor));
+                return fullmsg2hobjs(fullmsgOf(returnValue, request.protocolVersion(), tctx, produceTypes(processor)));
             }
             // return is NOT Observable<?>
         }
@@ -678,7 +680,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     private Observable<? extends Object> objs2Response(final Observable<Object> objs,
             final DefaultTradeContext tctx,
-            final Method processor,
+            final String[] mimeTypes,
             final HttpVersion version) {
         return objs.flatMap(obj -> {
                 if (obj instanceof HttpObject) {
@@ -694,7 +696,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     final Stepable<Object> stepable = (Stepable<Object>)obj;
                     return Observable.just(stepable);
                 } else {
-                    return fullmsg2hobjs(fullmsgOf(obj, version, tctx, processor));
+                    return fullmsg2hobjs(fullmsgOf(obj, version, tctx, mimeTypes));
                 }
             });
     }
@@ -703,7 +705,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final Object obj,
             final HttpVersion version,
             final DefaultTradeContext tctx,
-            final Method processor) {
+            final String[] mimeTypes) {
         final HttpResponse resp = new DefaultHttpResponse(version, HttpResponseStatus.OK);
         Observable<? extends MessageBody> body = Observable.empty();
 
@@ -716,7 +718,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 fillHeaders(responseBean.withHeader(), resp);
             }
             if (responseBean.withBody() != null) {
-                body = buildBody(responseBean.withBody(), tctx, processor);
+                body = buildBody(responseBean.withBody(), tctx, mimeTypes);
             }
         } else {
             if (obj instanceof WithStatus) {
@@ -724,10 +726,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
             fillHeaders(obj, resp);
             if (obj instanceof WithBody) {
-                body = buildBody((WithBody)obj, tctx, processor);
+                body = buildBody((WithBody)obj, tctx, mimeTypes);
             } else {
                 // not withBody instance
-                body = fromContent(obj, null, tctx, processor);
+                body = fromContent(tctx, obj, encoderOf(mimeTypes));
             }
         }
 
@@ -747,11 +749,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private Observable<? extends MessageBody> buildBody(
             final WithBody withBody,
             final DefaultTradeContext tctx,
-            final Method processor) {
+            final String[] mimeTypes) {
         if (withBody instanceof WithRawBody) {
             return ((WithRawBody)withBody).body();
         } else if (withBody instanceof WithContent) {
-            return fromContent(((WithContent)withBody).content(), ((WithContent)withBody).contentType(), tctx, processor);
+            return fromContent(tctx, ((WithContent)withBody).content(),
+                    getEncoder(((WithContent)withBody).contentType(), mimeTypes));
         } else if (withBody instanceof WithStepable) {
             return fromStepable((WithStepable<?>)withBody, tctx);
         } else if (withBody instanceof WithSlice) {
@@ -762,14 +765,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Observable<MessageBody> fromContent(
-            final Object content,
-            final String contentType,
             final DefaultTradeContext tctx,
-            final Method processor) {
+            final Object content,
+            final ContentEncoder encoder) {
         if (null != content) {
             TraceUtil.setTag4bean(content, tctx._span, "resp.", "record.respbean.error");
-
-            final ContentEncoder encoder = getEncoder(contentType, processor);
 
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(
                     tctx.allocatorBuilder().build(512),
@@ -802,11 +802,19 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
-    private ContentEncoder getEncoder(final String contentType, final Method processor) {
-        final Produces produces = processor.getAnnotation(Produces.class);
-        return contentType != null
-                ? encoderOf(contentType)
-                : produces != null ? encoderOf(produces.value()) : ContentUtil.TOJSON;
+    // TODO
+    private ContentEncoder getEncoder(final String contentType, final String[] mimeTypes) {
+        return encoderOf(Lists.asList(contentType, mimeTypes).toArray(new String[0]));
+    }
+
+    private static String[] produceTypes(final Method processor) {
+        final Produces produces =  processor.getAnnotation(Produces.class);
+        return produces != null ? produces.value() : new String[0];
+    }
+
+    private static String[] consumeTypes(final Method processor) {
+        final Consumes consumes =  processor.getAnnotation(Consumes.class);
+        return consumes != null ? consumes.value() : new String[0];
     }
 
     private int sizeOf(final Iterable<? extends DisposableWrapper<? extends ByteBuf>> dwbs) {
@@ -823,7 +831,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Observable<MessageBody> fromStepable(@SuppressWarnings("rawtypes") final WithStepable withStepable,
-            final TradeContext tradeContext) {
+            final TradeContext tctx) {
         return Observable.just(new MessageBody() {
             @Override
             public String contentType() {
@@ -839,12 +847,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             @Override
             public Observable<? extends ByteBufSlice> content() {
                 return withStepable.stepables().compose(
-                        ByteBufSliceUtil.stepable2bbs(tradeContext.allocatorBuilder().build(8192), withStepable.output()));
+                        ByteBufSliceUtil.stepable2bbs(tctx.allocatorBuilder().build(8192), withStepable.output()));
             }
         });
     }
 
-    private Observable<MessageBody> fromSlice(final WithSlice withSlice, final TradeContext tradeContext) {
+    private Observable<MessageBody> fromSlice(final WithSlice withSlice, final TradeContext tctx) {
         return Observable.just(new MessageBody() {
             @Override
             public String contentType() {
