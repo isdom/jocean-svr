@@ -271,6 +271,22 @@ public class InteractBuilderImpl implements InteractBuilder {
             public <T> Observable<T> responseAs(final Class<T> type) {
                 return responseAs(null, type);
             }
+
+            @Override
+            public Observable<FullMessage<HttpResponse>> response(final Terminable terminable) {
+                checkAddr();
+                addQueryParams();
+                return addSSLFeatureIfNeed(_initiatorBuilder).build()
+                        .flatMap(initiator -> {
+                            if ( null != _terminable) {
+                                _terminable.doOnTerminate(initiator.closer());
+                            }
+
+                            traceAndInjectRequest(initiator.writeCtrl(), tracer, span);
+                            return defineInteraction(initiator).doOnTerminate(() -> span.finish());
+                        }
+                    );
+            }
         };
     }
 
