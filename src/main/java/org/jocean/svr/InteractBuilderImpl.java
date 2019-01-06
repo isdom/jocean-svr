@@ -17,7 +17,6 @@ import org.jocean.http.Feature;
 import org.jocean.http.FullMessage;
 import org.jocean.http.Interact;
 import org.jocean.http.InteractBuilder;
-import org.jocean.http.Interaction;
 import org.jocean.http.MessageBody;
 import org.jocean.http.MessageUtil;
 import org.jocean.http.WriteCtrl;
@@ -217,34 +216,6 @@ public class InteractBuilderImpl implements InteractBuilder {
                 return initiator.defineInteraction(_obsreqRef.get())
                         .doOnNext(TraceUtil.hookhttpresp(span))
                         .compose(TraceUtil.logbody(span, "http.resp.raw", 1024));
-            }
-
-            @Override
-            public Observable<? extends Interaction> execution() {
-                checkAddr();
-                addQueryParams();
-                return addSSLFeatureIfNeed(_initiatorBuilder).build()
-                        .<Interaction>map(initiator -> {
-                            if ( null != _terminable) {
-                                _terminable.doOnTerminate(initiator.closer());
-                            }
-
-                            traceAndInjectRequest(initiator.writeCtrl(), tracer, span);
-
-                            final Observable<FullMessage<HttpResponse>> interaction = defineInteraction(initiator)
-                                    .doOnTerminate(() -> span.finish());
-                            return new Interaction() {
-                                @Override
-                                public HttpInitiator initiator() {
-                                    return initiator;
-                                }
-
-                                @Override
-                                public Observable<? extends FullMessage<HttpResponse>> execute() {
-                                    return interaction;
-                                }};
-                        }
-                    );
             }
 
             @Override
