@@ -244,7 +244,7 @@ public class InteractBuilderImpl implements InteractBuilder {
             }
 
             @Override
-            public Observable<FullMessage<HttpResponse>> response(final Terminable terminable) {
+            public Observable<FullMessage<HttpResponse>> response() {
                 checkAddr();
                 addQueryParams();
                 return addSSLFeatureIfNeed(_initiatorBuilder).build()
