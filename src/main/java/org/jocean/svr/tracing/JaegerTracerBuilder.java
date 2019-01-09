@@ -1,10 +1,17 @@
 package org.jocean.svr.tracing;
 
+import org.jocean.idiom.ExceptionUtils;
+import org.jocean.idiom.ReflectUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 
+import io.jaegertracing.internal.JaegerTracer;
 import io.opentracing.Tracer;
+import io.opentracing.contrib.jdbc.TracingDriver;
 
 public class JaegerTracerBuilder {
+    private static final Logger LOG = LoggerFactory.getLogger(JaegerTracerBuilder.class);
 
     @Value("${app.name}")
     String _serviceName = "unknown";
@@ -33,6 +40,19 @@ public class JaegerTracerBuilder {
 
         config.withSampler(new io.jaegertracing.Configuration.SamplerConfiguration().withType("const").withParam(1));
         config.withReporter(new io.jaegertracing.Configuration.ReporterConfiguration().withSender(sender).withMaxQueueSize(10000));
-        return config.getTracer();
+        final JaegerTracer tracer = config.getTracer();
+
+        setTracer4JDBC(tracer);
+
+        return tracer;
+    }
+
+    private void setTracer4JDBC(final Tracer tracer) {
+        try {
+            final TracingDriver INSTANCE = ReflectUtils.getStaticFieldValue("io.opentracing.contrib.jdbc.TracingDriver.INSTANCE");
+            INSTANCE.setTracer(tracer);
+        } catch (final Exception e) {
+            LOG.warn("exception when setTracer4JDBC, detail: {}", ExceptionUtils.exception2detail(e));
+        }
     }
 }
