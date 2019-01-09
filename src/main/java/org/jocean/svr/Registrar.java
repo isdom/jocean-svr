@@ -159,9 +159,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return decodeBodyAs(null, type);
         }
 
-        private final HttpTrade _trade;
-        private final Tracer _tracer;
-        private final Span _span;
+        final HttpTrade _trade;
+        final Tracer _tracer;
+        final Span _span;
     }
 
     public void start() {
@@ -1023,6 +1023,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return this._finder;
         } else if (argType.equals(RpcExecutor.class)) {
             return buildRpcExecutor(processor, tradeCtx.interactBuilder());
+        } else if (argType.equals(Tracing.class)) {
+            return buildTracing(tradeCtx);
         } else {
             for (final MethodInterceptor interceptor : interceptors) {
                 if (interceptor instanceof ArgumentBuilder) {
@@ -1035,6 +1037,14 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
 
         return null;
+    }
+
+    private Tracing buildTracing(final DefaultTradeContext tradeCtx) {
+        return new Tracing() {
+            @Override
+            public AutoCloseable activate() {
+                return tradeCtx._tracer.scopeManager().activate(tradeCtx._span, false);
+            }};
     }
 
     private RpcExecutor buildRpcExecutor(final Method processor, final InteractBuilder ib) {
