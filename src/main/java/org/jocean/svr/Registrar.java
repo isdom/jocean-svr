@@ -1042,8 +1042,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private Tracing buildTracing(final DefaultTradeContext tradeCtx) {
         return new Tracing() {
             @Override
-            public AutoCloseable activate() {
-                return tradeCtx._tracer.scopeManager().activate(tradeCtx._span, false);
+            public Scope activate() {
+                final io.opentracing.Scope scope = tradeCtx._tracer.scopeManager().activate(tradeCtx._span, false);
+                return () -> scope.close();
             }};
     }
 
