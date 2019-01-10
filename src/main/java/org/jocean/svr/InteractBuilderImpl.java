@@ -87,6 +87,7 @@ public class InteractBuilderImpl implements InteractBuilder {
         final List<String> _nvs = new ArrayList<>();
         final AtomicReference<URI> _uriRef = new AtomicReference<>();
         final Span span = tracer.buildSpan("interact")
+                .ignoreActiveSpan()
                 .withTag(Tags.COMPONENT.getKey(), "jocean-http")
                 .withTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_CLIENT)
                 .withTag(Tags.HTTP_METHOD.getKey(), HttpMethod.GET.name())
