@@ -25,7 +25,7 @@ dependencies {
     compile "com.google.guava:guava:${guavaVersion}"
     
     compile 'io.jaegertracing:jaeger-client:0.32.0'
-    compile 'io.opentracing.contrib:opentracing-jdbc:0.0.10'
+    compile 'org.jocean:jocean-opentracing-jdbc:0.0.1-SNAPSHOT'
     
     compile 'commons-beanutils:commons-beanutils:1.9.3'
     
