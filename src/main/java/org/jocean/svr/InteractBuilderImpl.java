@@ -234,7 +234,10 @@ public class InteractBuilderImpl implements InteractBuilder {
                             return defineInteraction(initiator).flatMap(MessageUtil.fullmsg2body())
                                         .compose(MessageUtil.body2bean(decoder, type))
                                         .doOnNext(TraceUtil.setTag4bean(span, "resp.", "record.respbean.error"))
-                                        .doOnTerminate(() -> span.finish());
+                                        .doOnTerminate(() -> {
+                                            span.finish();
+                                            LOG.info("call span {} finish");
+                                        });
                         }
                     );
             }
