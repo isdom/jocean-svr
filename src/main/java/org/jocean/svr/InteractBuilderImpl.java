@@ -239,6 +239,7 @@ public class InteractBuilderImpl implements InteractBuilder {
                                             LOG.info("call span {} finish");
                                         })
                                         .doOnUnsubscribe(() -> {
+                                            span.finish();
                                             LOG.info("on doOnUnsubscribe");
                                         });
                         }
