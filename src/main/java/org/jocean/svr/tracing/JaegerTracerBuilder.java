@@ -1,14 +1,13 @@
 package org.jocean.svr.tracing;
 
 import org.jocean.idiom.ExceptionUtils;
-import org.jocean.idiom.ReflectUtils;
-import org.jocean.opentracing.jdbc.TracingDriver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 
 import io.jaegertracing.internal.JaegerTracer;
 import io.opentracing.Tracer;
+import io.opentracing.util.GlobalTracer;
 
 public class JaegerTracerBuilder {
     private static final Logger LOG = LoggerFactory.getLogger(JaegerTracerBuilder.class);
@@ -42,17 +41,16 @@ public class JaegerTracerBuilder {
         config.withReporter(new io.jaegertracing.Configuration.ReporterConfiguration().withSender(sender).withMaxQueueSize(10000));
         final JaegerTracer tracer = config.getTracer();
 
-        setTracer4JDBC(tracer);
+        setTracer2Global(tracer);
 
         return tracer;
     }
 
-    private void setTracer4JDBC(final Tracer tracer) {
+    private void setTracer2Global(final Tracer tracer) {
         try {
-            final TracingDriver INSTANCE = ReflectUtils.getStaticFieldValue("org.jocean.opentracing.jdbc.TracingDriver.INSTANCE");
-            INSTANCE.setTracer(tracer);
+            GlobalTracer.register(tracer);
         } catch (final Exception e) {
-            LOG.warn("exception when setTracer4JDBC, detail: {}", ExceptionUtils.exception2detail(e));
+            LOG.warn("exception when setTracer2Global, detail: {}", ExceptionUtils.exception2detail(e));
         }
     }
 }
