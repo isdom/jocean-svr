@@ -39,6 +39,9 @@ dependencies {
     compile 'org.jocean:jocean-http:0.0.2-SNAPSHOT'
     compile('org.jocean:jocean-j2se:0.0.4-SNAPSHOT') { transitive = false }
 
+    compile 'aopalliance:aopalliance:1.0'
+    compile 'org.springframework:spring-aspects:5.1.2.RELEASE'
+
     compile "io.netty:netty-all:${nettyVersion}"
     testCompile 'ch.qos.logback:logback-classic:1.2.2'
 
