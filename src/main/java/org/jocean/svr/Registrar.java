@@ -71,6 +71,7 @@ import org.jocean.j2se.unit.UnitAgent;
 import org.jocean.j2se.unit.UnitListener;
 import org.jocean.j2se.util.BeanHolders;
 import org.jocean.netty.util.BufsOutputStream;
+import org.jocean.opentracing.TracingUtil;
 import org.jocean.svr.FinderUtil.CallerContext;
 import org.jocean.svr.ZipUtil.Unzipper;
 import org.jocean.svr.ZipUtil.ZipBuilder;
@@ -1043,8 +1044,15 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return new Tracing() {
             @Override
             public Scope activate() {
+                final Tracer restore = TracingUtil.get();
+                TracingUtil.set(tradeCtx._tracer);
                 final io.opentracing.Scope scope = tradeCtx._tracer.scopeManager().activate(tradeCtx._span, false);
-                return () -> scope.close();
+                return () -> {
+                    scope.close();
+                    if (tradeCtx._tracer == TracingUtil.get()) {
+                        TracingUtil.set(restore);
+                    }
+                };
             }};
     }
 
