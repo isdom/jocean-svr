@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import io.opentracing.Tracer;
 
 public class JaegerTracerBuilder {
+    @SuppressWarnings("unused")
     private static final Logger LOG = LoggerFactory.getLogger(JaegerTracerBuilder.class);
 
     @Value("${app.name}")
