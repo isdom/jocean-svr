@@ -27,8 +27,7 @@ import rx.functions.Func0;
 import rx.functions.Func2;
 
 public class ByteBufSliceUtil {
-    private static final Logger LOG
-        = LoggerFactory.getLogger(ByteBufSliceUtil.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ByteBufSliceUtil.class);
 
     private ByteBufSliceUtil() {
         throw new IllegalStateException("No instances!");
