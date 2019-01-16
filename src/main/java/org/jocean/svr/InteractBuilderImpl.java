@@ -231,16 +231,21 @@ public class InteractBuilderImpl implements InteractBuilder {
 
                             traceAndInjectRequest(initiator.writeCtrl(), tracer, span);
 
+                            final AtomicBoolean isSpanFinished = new AtomicBoolean(false);
                             return defineInteraction(initiator).flatMap(MessageUtil.fullmsg2body())
                                         .compose(MessageUtil.body2bean(decoder, type))
                                         .doOnNext(TraceUtil.setTag4bean(span, "resp.", "record.respbean.error"))
                                         .doOnTerminate(() -> {
-                                            span.finish();
-                                            LOG.info("call span {} finish");
+                                            if (isSpanFinished.compareAndSet(false, true)) {
+                                                span.finish();
+                                                LOG.info("call span {} finish by doOnTerminate", span);
+                                            }
                                         })
                                         .doOnUnsubscribe(() -> {
-                                            span.finish();
-                                            LOG.info("on doOnUnsubscribe");
+                                            if (isSpanFinished.compareAndSet(false, true)) {
+                                                span.finish();
+                                                LOG.info("call span {} finish by doOnUnsubscribe", span);
+                                            }
                                         });
                         }
                     );
@@ -262,7 +267,20 @@ public class InteractBuilderImpl implements InteractBuilder {
                             }
 
                             traceAndInjectRequest(initiator.writeCtrl(), tracer, span);
-                            return defineInteraction(initiator).doOnTerminate(() -> span.finish());
+
+                            final AtomicBoolean isSpanFinished = new AtomicBoolean(false);
+                            return defineInteraction(initiator).doOnTerminate(() -> {
+                                    if (isSpanFinished.compareAndSet(false, true)) {
+                                        span.finish();
+                                        LOG.info("call span {} finish by doOnTerminate", span);
+                                    }
+                                })
+                                .doOnUnsubscribe(() -> {
+                                    if (isSpanFinished.compareAndSet(false, true)) {
+                                        span.finish();
+                                        LOG.info("call span {} finish by doOnUnsubscribe", span);
+                                    }
+                                });
                         }
                     );
             }
