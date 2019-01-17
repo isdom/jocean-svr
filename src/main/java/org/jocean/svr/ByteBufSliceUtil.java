@@ -90,7 +90,7 @@ public class ByteBufSliceUtil {
 
                 if (!lines.isEmpty()) {
                     // read at least one line
-                    return Observable.<Stepable<List<String>>>just(new Stepable<List<String>>() {
+                    return Observable.just((Stepable<List<String>>)new Stepable<List<String>>() {
                         @Override
                         public void step() {
                             bbs.step();
@@ -110,15 +110,15 @@ public class ByteBufSliceUtil {
                 // stream is end
                 bufin.markEOS();
                 if (lineBuf.length() > 0) {
-                    return Observable.<Stepable<List<String>>>just(new Stepable<List<String>>() {
+                    final List<String> lines = Arrays.asList(lineBuf.toString());
+                    return Observable.just((Stepable<List<String>>)new Stepable<List<String>>() {
 
                         @Override
-                        public void step() {
-                        }
+                        public void step() {}
 
                         @Override
                         public List<String> element() {
-                            return Arrays.asList(lineBuf.toString());
+                            return lines;
                         }});
                 } else {
                     return Observable.empty();
