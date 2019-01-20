@@ -216,7 +216,7 @@ public class InteractBuilderImpl implements InteractBuilder {
             private Observable<FullMessage<HttpResponse>> defineInteraction(final HttpInitiator initiator) {
                 return initiator.defineInteraction(_obsreqRef.get())
                         .doOnNext(TraceUtil.hookhttpresp(span))
-                        .compose(TraceUtil.logbody(span, "http.resp.raw", 1024));
+                        .compose(TraceUtil.logbody(span, "http.resp", 1024));
             }
 
             @Override
@@ -229,6 +229,7 @@ public class InteractBuilderImpl implements InteractBuilder {
                                 _terminable.doOnTerminate(initiator.closer());
                             }
 
+                            TraceUtil.logoutmsg(initiator.writeCtrl(), span, "http.req", 1024);
                             traceAndInjectRequest(initiator.writeCtrl(), tracer, span);
 
                             final AtomicBoolean isSpanFinished = new AtomicBoolean(false);

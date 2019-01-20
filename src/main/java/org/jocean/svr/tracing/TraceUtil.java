@@ -12,6 +12,7 @@ import org.jocean.http.FullMessage;
 import org.jocean.http.MessageBody;
 import org.jocean.http.WriteCtrl;
 import org.jocean.idiom.DisposableWrapper;
+import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.netty.util.BufsInputStream;
 import org.slf4j.Logger;
@@ -21,9 +22,11 @@ import com.google.common.base.Charsets;
 import com.google.common.io.ByteStreams;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufHolder;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMessage;
 import io.netty.handler.codec.http.HttpResponse;
+import io.netty.handler.codec.http.HttpUtil;
 import io.opentracing.Span;
 import io.opentracing.propagation.TextMap;
 import io.opentracing.tag.Tags;
@@ -104,8 +107,53 @@ public class TraceUtil {
         return bean -> setTag4bean(bean, span, prefix, logexception);
     }
 
+    public static void logoutmsg(final WriteCtrl writeCtrl,
+            final Span span, final String logprefix, final int maxLogSize) {
+        final StringBuilder bodysb = new StringBuilder();
+        final AtomicInteger loggedSize = new AtomicInteger(0);
+        final BufsInputStream<ByteBuf> bufsin = new BufsInputStream<>(buf -> buf, buf -> {});
+        bufsin.markEOS();
+
+        writeCtrl.sending().subscribe(obj -> {
+            final Object unwrap = DisposableWrapperUtil.unwrap(obj);
+            if (unwrap instanceof HttpMessage) {
+                final HttpMessage message = (HttpMessage)unwrap;
+                final String contentType = message.headers().get(HttpHeaderNames.CONTENT_TYPE);
+                if (contentType != null) {
+                    span.setTag(logprefix + ".contenttype", contentType);
+                }
+
+                final int contentLength = HttpUtil.getContentLength(message, -1);
+                if (contentLength != -1) {
+                    span.setTag(logprefix + ".contentlength", contentLength);
+                }
+            } else if (unwrap instanceof ByteBufHolder) {
+                logByteBuf(((ByteBufHolder)unwrap).content(), bodysb, bufsin, loggedSize, maxLogSize);
+            } else if (unwrap instanceof ByteBuf) {
+                logByteBuf((ByteBuf)unwrap, bodysb, bufsin, loggedSize, maxLogSize);
+            }
+        }, e -> {}, ()-> {
+            if (loggedSize.get() > 0) {
+                span.log(Collections.singletonMap(logprefix + ".body", bodysb.toString()));
+            }
+        });
+    }
+
+    private static void logByteBuf(final ByteBuf buf,
+            final StringBuilder sb, final BufsInputStream<ByteBuf> bufsin,
+            final AtomicInteger loggedSize, final int maxLogSize) {
+        if (loggedSize.get() < maxLogSize && buf.readableBytes() > 0) {
+            final int size = Math.min(maxLogSize - loggedSize.get(), buf.readableBytes());
+            bufsin.appendBuf(buf.slice(0, size));
+            loggedSize.addAndGet(size);
+            try {
+                sb.append(new String(ByteStreams.toByteArray(bufsin), Charsets.UTF_8));
+            } catch (final Exception e) {}
+        }
+    }
+
     public static <MSG extends HttpMessage> Transformer<FullMessage<MSG>, FullMessage<MSG>> logbody(
-            final Span span, final String logname, final int maxLogSize) {
+            final Span span, final String logprefix, final int maxLogSize) {
         final StringBuilder bodysb4span = new StringBuilder();
         final AtomicInteger bodysize4span = new AtomicInteger(0);
 
@@ -125,8 +173,8 @@ public class TraceUtil {
                         @Override
                         public Observable<? extends MessageBody> body() {
                             return fullmsg.body().map(body -> {
-                                span.setTag("http.contenttype", body.contentType());
-                                span.setTag("http.contentlength", body.contentLength());
+                                span.setTag( logprefix + ".contenttype", body.contentType());
+                                span.setTag( logprefix + ".contentlength", body.contentLength());
                                 return (MessageBody)new MessageBody() {
                                     @Override
                                     public String contentType() {
@@ -165,7 +213,7 @@ public class TraceUtil {
                 })
                 .doOnTerminate(() -> {
                     if (bodysize4span.get() > 0) {
-                        span.log(Collections.singletonMap(logname, bodysb4span.toString()));
+                        span.log(Collections.singletonMap(logprefix + ".body", bodysb4span.toString()));
                     }
                 });
             }};

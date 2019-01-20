@@ -96,6 +96,8 @@ public class TradeProcessor extends Subscriber<HttpTrade>
                 final Span span = req_tracer_span.third;
 
                 TraceUtil.hook4serversend(trade.writeCtrl(), span);
+                TraceUtil.logoutmsg(trade.writeCtrl(), span, "http.resp", 1024);
+
                 trade.doOnTerminate(() -> span.finish());
                 TraceUtil.addTagNotNull(span, "http.host", request.headers().get(HttpHeaderNames.HOST));
 
