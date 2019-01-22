@@ -239,13 +239,13 @@ public class InteractBuilderImpl implements InteractBuilder {
                                         .doOnTerminate(() -> {
                                             if (isSpanFinished.compareAndSet(false, true)) {
                                                 span.finish();
-                                                LOG.info("call span {} finish by doOnTerminate", span);
+                                                LOG.debug("call span {} finish by doOnTerminate", span);
                                             }
                                         })
                                         .doOnUnsubscribe(() -> {
                                             if (isSpanFinished.compareAndSet(false, true)) {
                                                 span.finish();
-                                                LOG.info("call span {} finish by doOnUnsubscribe", span);
+                                                LOG.debug("call span {} finish by doOnUnsubscribe", span);
                                             }
                                         });
                         }
