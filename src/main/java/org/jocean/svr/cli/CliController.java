@@ -9,6 +9,7 @@ import org.jocean.cli.DefaultCommandRepository;
 import org.jocean.cli.cmd.HelpCommand;
 import org.jocean.j2se.os.OSUtil;
 import org.jocean.svr.cli.cmd.HaltCommand;
+import org.jocean.svr.cli.cmd.TradeCountCommand;
 import org.jocean.svr.cli.cmd.UnforwardCommand;
 
 import io.netty.bootstrap.ServerBootstrap;
@@ -51,6 +52,7 @@ public class CliController {
                     .addCommand(new HelpCommand())
                     .addCommand(new HaltCommand())
                     .addCommand(new UnforwardCommand())
+                    .addCommand(new TradeCountCommand())
                     ;
 
         final AbstractCliContext ctx = new AbstractCliContext() {
