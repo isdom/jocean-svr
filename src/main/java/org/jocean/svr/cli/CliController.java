@@ -9,6 +9,7 @@ import org.jocean.cli.DefaultCommandRepository;
 import org.jocean.cli.cmd.HelpCommand;
 import org.jocean.j2se.os.OSUtil;
 import org.jocean.svr.cli.cmd.HaltCommand;
+import org.jocean.svr.cli.cmd.UnforwardCommand;
 
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.ByteBuf;
@@ -49,6 +50,7 @@ public class CliController {
                 new DefaultCommandRepository()
                     .addCommand(new HelpCommand())
                     .addCommand(new HaltCommand())
+                    .addCommand(new UnforwardCommand())
                     ;
 
         final AbstractCliContext ctx = new AbstractCliContext() {

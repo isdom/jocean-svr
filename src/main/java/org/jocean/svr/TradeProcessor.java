@@ -49,8 +49,7 @@ import rx.functions.Action1;
 public class TradeProcessor extends Subscriber<HttpTrade>
     implements MBeanRegisterAware {
 
-    private static final Logger LOG =
-            LoggerFactory.getLogger(TradeProcessor.class);
+    private static final Logger LOG = LoggerFactory.getLogger(TradeProcessor.class);
 
     public TradeProcessor(final Registrar registrar, final RestinMXBean restin) {
         this._registrar = registrar;
