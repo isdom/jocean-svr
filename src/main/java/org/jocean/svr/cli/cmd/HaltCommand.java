@@ -2,7 +2,9 @@ package org.jocean.svr.cli.cmd;
 
 import java.lang.management.ManagementFactory;
 
+import javax.management.JMX;
 import javax.management.MBeanServer;
+import javax.management.ObjectName;
 
 import org.jocean.cli.CliCommand;
 import org.jocean.cli.CliContext;
@@ -14,8 +16,8 @@ public class HaltCommand implements CliCommand<CliContext> {
     public String execute(final CliContext ctx, final String... args) throws Exception {
         final MBeanServer mbeanServer = ManagementFactory.getPlatformMBeanServer();
 
-        final UnitAgentMXBean unitAgentMXBean = ManagementFactory.newPlatformMXBeanProxy(mbeanServer,
-                "org.jocean:unit=root,name=unitAgent", UnitAgentMXBean.class);
+        final UnitAgentMXBean unitAgentMXBean = JMX.newMXBeanProxy(mbeanServer,
+                ObjectName.getInstance("org.jocean:unit=root,name=unitAgent"), UnitAgentMXBean.class);
 
         unitAgentMXBean.deleteAllUnit();
         return "all unit deleted.";
