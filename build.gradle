@@ -38,7 +38,6 @@ dependencies {
     compile 'org.jocean:jocean-idiom:0.1.4-SNAPSHOT'
     compile 'org.jocean:jocean-http:0.0.2-SNAPSHOT'
     compile('org.jocean:jocean-j2se:0.0.4-SNAPSHOT') { transitive = false }
-    compile 'org.jocean:jocean-cli:0.0.1-SNAPSHOT'
 
     compile "io.netty:netty-all:${nettyVersion}"
     testCompile 'ch.qos.logback:logback-classic:1.2.2'
