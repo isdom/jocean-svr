@@ -8,6 +8,7 @@ import org.jocean.idiom.Terminable;
 import rx.Observable;
 
 public interface TradeContext {
+    public TradeScheduler   scheduler();
     public WriteCtrl        writeCtrl();
     public Terminable       terminable();
     public AllocatorBuilder allocatorBuilder();

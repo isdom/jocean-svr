@@ -46,6 +46,7 @@ import io.opentracing.propagation.Format;
 import io.opentracing.tag.Tags;
 import rx.Observable;
 import rx.Observable.Transformer;
+import rx.Scheduler;
 import rx.functions.Action1;
 
 public class InteractBuilderImpl implements InteractBuilder {
@@ -67,10 +68,14 @@ public class InteractBuilderImpl implements InteractBuilder {
         }
     }
 
-    public InteractBuilderImpl(final Terminable terminable, final Span span, final Observable<Tracer> getTracer) {
+    public InteractBuilderImpl(final Terminable terminable,
+            final Span span,
+            final Observable<Tracer> getTracer,
+            final Scheduler scheduler) {
         this._terminable = terminable;
         this._span = span;
         this._getTracer = getTracer;
+        this._scheduler = scheduler;
     }
 
     @Override
@@ -247,7 +252,8 @@ public class InteractBuilderImpl implements InteractBuilder {
                                                 span.finish();
                                                 LOG.debug("call span {} finish by doOnUnsubscribe", span);
                                             }
-                                        });
+                                        })
+                                        .observeOn(_scheduler, true);
                         }
                     );
             }
@@ -375,5 +381,5 @@ public class InteractBuilderImpl implements InteractBuilder {
     private final Terminable _terminable;
     private final Span _span;
     private final Observable<Tracer> _getTracer;
-
+    private final Scheduler _scheduler;
 }

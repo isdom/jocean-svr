@@ -119,15 +119,15 @@ import rx.functions.Func0;
  */
 public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
-    private static final Logger LOG
-            = LoggerFactory.getLogger(Registrar.class);
+    private static final Logger LOG = LoggerFactory.getLogger(Registrar.class);
 
     static class DefaultTradeContext implements TradeContext {
 
-        DefaultTradeContext(final HttpTrade trade, final Tracer tracer, final Span span) {
+        DefaultTradeContext(final HttpTrade trade, final Tracer tracer, final Span span, final TradeScheduler ts) {
             this._trade = trade;
             this._tracer = tracer;
             this._span = span;
+            this._ts = ts;
         }
 
         @Override
@@ -147,7 +147,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
         @Override
         public InteractBuilder interactBuilder() {
-            return new InteractBuilderImpl(_trade, _span, Observable.just(_tracer));
+            return new InteractBuilderImpl(_trade, _span, Observable.just(_tracer), _ts.scheduler());
         }
 
         @Override
@@ -161,9 +161,15 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return decodeBodyAs(null, type);
         }
 
+        @Override
+        public TradeScheduler scheduler() {
+            return _ts;
+        }
+
         final HttpTrade _trade;
         final Tracer _tracer;
         final Span _span;
+        final TradeScheduler _ts;
     }
 
     public void start() {
@@ -395,7 +401,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final HttpRequest request,
             final HttpTrade trade,
             final Tracer tracer,
-            final Span span) throws Exception {
+            final Span span,
+            final TradeScheduler ts) throws Exception {
 
         // try direct path match
         final Pair<ResContext, Map<String, String>> pair = findResourceCtx(request);
@@ -438,8 +445,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 final Observable<? extends Object> aheadObsResponse = doPreInvoke(interceptorCtx, interceptors);
                 if (null != aheadObsResponse) {
                     //  interceptor 直接响应
-                    return doPostInvoke(interceptors,
-                            copyCtxOverrideResponse(interceptorCtx, aheadObsResponse));
+                    return doPostInvoke(interceptors, copyCtxOverrideResponse(interceptorCtx, aheadObsResponse));
                 } else {
                     final ArgsCtx argctx = new ArgsCtx(processor,
                             processor.getGenericParameterTypes(),
@@ -455,9 +461,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             processor,
                             argctx,
                             tracer,
-                            span);
-                    return doPostInvoke(interceptors,
-                        copyCtxOverrideResponse(interceptorCtx, obsResponse));
+                            span,
+                            ts);
+                    return doPostInvoke(interceptors, copyCtxOverrideResponse(interceptorCtx, obsResponse));
                 }
             }
         }
@@ -473,10 +479,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final Method processor,
             final ArgsCtx argsctx,
             final Tracer tracer,
-            final Span span
+            final Span span,
+            final TradeScheduler ts
             ) {
         try {
-            final DefaultTradeContext tctx = new DefaultTradeContext(trade, tracer, span);
+            final DefaultTradeContext tctx = new DefaultTradeContext(trade, tracer, span, ts);
             final Object returnValue = processor.invoke(resource, buildArgs(resource, tctx, argsctx));
             if (null!=returnValue) {
                 final Observable<? extends Object> obsResponse = returnValue2ObsResponse(
