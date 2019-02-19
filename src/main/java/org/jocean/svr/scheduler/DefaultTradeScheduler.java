@@ -6,13 +6,14 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.jocean.idiom.BeanFinder;
+import org.jocean.svr.TradeScheduler;
 import org.springframework.beans.factory.annotation.Value;
 
 import rx.Observable.Transformer;
 import rx.Scheduler;
 import rx.schedulers.Schedulers;
 
-public class DefaultTradeScheduler {
+public class DefaultTradeScheduler implements TradeScheduler {
 
     public static <T> Transformer<T, T> observeOn(final BeanFinder finder, final String tpname, final int bufferSize) {
         return ts -> finder.find(tpname, DefaultTradeScheduler.class).flatMap(executor -> ts.observeOn(executor._workerScheduler, bufferSize));
@@ -60,10 +61,12 @@ public class DefaultTradeScheduler {
         this._workers.shutdown();
     }
 
+    @Override
     public Scheduler scheduler() {
         return this._workerScheduler;
     }
 
+    @Override
     public int workerCount() {
         return this._workerCount;
     }
