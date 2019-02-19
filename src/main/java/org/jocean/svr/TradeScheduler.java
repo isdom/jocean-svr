@@ -64,6 +64,10 @@ public class TradeScheduler {
         return this._workerScheduler;
     }
 
+    public int workerCount() {
+        return this._workerCount;
+    }
+
     @Value("${worker.count}")
     int _workerCount = 2;
 
