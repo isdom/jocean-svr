@@ -107,7 +107,6 @@ import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.codec.http.QueryStringDecoder;
-import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder;
 import io.opentracing.Span;
 import io.opentracing.Tracer;
 import rx.Completable;
@@ -1104,11 +1103,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Observable<MessageBody> buildMessageBody(final HttpTrade trade, final HttpRequest request) {
-        if (request.method().equals(HttpMethod.POST) && HttpPostRequestDecoder.isMultipart(request)) {
-            return Observable.unsafeCreate(new MultipartBody(trade, request));
-        } else {
+//        if (request.method().equals(HttpMethod.POST) && HttpPostRequestDecoder.isMultipart(request)) {
+//            return Observable.unsafeCreate(new MultipartBody(trade, request));
+//        } else {
+        //  对于 multipart content-type 不做特殊处理，也按照标准 body 返回
             return trade.inbound().flatMap(fullreq -> fullreq.body());
-        }
+//        }
     }
 
     @SuppressWarnings("unchecked")
