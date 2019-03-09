@@ -107,6 +107,7 @@ import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.codec.http.QueryStringDecoder;
+import io.opentracing.References;
 import io.opentracing.Span;
 import io.opentracing.Tracer;
 import rx.Completable;
@@ -147,6 +148,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         @Override
         public InteractBuilder interactBuilder() {
             return new InteractBuilderImpl(_trade, _span, Observable.just(_tracer), _ts.scheduler());
+        }
+
+        public InteractBuilder interactBuilderOutofTrade(final Span parentSpan) {
+            return new InteractBuilderImpl(null, parentSpan, Observable.just(_tracer), _ts.scheduler());
         }
 
         @Override
@@ -1032,7 +1037,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         } else if (argType.equals(RpcExecutor.class)) {
             return buildRpcExecutor(processor, tradeCtx.interactBuilder());
         } else if (argType.equals(Tracing.class)) {
-            return buildTracing(tradeCtx);
+            return buildTracing(tradeCtx, tradeCtx._span);
+        } else if (argType.equals(Branch.Builder.class)) {
+            return buildBranchBuilder(tradeCtx, processor);
         } else {
             for (final MethodInterceptor interceptor : interceptors) {
                 if (interceptor instanceof ArgumentBuilder) {
@@ -1047,13 +1054,39 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return null;
     }
 
-    private Tracing buildTracing(final DefaultTradeContext tradeCtx) {
+    private Branch.Builder buildBranchBuilder(final DefaultTradeContext tradeCtx, final Method processor) {
+        return new Branch.Builder() {
+            @Override
+            public Branch buildFollowsFrom(final String branchName) {
+                final Span span = tradeCtx._tracer.buildSpan(branchName)
+                        .addReference(References.FOLLOWS_FROM, tradeCtx._span.context()).start();
+                final Tracing tracing = buildTracing(tradeCtx, span);
+                return new Branch() {
+                    @Override
+                    public Span span() {
+                        return span;
+                    }
+
+                    @Override
+                    public Tracing tracing() {
+                        return tracing;
+                    }
+
+                    @Override
+                    public RpcExecutor rpcExecutor() {
+                        return buildRpcExecutor(processor, tradeCtx.interactBuilderOutofTrade(span));
+                    }};
+            }
+        };
+    }
+
+    private Tracing buildTracing(final DefaultTradeContext tradeCtx, final Span span) {
         return new Tracing() {
             @Override
             public Scope activate() {
                 final Tracer restore = TracingUtil.get();
                 TracingUtil.set(tradeCtx._tracer);
-                final io.opentracing.Scope scope = tradeCtx._tracer.scopeManager().activate(tradeCtx._span, false);
+                final io.opentracing.Scope scope = tradeCtx._tracer.scopeManager().activate(span, false);
                 return () -> {
                     scope.close();
                     if (tradeCtx._tracer == TracingUtil.get()) {

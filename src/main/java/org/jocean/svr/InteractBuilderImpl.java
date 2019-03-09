@@ -68,7 +68,8 @@ public class InteractBuilderImpl implements InteractBuilder {
         }
     }
 
-    public InteractBuilderImpl(final Terminable terminable,
+    public InteractBuilderImpl(
+            final Terminable terminable,
             final Span span,
             final Observable<Tracer> getTracer,
             final Scheduler scheduler) {
