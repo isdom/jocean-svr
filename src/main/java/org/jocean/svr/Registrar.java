@@ -695,6 +695,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final DefaultTradeContext tctx,
             final String[] mimeTypes,
             final HttpVersion version) {
+        final AtomicInteger bodyCnt = new AtomicInteger(0);
         return objs.flatMap(obj -> {
                 if (obj instanceof HttpObject) {
                     return Observable.just(obj);
@@ -708,6 +709,23 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     @SuppressWarnings("unchecked")
                     final Stepable<Object> stepable = (Stepable<Object>)obj;
                     return Observable.just(stepable);
+                } else if (obj instanceof MessageBody) {
+                    if (bodyCnt.get() == 0) {
+                        bodyCnt.incrementAndGet();
+                        final HttpResponse resp = new DefaultHttpResponse(version, HttpResponseStatus.OK);
+                        return fullmsg2hobjs(new FullMessage<HttpResponse>() {
+                            @Override
+                            public HttpResponse message() {
+                                return resp;
+                            }
+                            @Override
+                            public Observable<? extends MessageBody> body() {
+                                return Observable.just((MessageBody)obj);
+                            }});
+                    } else {
+                        LOG.warn("NOT support multipart body, ignore body {}", obj);
+                        return Observable.empty();
+                    }
                 } else {
                     return fullmsg2hobjs(fullmsgOf(obj, version, tctx, mimeTypes));
                 }
