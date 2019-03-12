@@ -7,11 +7,7 @@ import java.util.Collections;
 
 import javax.inject.Inject;
 
-import org.jocean.http.ByteBufSlice;
 import org.jocean.http.FullMessage;
-import org.jocean.http.MessageBody;
-import org.jocean.http.TrafficCounter;
-import org.jocean.http.WriteCtrl;
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
 import org.jocean.idiom.BeanFinder;
 import org.jocean.idiom.DisposableWrapperUtil;
@@ -19,7 +15,6 @@ import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Tuple;
 import org.jocean.idiom.jmx.MBeanRegister;
 import org.jocean.idiom.jmx.MBeanRegisterAware;
-import org.jocean.idiom.rx.RxSubscribers;
 import org.jocean.svr.mbean.RestinMXBean;
 import org.jocean.svr.tracing.TraceUtil;
 import org.slf4j.Logger;
@@ -35,13 +30,9 @@ import io.opentracing.Tracer;
 import io.opentracing.noop.NoopTracerFactory;
 import io.opentracing.propagation.Format;
 import io.opentracing.tag.Tags;
-import rx.Completable;
 import rx.Observable;
 import rx.Scheduler;
 import rx.Subscriber;
-import rx.Subscription;
-import rx.functions.Action0;
-import rx.functions.Action1;
 import rx.schedulers.Schedulers;
 
 /**
@@ -141,7 +132,7 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
                 LOG.debug("content-length is {} <= {}, enable autoread full request for {}.",
                         contentLength, this._maxContentLengthForAutoread, trade);
                 // auto read all request
-                handleTrade(fullreq, enableAutoread(trade), tracer, span, ts);
+                handleTrade(fullreq, AutoreadTrade.enableAutoread(trade), tracer, span, ts);
             } else {
                 // content-length > max content-length
                 LOG.debug("content-length is {} > {}, handle raw {}.",
@@ -149,119 +140,6 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
                 handleTrade(fullreq, trade, tracer, span, ts);
             }
         }
-    }
-
-    private HttpTrade enableAutoread(final HttpTrade trade) {
-        final Observable<FullMessage<HttpRequest>> autoreadInbound =
-                trade.inbound().<FullMessage<HttpRequest>>map(fullmsg -> {
-                    final Observable<MessageBody> cachedBody = fullmsg.body().<MessageBody>map(body -> {
-                        final Observable<? extends ByteBufSlice> cachedContent =
-                                body.content().doOnNext(bbs -> bbs.step()).cache();
-                        cachedContent.subscribe(RxSubscribers.ignoreNext(), RxSubscribers.ignoreError());
-                        return new MessageBody() {
-                            @Override
-                            public String contentType() {
-                                return body.contentType();
-                            }
-                            @Override
-                            public int contentLength() {
-                                return body.contentLength();
-                            }
-                            @Override
-                            public Observable<? extends ByteBufSlice> content() {
-                                return cachedContent;
-                            }};
-                    }).cache();
-                    cachedBody.subscribe(RxSubscribers.ignoreNext(), RxSubscribers.ignoreError());
-                    return new FullMessage<HttpRequest>() {
-                        @Override
-                        public HttpRequest message() {
-                            return fullmsg.message();
-                        }
-                        @Override
-                        public Observable<? extends MessageBody> body() {
-                            return cachedBody;
-                        }};
-                }).cache();
-
-        autoreadInbound.subscribe(RxSubscribers.ignoreNext(), RxSubscribers.ignoreError());
-
-        return new HttpTrade() {
-
-            @Override
-            public Action1<Action0> onEnd() {
-                return trade.onEnd();
-            }
-
-            @Override
-            public Action1<Action1<HttpTrade>> onEndOf() {
-                return trade.onEndOf();
-            }
-
-            @Override
-            public Action0 doOnEnd(final Action0 onTerminate) {
-                return trade.doOnEnd(onTerminate);
-            }
-
-            @Override
-            public Action0 doOnEnd(final Action1<HttpTrade> onTerminate) {
-                return trade.doOnEnd(onTerminate);
-            }
-
-            @Override
-            public Completable inboundCompleted() {
-                return trade.inboundCompleted();
-            }
-
-            @Override
-            public Observable<FullMessage<HttpRequest>> inbound() {
-                return autoreadInbound;
-            }
-
-            @Override
-            public Subscription outbound(final Observable<? extends Object> message) {
-                return trade.outbound(message);
-            }
-
-            @Override
-            public Object transport() {
-                return trade.transport();
-            }
-
-            @Override
-            public Action0 closer() {
-                return trade.closer();
-            }
-
-            @Override
-            public void close() {
-                trade.close();
-            }
-
-            @Override
-            public TrafficCounter traffic() {
-                return trade.traffic();
-            }
-
-            @Override
-            public boolean isActive() {
-                return trade.isActive();
-            }
-
-            @Override
-            public WriteCtrl writeCtrl() {
-                return trade.writeCtrl();
-            }
-
-            @Override
-            public Intraffic intraffic() {
-                return trade.intraffic();
-            }
-
-            @Override
-            public String toString() {
-                return new StringBuilder().append("(Autoread Enabled) ").append(trade.toString()).toString();
-            }};
     }
 
     private void handleTrade(final FullMessage<HttpRequest> fullreq, final HttpTrade trade, final Tracer tracer, final Span span, final TradeScheduler ts) {

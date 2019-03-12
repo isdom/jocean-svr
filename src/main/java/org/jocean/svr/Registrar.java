@@ -114,6 +114,7 @@ import io.opentracing.Span;
 import io.opentracing.Tracer;
 import rx.Completable;
 import rx.Observable;
+import rx.functions.Actions;
 import rx.functions.Func0;
 
 /**
@@ -158,8 +159,15 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
 
         @Override
+        public void enableRepeatDecode() {
+            if (!(this._trade instanceof AutoreadTrade)) {
+                this._trade = AutoreadTrade.enableAutoread(_trade);
+            }
+        }
+
+        @Override
         public <T> Observable<T> decodeBodyAs(final ContentDecoder decoder, final Class<T> type) {
-            return _trade.inbound().flatMap(MessageUtil.fullmsg2body()).compose(MessageUtil.body2bean(decoder, type))
+            return _trade.inbound().flatMap(MessageUtil.fullmsg2body()).compose(MessageUtil.body2bean(decoder, type, Actions.empty()))
                     .doOnNext(TraceUtil.setTag4bean(_span, "req.bd.", "record.reqbean.error"));
         }
 
@@ -173,7 +181,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return _ts;
         }
 
-        final HttpTrade _trade;
+        HttpTrade _trade;
         final Tracer _tracer;
         final Span _span;
         final TradeScheduler _ts;
