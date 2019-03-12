@@ -19,6 +19,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
@@ -58,6 +59,7 @@ import org.jocean.idiom.BeanHolderAware;
 import org.jocean.idiom.Beans;
 import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.Endable;
+import org.jocean.idiom.EndableUtil;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Pair;
 import org.jocean.idiom.ReflectUtils;
@@ -150,8 +152,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return new InteractBuilderImpl(_trade, _span, Observable.just(_tracer), _ts.scheduler());
         }
 
-        public InteractBuilder interactBuilderOutofTrade(final Span parentSpan) {
-            return new InteractBuilderImpl(null, parentSpan, Observable.just(_tracer), _ts.scheduler());
+        public InteractBuilder interactBuilderOutofTrade(final Span parentSpan, final int delayInSeconds) {
+            return new InteractBuilderImpl(EndableUtil.delay(delayInSeconds, TimeUnit.SECONDS), parentSpan,
+                    Observable.just(_tracer), _ts.scheduler());
         }
 
         @Override
@@ -1092,7 +1095,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
                     @Override
                     public RpcExecutor rpcExecutor() {
-                        return buildRpcExecutor(processor, tradeCtx.interactBuilderOutofTrade(span));
+                        return buildRpcExecutor(processor, tradeCtx.interactBuilderOutofTrade(span, 30));
                     }};
             }
         };
