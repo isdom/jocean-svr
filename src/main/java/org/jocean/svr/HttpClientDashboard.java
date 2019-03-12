@@ -23,8 +23,7 @@ import rx.Subscriber;
  * @author isdom
  *
  */
-public class HttpClientDashboard extends Subscriber<HttpInitiator>
-    implements HttpClientMBean, MBeanRegisterAware {
+public class HttpClientDashboard extends Subscriber<HttpInitiator> implements HttpClientMBean, MBeanRegisterAware {
 
     private static final String OBJECTNAME_SUFFIX = "name=dashboard";
 
@@ -44,7 +43,7 @@ public class HttpClientDashboard extends Subscriber<HttpInitiator>
     @Override
     public void onNext(final HttpInitiator initiator) {
         this._initiators.add(initiator);
-        initiator.doOnTerminate(()->this._initiators.remove(initiator));
+        initiator.doOnEnd(()->this._initiators.remove(initiator));
     }
 
     @Override

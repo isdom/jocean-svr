@@ -12,8 +12,8 @@ import java.util.zip.ZipOutputStream;
 import org.jocean.http.ByteBufSlice;
 import org.jocean.http.MessageUtil;
 import org.jocean.idiom.DisposableWrapper;
+import org.jocean.idiom.Endable;
 import org.jocean.idiom.ExceptionUtils;
-import org.jocean.idiom.Terminable;
 import org.jocean.netty.util.BufsInputStream;
 import org.jocean.netty.util.BufsOutputStream;
 import org.jocean.netty.util.NoDataException;
@@ -61,7 +61,7 @@ public class ZipUtil {
 
     public static Unzipper unzipToEntities(
             final Func0<DisposableWrapper<ByteBuf>> allocator,
-            final Terminable terminable,
+            final Endable endable,
             final int bufsize,
             final Action1<DisposableWrapper<? extends ByteBuf>> onunzipped ) {
         return bbses -> {
@@ -71,7 +71,7 @@ public class ZipUtil {
             final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
             final byte[] readbuf = new byte[bufsize];
 
-            terminable.doOnTerminate(() -> {
+            endable.doOnEnd(() -> {
                 try {
                     zipin.close();
                 } catch (final IOException e1) {
@@ -317,7 +317,7 @@ public class ZipUtil {
 
     public static Zipper zipEntities(
             final Func0<DisposableWrapper<ByteBuf>> allocator,
-            final Terminable terminable,
+            final Endable endable,
             final int bufsize,
             final Action1<DisposableWrapper<? extends ByteBuf>> onzipped) {
         return entities -> {
@@ -327,7 +327,7 @@ public class ZipUtil {
 
             final byte[] readbuf = new byte[bufsize];
 
-            terminable.doOnTerminate(() -> {
+            endable.doOnEnd(() -> {
                 try {
                     zipout.close();
                 } catch (final IOException e1) {

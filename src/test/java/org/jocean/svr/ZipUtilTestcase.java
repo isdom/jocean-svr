@@ -20,8 +20,8 @@ import org.jocean.http.MessageUtil;
 import org.jocean.http.util.Nettys;
 import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.DisposableWrapperUtil;
+import org.jocean.idiom.Endable;
 import org.jocean.idiom.ExceptionUtils;
-import org.jocean.idiom.Terminable;
 import org.jocean.netty.util.BufsOutputStream;
 import org.jocean.svr.ZipUtil.TozipEntity;
 import org.jocean.svr.ZipUtil.UnzipEntity;
@@ -68,24 +68,24 @@ public class ZipUtilTestcase {
             }};
     }
 
-    private Transformer<TozipEntity, ByteBufSlice> zipBy(final Terminable terminable) {
-        return ZipUtil.zipEntities(MessageUtil.pooledAllocator(terminable, 8192), terminable, 512, dwb->dwb.dispose());
+    private Transformer<TozipEntity, ByteBufSlice> zipBy(final Endable endable) {
+        return ZipUtil.zipEntities(MessageUtil.pooledAllocator(endable, 8192), endable, 512, dwb->dwb.dispose());
     }
 
-    private Transformer<ByteBufSlice, UnzipEntity> unzipBy(final Terminable terminable) {
-        return ZipUtil.unzipToEntities(MessageUtil.pooledAllocator(terminable, 8192), terminable, 512, dwb->dwb.dispose());
+    private Transformer<ByteBufSlice, UnzipEntity> unzipBy(final Endable endable) {
+        return ZipUtil.unzipToEntities(MessageUtil.pooledAllocator(endable, 8192), endable, 512, dwb->dwb.dispose());
     }
 
     @Test
     public final void testUnzipEntities() throws IOException, InterruptedException {
-        final Terminable terminable = new Terminable() {
+        final Endable terminable = new Endable() {
             @Override
-            public Action1<Action0> onTerminate() {
+            public Action1<Action0> onEnd() {
                 return null;
             }
 
             @Override
-            public Action0 doOnTerminate(final Action0 onTerminate) {
+            public Action0 doOnEnd(final Action0 onend) {
                 return null;
             }};
 
@@ -159,14 +159,14 @@ public class ZipUtilTestcase {
 
     @Test
     public final void testUnzipEntitiesWithinSlice() throws IOException, InterruptedException {
-        final Terminable terminable = new Terminable() {
+        final Endable terminable = new Endable() {
             @Override
-            public Action1<Action0> onTerminate() {
+            public Action1<Action0> onEnd() {
                 return null;
             }
 
             @Override
-            public Action0 doOnTerminate(final Action0 onTerminate) {
+            public Action0 doOnEnd(final Action0 onend) {
                 return null;
             }};
 

@@ -100,7 +100,7 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
                 TraceUtil.hook4serversend(trade.writeCtrl(), span);
                 TraceUtil.logoutmsg(trade.writeCtrl(), span, "http.resp", 1024);
 
-                trade.doOnTerminate(() -> span.finish());
+                trade.doOnEnd(() -> span.finish());
                 TraceUtil.addTagNotNull(span, "http.host", fullreq.message().headers().get(HttpHeaderNames.HOST));
 
                 if ( this._maxContentLengthForAutoread <= 0) {
@@ -189,23 +189,23 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
         return new HttpTrade() {
 
             @Override
-            public Action1<Action0> onTerminate() {
-                return trade.onTerminate();
+            public Action1<Action0> onEnd() {
+                return trade.onEnd();
             }
 
             @Override
-            public Action1<Action1<HttpTrade>> onTerminateOf() {
-                return trade.onTerminateOf();
+            public Action1<Action1<HttpTrade>> onEndOf() {
+                return trade.onEndOf();
             }
 
             @Override
-            public Action0 doOnTerminate(final Action0 onTerminate) {
-                return trade.doOnTerminate(onTerminate);
+            public Action0 doOnEnd(final Action0 onTerminate) {
+                return trade.doOnEnd(onTerminate);
             }
 
             @Override
-            public Action0 doOnTerminate(final Action1<HttpTrade> onTerminate) {
-                return trade.doOnTerminate(onTerminate);
+            public Action0 doOnEnd(final Action1<HttpTrade> onTerminate) {
+                return trade.doOnEnd(onTerminate);
             }
 
             @Override

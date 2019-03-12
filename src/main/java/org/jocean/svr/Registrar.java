@@ -57,13 +57,13 @@ import org.jocean.idiom.BeanHolder;
 import org.jocean.idiom.BeanHolderAware;
 import org.jocean.idiom.Beans;
 import org.jocean.idiom.DisposableWrapper;
+import org.jocean.idiom.Endable;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Pair;
 import org.jocean.idiom.ReflectUtils;
 import org.jocean.idiom.Regexs;
 import org.jocean.idiom.Stepable;
 import org.jocean.idiom.StepableUtil;
-import org.jocean.idiom.Terminable;
 import org.jocean.idiom.jmx.MBeanRegister;
 import org.jocean.idiom.jmx.MBeanRegisterAware;
 import org.jocean.j2se.spring.SpringBeanHolder;
@@ -136,7 +136,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
 
         @Override
-        public Terminable terminable() {
+        public Endable endable() {
             return _trade;
         }
 
@@ -1036,7 +1036,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return request;
         } else if (argType.equals(HttpTrade.class)) {
             return trade;
-        } else if (argType.equals(Terminable.class)) {
+        } else if (argType.equals(Endable.class)) {
             return trade;
         } else if (argType.equals(BeanHolder.class)) {
             return this._beanHolder;
@@ -1136,12 +1136,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return new ZipBuilder() {
             @Override
             public Zipper zip(final int pageSize, final int bufsize) {
-                return ZipUtil.zipEntities(tradeCtx.allocatorBuilder().build(pageSize), tradeCtx.terminable(), bufsize, dwb->dwb.dispose());
+                return ZipUtil.zipEntities(tradeCtx.allocatorBuilder().build(pageSize), tradeCtx.endable(), bufsize, dwb->dwb.dispose());
             }
 
             @Override
             public Unzipper unzip(final int pageSize, final int bufsize) {
-                return ZipUtil.unzipToEntities(tradeCtx.allocatorBuilder().build(pageSize), tradeCtx.terminable(), bufsize, dwb->dwb.dispose());
+                return ZipUtil.unzipToEntities(tradeCtx.allocatorBuilder().build(pageSize), tradeCtx.endable(), bufsize, dwb->dwb.dispose());
             }};
     }
 
