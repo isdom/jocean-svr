@@ -41,7 +41,7 @@ public class ByteBufSliceUtil {
 
             return stepables.map(stepable -> {
                 try {
-                    final Iterable<DisposableWrapper<ByteBuf>> dwbs =
+                    final Iterable<DisposableWrapper<? extends ByteBuf>> dwbs =
                             MessageUtil.out2dwbs(bufout, out -> fillout.call(stepable, out));
 
                     return new ByteBufSlice() {
