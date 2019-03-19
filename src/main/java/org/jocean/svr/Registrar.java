@@ -813,7 +813,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         if (null != content) {
             TraceUtil.setTag4bean(content, tctx._span, "resp.", "record.respbean.error");
 
-            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(
+            final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout = new BufsOutputStream<>(
                     tctx.allocatorBuilder().build(512),
                     dwb->dwb.unwrap());
             final Iterable<? extends DisposableWrapper<? extends ByteBuf>> dwbs = MessageUtil.out2dwbs(bufout,
@@ -1159,7 +1159,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private static AllocatorBuilder buildAllocatorBuilder(final HttpTrade trade) {
         return new AllocatorBuilder() {
             @Override
-            public Func0<DisposableWrapper<ByteBuf>> build(final int pageSize) {
+            public Func0<DisposableWrapper<? extends ByteBuf>> build(final int pageSize) {
                 return MessageUtil.pooledAllocator(trade, pageSize);
             }};
     }

@@ -34,10 +34,10 @@ public class ByteBufSliceUtil {
     }
 
     public static <T extends Stepable<?>> Transformer<T, ByteBufSlice> stepable2bbs(
-            final Func0<DisposableWrapper<ByteBuf>> allocator,
+            final Func0<DisposableWrapper<? extends ByteBuf>> allocator,
             final Action2<T, OutputStream> fillout) {
         return stepables -> {
-            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
+            final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
 
             return stepables.map(stepable -> {
                 try {

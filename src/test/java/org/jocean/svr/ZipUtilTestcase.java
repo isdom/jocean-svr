@@ -176,9 +176,9 @@ public class ZipUtilTestcase {
         final byte[] c2 = new byte[256];
         c2[0] = 22;
 
-        final Func0<DisposableWrapper<ByteBuf>>allocator = MessageUtil.pooledAllocator(terminable, 8192);
+        final Func0<DisposableWrapper<? extends ByteBuf>>allocator = MessageUtil.pooledAllocator(terminable, 8192);
 
-        final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
+        final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
         final ZipOutputStream zipout = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
         zipout.setLevel(Deflater.BEST_COMPRESSION);
 
@@ -259,9 +259,9 @@ public class ZipUtilTestcase {
 
     @Test
     public final void testSyncZip() throws IOException {
-        final Func0<DisposableWrapper<ByteBuf>>allocator = MessageUtil.pooledAllocator(null, 8192);
+        final Func0<DisposableWrapper<? extends ByteBuf>>allocator = MessageUtil.pooledAllocator(null, 8192);
 
-        final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
+        final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
         final ZipOutputStream zipout = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
         zipout.setLevel(Deflater.BEST_COMPRESSION);
 

@@ -305,7 +305,7 @@ public class InteractBuilderImpl implements InteractBuilder {
         return Observable.defer(() -> {
             TraceUtil.setTag4bean(bean, span, "req.bd.", "record.reqbean.error");
 
-            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout =
+            final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout =
                     new BufsOutputStream<>(MessageUtil.pooledAllocator(this._endable, 8192), dwb->dwb.unwrap());
             final Iterable<? extends DisposableWrapper<? extends ByteBuf>> dwbs = MessageUtil.out2dwbs(bufout,
                     out -> contentEncoder.encoder().call(bean, out));

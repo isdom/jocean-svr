@@ -60,7 +60,7 @@ public class ZipUtil {
     }
 
     public static Unzipper unzipToEntities(
-            final Func0<DisposableWrapper<ByteBuf>> allocator,
+            final Func0<DisposableWrapper<? extends ByteBuf>> allocator,
             final Endable endable,
             final int bufsize,
             final Action1<DisposableWrapper<? extends ByteBuf>> onunzipped ) {
@@ -68,7 +68,7 @@ public class ZipUtil {
             // init ctx for unzip
             final BufsInputStream<DisposableWrapper<? extends ByteBuf>> bufin = new BufsInputStream<>(dwb->dwb.unwrap(), onunzipped);
             final ZipInputStreamX zipin = new ZipInputStreamX(bufin);
-            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
+            final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
             final byte[] readbuf = new byte[bufsize];
 
             endable.doOnEnd(() -> {
@@ -100,13 +100,13 @@ public class ZipUtil {
     private static Observable<? extends UnzipEntity> slice2entities(
             final ByteBufSlice bbs,
             final ZipInputStreamX zipin,
-            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout,
+            final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout,
             final byte[] readbuf,
             final AtomicReference<PublishSubject<ByteBufSlice>> currentSubject) {
         final List<UnzipEntity> entities = new ArrayList<>();
         final AtomicReference<Action1<Boolean>> afterNextEntry = new AtomicReference<>(null);
-        Func1<List<DisposableWrapper<ByteBuf>>, Action1<Boolean>> onEntryComplete = null;
-        Action1<List<DisposableWrapper<ByteBuf>>> onEntryNeedData = null;
+        Func1<List<DisposableWrapper<? extends ByteBuf>>, Action1<Boolean>> onEntryComplete = null;
+        Action1<List<DisposableWrapper<? extends ByteBuf>>> onEntryNeedData = null;
 
         while (true) {
             if (currentSubject.get() == null) {
@@ -127,7 +127,7 @@ public class ZipUtil {
                 onEntryNeedData = dwbs -> onnext4entry(currentSubject.get(), bbs, dwbs);
             }
 
-            final List<DisposableWrapper<ByteBuf>> dwbs = new ArrayList<>();
+            final List<DisposableWrapper<? extends ByteBuf>> dwbs = new ArrayList<>();
             bufout.setOutput(dwb -> dwbs.add(dwb));
 
             try {
@@ -153,7 +153,7 @@ public class ZipUtil {
             final List<UnzipEntity> entities,
             final ZipEntry entry,
             final ByteBufSlice bbs,
-            final List<DisposableWrapper<ByteBuf>> dwbs) {
+            final List<DisposableWrapper<? extends ByteBuf>> dwbs) {
         final PublishSubject<ByteBufSlice> subject = PublishSubject.create();
         entities.add(new UnzipEntity() {
             @Override
@@ -225,7 +225,7 @@ public class ZipUtil {
     private static void onnext4entry(
             final PublishSubject<ByteBufSlice> subject,
             final ByteBufSlice bbs,
-            final List<DisposableWrapper<ByteBuf>> dwbs) {
+            final List<DisposableWrapper<? extends ByteBuf>> dwbs) {
         subject.onNext(new ByteBufSlice() {
             @Override
             public String toString() {
@@ -247,7 +247,7 @@ public class ZipUtil {
             final List<UnzipEntity> entities,
             final ZipEntry entry,
             final ByteBufSlice bbs,
-            final List<DisposableWrapper<ByteBuf>> dwbs) {
+            final List<DisposableWrapper<? extends ByteBuf>> dwbs) {
         return hasNextEntry -> {
             entities.add(new UnzipEntity() {
                 @Override
@@ -265,7 +265,7 @@ public class ZipUtil {
     private static Action1<Boolean> complete4entry(
             final PublishSubject<ByteBufSlice> subject,
             final ByteBufSlice bbs,
-            final List<DisposableWrapper<ByteBuf>> dwbs) {
+            final List<DisposableWrapper<? extends ByteBuf>> dwbs) {
         return hasNextEntry -> {
             subject.onNext(bbsof(!hasNextEntry, bbs, dwbs));
             subject.onCompleted();
@@ -275,7 +275,7 @@ public class ZipUtil {
     private static ByteBufSlice bbsof(
             final boolean callstep,
             final ByteBufSlice bbs,
-            final List<DisposableWrapper<ByteBuf>> dwbs) {
+            final List<DisposableWrapper<? extends ByteBuf>> dwbs) {
         return new ByteBufSlice() {
             @Override
             public String toString() {
@@ -297,7 +297,7 @@ public class ZipUtil {
     }
 
     private static int syncunzip(final ZipInputStreamX zipin,
-            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout,
+            final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout,
             final byte[] readbuf) throws IOException {
         int readed = 0;
         try {
@@ -316,12 +316,12 @@ public class ZipUtil {
     }
 
     public static Zipper zipEntities(
-            final Func0<DisposableWrapper<ByteBuf>> allocator,
+            final Func0<DisposableWrapper<? extends ByteBuf>> allocator,
             final Endable endable,
             final int bufsize,
             final Action1<DisposableWrapper<? extends ByteBuf>> onzipped) {
         return entities -> {
-            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
+            final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
             final ZipOutputStream zipout = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
             zipout.setLevel(Deflater.BEST_COMPRESSION);
 
@@ -349,7 +349,7 @@ public class ZipUtil {
     private static Observable<ByteBufSlice> zipentry(
             final String entryName,
             final ZipOutputStream zipout,
-            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout) {
+            final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout) {
         final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped = MessageUtil.out2dwbs(bufout, out -> {
             try {
                 zipout.putNextEntry(new ZipEntry(entryName));
@@ -374,7 +374,7 @@ public class ZipUtil {
 
     private static Func1<ByteBufSlice, ByteBufSlice> dozip(
             final ZipOutputStream zipout,
-            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout,
+            final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout,
             final byte[] readbuf,
             final Action1<DisposableWrapper<? extends ByteBuf>> onzipped) {
         return bbs -> {
@@ -401,7 +401,7 @@ public class ZipUtil {
 
     private static Observable<ByteBufSlice> closeentry(
             final ZipOutputStream zipout,
-            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout) {
+            final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout) {
         final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped = MessageUtil.out2dwbs(bufout, out -> {
             try {
                 zipout.closeEntry();
@@ -426,7 +426,7 @@ public class ZipUtil {
 
     private static Observable<ByteBufSlice> finishzip(
             final ZipOutputStream zipout,
-            final BufsOutputStream<DisposableWrapper<ByteBuf>> bufout) {
+            final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout) {
         final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped = MessageUtil.out2dwbs(bufout, out -> {
             try {
                 zipout.finish();
