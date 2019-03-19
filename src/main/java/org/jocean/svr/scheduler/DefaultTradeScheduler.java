@@ -72,7 +72,11 @@ public class DefaultTradeScheduler implements TradeScheduler {
     }
 
     @Value("${worker.count}")
-    int _workerCount = 2;
+    public void setWorkerCount(final int workerCount) {
+        this._workerCount = workerCount > 0 ? workerCount : Runtime.getRuntime().availableProcessors() * 2;
+    }
+
+    int _workerCount = Runtime.getRuntime().availableProcessors() * 2;
 
     @Value("${thread.name}")
     String _threadName = "trade-worker";
