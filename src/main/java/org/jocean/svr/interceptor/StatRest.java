@@ -17,8 +17,8 @@ import io.netty.handler.codec.http.HttpResponse;
 import rx.Observable;
 
 public class StatRest implements MethodInterceptor, ArgumentBuilder {
-    private static final Logger LOG
-        = LoggerFactory.getLogger(StatRest.class);
+
+    private static final Logger LOG = LoggerFactory.getLogger(StatRest.class);
 
 //    private static String getRawPath(final String path) {
 //        if (path.startsWith("http://") || path.startsWith("https://")) {
