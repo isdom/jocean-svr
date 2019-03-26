@@ -155,7 +155,7 @@ public class ByteBufSliceUtil {
 
     public interface StreamContext {
         public boolean isCompleted();
-        public Observable<Iterable<DisposableWrapper<ByteBuf>>> element();
+        public Observable<Iterable<DisposableWrapper<? extends ByteBuf>>> element();
         public StreamContext next();
     }
 
@@ -194,7 +194,7 @@ public class ByteBufSliceUtil {
     private static class RangeContext implements StreamContext {
 
         private RangeContext(final long begin, final long end, final int maxstep,
-                final Func2<Long, Integer, Observable<Iterable<DisposableWrapper<ByteBuf>>>> builder) {
+                final Func2<Long, Integer, Observable<Iterable<DisposableWrapper<? extends ByteBuf>>>> builder) {
             this._begin = begin;
             this._end = end;
             this._step = (int)Math.min(end - begin + 1, maxstep);
@@ -208,7 +208,7 @@ public class ByteBufSliceUtil {
         }
 
         @Override
-        public Observable<Iterable<DisposableWrapper<ByteBuf>>> element() {
+        public Observable<Iterable<DisposableWrapper<? extends ByteBuf>>> element() {
             return this._builder.call(this._begin, this._step);
         }
 
@@ -221,14 +221,14 @@ public class ByteBufSliceUtil {
         private final long _end;
         private final int _step;
         private final int _maxstep;
-        private final Func2<Long, Integer, Observable<Iterable<DisposableWrapper<ByteBuf>>>> _builder;
+        private final Func2<Long, Integer, Observable<Iterable<DisposableWrapper<? extends ByteBuf>>>> _builder;
     }
 
     public static StreamContext rangectx(
             final long begin,
             final long end,
             final int maxstep,
-            final Func2<Long, Integer, Observable<Iterable<DisposableWrapper<ByteBuf>>>> builder) {
+            final Func2<Long, Integer, Observable<Iterable<DisposableWrapper<? extends ByteBuf>>>> builder) {
         return new RangeContext(begin, end, maxstep, builder);
     }
 }
