@@ -31,8 +31,7 @@ import rx.functions.Func1;
 import rx.subjects.PublishSubject;
 
 public class ZipUtil {
-    private static final Logger LOG
-        = LoggerFactory.getLogger(ZipUtil.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ZipUtil.class);
 
     private ZipUtil() {
         throw new IllegalStateException("No instances!");

@@ -17,8 +17,7 @@ import rx.Observable.Transformer;
 public class ResponseUtil {
 
     @SuppressWarnings("unused")
-    private static final Logger LOG
-        = LoggerFactory.getLogger(ResponseUtil.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ResponseUtil.class);
 
     private ResponseUtil() {
         throw new IllegalStateException("No instances!");

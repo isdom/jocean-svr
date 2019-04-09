@@ -27,8 +27,7 @@ public class HttpClientDashboard extends Subscriber<HttpInitiator> implements Ht
 
     private static final String OBJECTNAME_SUFFIX = "name=dashboard";
 
-    private static final Logger LOG =
-            LoggerFactory.getLogger(HttpClientDashboard.class);
+    private static final Logger LOG = LoggerFactory.getLogger(HttpClientDashboard.class);
     @Override
     public void onCompleted() {
         LOG.warn("OnInitiator {} onCompleted", this);

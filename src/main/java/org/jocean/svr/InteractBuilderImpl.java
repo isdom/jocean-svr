@@ -52,8 +52,7 @@ import rx.functions.Action1;
 
 public class InteractBuilderImpl implements InteractBuilder {
 
-    private static final Logger LOG
-        = LoggerFactory.getLogger(InteractBuilderImpl.class);
+    private static final Logger LOG = LoggerFactory.getLogger(InteractBuilderImpl.class);
 
     private static final Feature F_SSL;
     static {

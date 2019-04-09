@@ -31,14 +31,13 @@ import rx.functions.Func0;
 import rx.functions.Func1;
 
 public class ParamUtil {
-    
-    private static final Logger LOG
-        = LoggerFactory.getLogger(ParamUtil.class);
-    
+
+    private static final Logger LOG = LoggerFactory.getLogger(ParamUtil.class);
+
     private ParamUtil() {
         throw new IllegalStateException("No instances!");
     }
-    
+
     public static Action1<HttpRequest> injectQueryParams(final Object bean) {
         return new Action1<HttpRequest>() {
             @Override
@@ -46,13 +45,13 @@ public class ParamUtil {
                 request2QueryParams(request, bean);
             }};
     }
-    
+
     public static void request2QueryParams(final HttpRequest request, final Object bean) {
         final Field[] fields = ReflectUtils.getAnnotationFieldsOf(bean.getClass(), QueryParam.class);
         if (null != fields) {
             final QueryStringDecoder decoder = new QueryStringDecoder(request.uri());
 
-            for (Field field : fields) {
+            for (final Field field : fields) {
                 final String key = field.getAnnotation(QueryParam.class).value();
                 if (!"".equals(key) && null != decoder.parameters()) {
                     // for case: QueryParam("demo")
@@ -65,7 +64,7 @@ public class ParamUtil {
             }
         }
     }
-    
+
     public static String rawQuery(final String uri) {
         final int pos = uri.indexOf('?');
         if (-1 != pos) {
@@ -74,7 +73,7 @@ public class ParamUtil {
             return null;
         }
     }
-    
+
     public static Action1<HttpRequest> injectHeaderParams(final Object bean) {
         return new Action1<HttpRequest>() {
             @Override
@@ -82,19 +81,19 @@ public class ParamUtil {
                 request2HeaderParams(request, bean);
             }};
     }
-    
+
     public static void request2HeaderParams(final HttpRequest request, final Object bean) {
         final Field[] fields = ReflectUtils.getAnnotationFieldsOf(bean.getClass(), HeaderParam.class);
         if (null != fields) {
-            for (Field field : fields) {
-                injectParamValue(request.headers().getAll(field.getAnnotation(HeaderParam.class).value()), 
+            for (final Field field : fields) {
+                injectParamValue(request.headers().getAll(field.getAnnotation(HeaderParam.class).value()),
                     bean,
                     field
                 );
             }
         }
     }
-    
+
     private static void injectParamValue(
             final List<String> values,
             final Object obj,
@@ -103,7 +102,7 @@ public class ParamUtil {
             injectValueToField(values.get(0), obj, field);
         }
     }
-    
+
     public static <T> T getAsType(final List<String> list, final Class<T> type) {
         if (null != list && list.size() > 0) {
             return Beans.fromString(list.get(0), type);
@@ -111,7 +110,7 @@ public class ParamUtil {
             return null;
         }
     }
-    
+
     /**
      * @param value
      * @param obj
@@ -124,7 +123,7 @@ public class ParamUtil {
         if (null != value) {
             try {
                 field.set(obj, Beans.fromString(value, field.getType()));
-            } catch (Exception e) {
+            } catch (final Exception e) {
                 LOG.warn("exception when set obj({}).{} with value({}), detail:{} ",
                         obj, field.getName(), value, ExceptionUtils.exception2detail(e));
             }
@@ -146,7 +145,7 @@ public class ParamUtil {
                 return null;
             }};
     }
-    
+
     public static <T> T parseContentAsXml(final ByteBuf buf, final Class<T> type) {
         final XmlMapper mapper = new XmlMapper();
         mapper.addHandler(new DeserializationProblemHandler() {
@@ -160,13 +159,13 @@ public class ParamUtil {
             }});
         try {
             return mapper.readValue(contentAsInputStream(buf), type);
-        } catch (Exception e) {
+        } catch (final Exception e) {
             LOG.warn("exception when parse xml, detail: {}",
                     ExceptionUtils.exception2detail(e));
             return null;
         }
     }
-    
+
     public static <T> Func1<Func0<FullHttpRequest>, T> decodeJsonContentAs(final Class<T> type) {
         return new Func1<Func0<FullHttpRequest>, T>() {
             @Override
@@ -182,17 +181,17 @@ public class ParamUtil {
                 return null;
             }};
     }
-    
+
     public static <T> T parseContentAsJson(final ByteBuf buf, final Class<T> type) {
         try {
             return JSON.parseObject(contentAsInputStream(buf), type);
-        } catch (IOException e) {
+        } catch (final IOException e) {
             LOG.warn("exception when parse {} as json, detail: {}",
                     buf, ExceptionUtils.exception2detail(e));
             return null;
         }
     }
-    
+
     private static InputStream contentAsInputStream(final ByteBuf buf) {
         return new ByteBufInputStream(buf.slice());
     }
