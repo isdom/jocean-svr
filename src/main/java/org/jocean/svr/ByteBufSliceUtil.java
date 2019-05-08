@@ -153,6 +153,101 @@ public class ByteBufSliceUtil {
         }
     }
 
+    public static Transformer<ByteBufSlice, Stepable<List<String>>> asLineSlice(final char...splitters) {
+
+        final BufsInputStream<DisposableWrapper<? extends ByteBuf>> bufin = new BufsInputStream<>(
+                dwb->dwb.unwrap(), dwb->dwb.dispose());
+        final StringBuilder lineBuf = new StringBuilder();
+
+        return bbses ->
+            bbses.flatMap(bbs -> {
+                // add all upstream dwb to bufin stream
+                bufin.appendIterable(bbs.element());
+                // read as InputStream
+                final List<String> lines = new ArrayList<>();
+
+                try {
+                    while (true) {
+                        lines.add(readUntil(bufin, lineBuf, splitters));
+                    }
+                } catch (final IOException e) {
+                    if (!(e instanceof NoDataException)) {
+                        return Observable.error(e);
+                    }
+                }
+
+                if (!lines.isEmpty()) {
+                    // read at least one line
+                    return Observable.just((Stepable<List<String>>)new Stepable<List<String>>() {
+                        @Override
+                        public void step() {
+                            bbs.step();
+                        }
+                        @Override
+                        public List<String> element() {
+                            return lines;
+                        }});
+                } else {
+                    LOG.debug("no lines readed, auto step this bbs");
+                    bbs.step();
+                    return Observable.empty();
+                }
+            },
+            e -> Observable.error(e),
+            () -> {
+                // stream is end
+                bufin.markEOS();
+                if (lineBuf.length() > 0) {
+                    final List<String> lines = Arrays.asList(lineBuf.toString());
+                    return Observable.just((Stepable<List<String>>)new Stepable<List<String>>() {
+
+                        @Override
+                        public void step() {}
+
+                        @Override
+                        public List<String> element() {
+                            return lines;
+                        }});
+                } else {
+                    return Observable.empty();
+                }
+            });
+    }
+
+    public static  String readUntil(final InputStream in, final StringBuilder lineBuf, final char...splitters) throws IOException {
+        loop: while (true) {
+            final int c = in.read();
+            switch (c) {
+                case '\n':
+                    break loop;
+
+                case '\r':
+//                    if (buffer.isReadable() && (char) buffer.getUnsignedByte(buffer.readerIndex()) == '\n') {
+//                        buffer.skipBytes(1);
+//                    }
+//                    break loop;
+                    continue;
+                case -1:
+                    break loop;
+                default:
+                    if (splitters.length > 0) {
+                        for (final char s : splitters) {
+                            if ( c == s ) {
+                                break loop;
+                            }
+                        }
+                    }
+                    lineBuf.append((char) c);
+            }
+        }
+
+        try {
+            return lineBuf.toString();
+        } finally {
+            lineBuf.setLength(0);
+        }
+    }
+
     public interface StreamContext {
         public boolean isCompleted();
         public Observable<Iterable<DisposableWrapper<? extends ByteBuf>>> element();
