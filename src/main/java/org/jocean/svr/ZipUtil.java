@@ -23,6 +23,8 @@ import org.slf4j.LoggerFactory;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.util.CharsetUtil;
+import net.lingala.zip4j.model.ZipParameters;
+import net.lingala.zip4j.util.Zip4jConstants;
 import rx.Observable;
 import rx.Observable.Transformer;
 import rx.functions.Action1;
@@ -449,6 +451,171 @@ public class ZipUtil {
     }
 
     private static void append4zip(final ZipOutputStream zipout,
+            final Iterable<? extends DisposableWrapper<? extends ByteBuf>> dwbs,
+            final byte[] readbuf,
+            final Action1<DisposableWrapper<? extends ByteBuf>> onzipped) {
+        try (final BufsInputStream<DisposableWrapper<? extends ByteBuf>> is =
+                    new BufsInputStream<>(dwb->dwb.unwrap(), onzipped)) {
+            is.appendIterable(dwbs);
+            is.markEOS();
+            int readed;
+            while ((readed = is.read(readbuf)) > 0) {
+                zipout.write(readbuf, 0, readed);
+            }
+//            zipout.flush();
+        } catch (final IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static Zipper zipEntitiesWithPassword(
+            final Func0<DisposableWrapper<? extends ByteBuf>> allocator,
+            final Endable endable,
+            final int bufsize,
+            final Action1<DisposableWrapper<? extends ByteBuf>> onzipped,
+            final String password) {
+        return entities -> {
+            final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
+            final net.lingala.zip4j.io.ZipOutputStream zipout = new net.lingala.zip4j.io.ZipOutputStream(bufout);
+
+            final byte[] readbuf = new byte[bufsize];
+
+            endable.doOnEnd(() -> {
+                try {
+                    zipout.close();
+                } catch (final IOException e1) {
+                }
+            });
+
+            return entities.concatMap(entity ->
+                        // start zip: entry info
+                        Observable.defer(()->{
+                            final ZipParameters zipParameters = new ZipParameters();
+                            zipParameters.setCompressionMethod(Zip4jConstants.COMP_DEFLATE);
+                            zipParameters.setCompressionLevel(9);
+                            zipParameters.setEncryptFiles(true);
+                            zipParameters.setEncryptionMethod(Zip4jConstants.ENC_METHOD_STANDARD);
+                            zipParameters.setPassword(password);
+                            zipParameters.setSourceExternalStream(true);
+                            zipParameters.setFileNameInZip(entity.entryName());
+
+                            return zipentry(zipParameters, zipout, bufout);
+                        }).concatWith(
+                        // zip content
+                        entity.body().map(dozip(zipout, bufout, readbuf, onzipped))).concatWith(
+                         // close entry
+                        Observable.defer(()->closeentry(zipout, bufout)) ))
+                    // end of zip: finish all
+                    .concatWith(Observable.defer(()->finishzip(zipout, bufout)));
+        };
+    }
+
+
+    private static Observable<ByteBufSlice> zipentry(
+            final ZipParameters zipParameters,
+            final net.lingala.zip4j.io.ZipOutputStream zipout,
+            final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout) {
+        final String entryName = zipParameters.getFileNameInZip();
+        final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped = MessageUtil.out2dwbs(bufout, out -> {
+            try {
+                zipout.putNextEntry(null, zipParameters);
+            } catch (final Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+        return Observable.just(new ByteBufSlice() {
+            @Override
+            public String toString() {
+                return new StringBuilder().append("ByteBufSlice [begin zip entry=").append(entryName).append("]").toString();
+            }
+
+            @Override
+            public void step() {}
+
+            @Override
+            public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                return zipped;
+            }});
+    }
+
+    private static Func1<ByteBufSlice, ByteBufSlice> dozip(
+            final net.lingala.zip4j.io.ZipOutputStream zipout,
+            final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout,
+            final byte[] readbuf,
+            final Action1<DisposableWrapper<? extends ByteBuf>> onzipped) {
+        return bbs -> {
+            final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped =
+                    MessageUtil.out2dwbs(bufout, out -> append4zip(zipout, bbs.element(), readbuf, onzipped));
+
+            return new ByteBufSlice() {
+                @Override
+                public String toString() {
+                    return new StringBuilder().append("ByteBufSlice [zipped for ").append(bbs).append("]").toString();
+                }
+                @Override
+                public void step() {
+                    bbs.step();
+                }
+
+                @Override
+                public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                    return zipped;
+                }
+            };
+        };
+    }
+
+    private static Observable<ByteBufSlice> closeentry(
+            final net.lingala.zip4j.io.ZipOutputStream zipout,
+            final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout) {
+        final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped = MessageUtil.out2dwbs(bufout, out -> {
+            try {
+                zipout.closeEntry();
+                zipout.flush();
+            } catch (final Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+        return Observable.just(new ByteBufSlice() {
+            @Override
+            public String toString() {
+                return "ByteBufSlice [closeentry]";
+            }
+            @Override
+            public void step() {}
+
+            @Override
+            public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                return zipped;
+            }});
+    }
+
+    private static Observable<ByteBufSlice> finishzip(
+            final net.lingala.zip4j.io.ZipOutputStream zipout,
+            final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout) {
+        final Iterable<? extends DisposableWrapper<? extends ByteBuf>> zipped = MessageUtil.out2dwbs(bufout, out -> {
+            try {
+                zipout.finish();
+                zipout.close();
+            } catch (final Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+        return Observable.just(new ByteBufSlice() {
+            @Override
+            public String toString() {
+                return "ByteBufSlice [finishzip]";
+            }
+            @Override
+            public void step() {}
+
+            @Override
+            public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                return zipped;
+            }});
+    }
+
+    private static void append4zip(final net.lingala.zip4j.io.ZipOutputStream zipout,
             final Iterable<? extends DisposableWrapper<? extends ByteBuf>> dwbs,
             final byte[] readbuf,
             final Action1<DisposableWrapper<? extends ByteBuf>> onzipped) {
