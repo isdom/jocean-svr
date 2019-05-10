@@ -1151,6 +1151,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
 
             @Override
+            public Zipper zipWithPasswd(final int pageSize, final int bufsize, final String passwd) {
+                return ZipUtil.zipEntitiesWithPassword(tradeCtx.allocatorBuilder().build(pageSize), tradeCtx.endable(), bufsize, dwb->dwb.dispose(), passwd);
+            }
+
+            @Override
             public Unzipper unzip(final int pageSize, final int bufsize) {
                 return ZipUtil.unzipToEntities(tradeCtx.allocatorBuilder().build(pageSize), tradeCtx.endable(), bufsize, dwb->dwb.dispose());
             }};

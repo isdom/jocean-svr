@@ -57,6 +57,7 @@ public class ZipUtil {
 
     public interface ZipBuilder {
         public Zipper zip(final int pageSize, final int bufsize);
+        public Zipper zipWithPasswd(final int pageSize, final int bufsize, final String passwd);
         public Unzipper unzip(final int pageSize, final int bufsize);
     }
 
