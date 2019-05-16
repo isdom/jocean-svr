@@ -440,7 +440,7 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
             // or  Boundary + "--" + CRLF: end of multipart body
 
             if (ctx.in().available() >= _endBoundary.length) {
-                if (ctx.in().forEachByte(ByteProcessors.indexOfBytes(_endBoundary)) > 0) {
+                if (ctx.in().forEachByte(ByteProcessors.indexOfBytes(_endBoundary)) == _endBoundary.length - 1) {
                     // if meet end of multipart flag: (_multipartDataBoundary + "--\r\n")
                     //  meet end of multipart body
                     return null;
