@@ -2,6 +2,7 @@ package org.jocean.svr;
 
 import static org.junit.Assert.assertEquals;
 
+import java.io.IOException;
 import java.util.Arrays;
 
 import org.jocean.http.ByteBufSlice;
@@ -10,10 +11,14 @@ import org.jocean.http.MessageUtil;
 import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.Stepable;
+import org.jocean.netty.util.BufsInputStream;
 import org.junit.Test;
+
+import com.google.common.io.ByteStreams;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import io.netty.util.CharsetUtil;
 import rx.Observable;
 import rx.functions.Action1;
 import rx.observers.TestSubscriber;
@@ -108,7 +113,10 @@ public class MultipartParserTestCase {
 
         assertEquals(2, bodySubscriber.getValueCount());
         assertEquals("text/plain", bodySubscriber.getOnNextEvents().get(0).contentType());
+        assertEquals("ABCDE", content2bytes(bodySubscriber.getOnNextEvents().get(0).content()));
+
         assertEquals("text/plain", bodySubscriber.getOnNextEvents().get(1).contentType());
+        assertEquals("0123456", content2bytes(bodySubscriber.getOnNextEvents().get(1).content()));
     }
 
     private static ByteBufSlice dwbs2bbs(final Iterable<DisposableWrapper<? extends ByteBuf>> dwbs, final Stepable<?> upstream) {
@@ -124,5 +132,22 @@ public class MultipartParserTestCase {
             public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
                 return dwbs;
             }};
+    }
+
+    private String content2bytes(final Observable<? extends ByteBufSlice> content) {
+        final BufsInputStream<DisposableWrapper<? extends ByteBuf>> bufin = new BufsInputStream<>(dwb -> dwb.unwrap(),
+                dwb -> {});
+        bufin.markEOS();
+
+        content.doOnNext(bbs -> {
+            bufin.appendIterable(bbs.element());
+            bbs.step();
+        }).last().toBlocking().single();
+
+        try {
+            return new String(ByteStreams.toByteArray(bufin), CharsetUtil.UTF_8);
+        } catch (final IOException e) {
+        }
+        return "";
     }
 }
