@@ -379,7 +379,11 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
                     });
                 }
                 else {
-                    ctx.appendMakeSlice(stepable -> _subject.onNext(dwbs2bbs(dwbs, stepable)) );
+                    ctx.appendMakeSlice(stepable -> {
+                        _subject.onNext(dwbs2bbs(dwbs, stepable));
+                        // part end, so notify downstream onCompleted event
+                        _subject.onCompleted();
+                    });
                 }
                 try {
                     ctx.in().skip(2);   // skip CRLF
