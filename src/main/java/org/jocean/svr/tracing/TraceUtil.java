@@ -24,6 +24,7 @@ import com.google.common.io.ByteStreams;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufHolder;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMessage;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpUtil;
@@ -176,6 +177,10 @@ public class TraceUtil {
                                 span.setTag( logprefix + ".contenttype", body.contentType());
                                 span.setTag( logprefix + ".contentlength", body.contentLength());
                                 return (MessageBody)new MessageBody() {
+                                    @Override
+                                    public HttpHeaders headers() {
+                                        return body.headers();
+                                    }
                                     @Override
                                     public String contentType() {
                                         return body.contentType();

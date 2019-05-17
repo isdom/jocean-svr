@@ -125,6 +125,11 @@ public class MultipartParserTestCase {
         bodySubscriber.assertCompleted();
     }
 
+    //  TODO，增加更多的片段组合测试
+    //  * part 首部不完整,
+    //  * 多 part , 单个 part 分散在前后连续的多个 part 中
+    //  * 单个 ByteBufSlice 中 中 包含1个或多个 part， 第一个和最后一个 part 不完整 (首部 及 body 部分)
+
     private static ByteBufSlice dwbs2bbs(final Iterable<DisposableWrapper<? extends ByteBuf>> dwbs, final Stepable<?> upstream) {
         return new ByteBufSlice() {
             @Override

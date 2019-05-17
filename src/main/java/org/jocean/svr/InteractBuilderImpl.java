@@ -33,7 +33,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.handler.codec.http.EmptyHttpHeaders;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMessage;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
@@ -310,6 +312,10 @@ public class InteractBuilderImpl implements InteractBuilder {
                     out -> contentEncoder.encoder().call(bean, out));
 
             return Observable.just((MessageBody)new MessageBody() {
+                @Override
+                public HttpHeaders headers() {
+                    return EmptyHttpHeaders.INSTANCE;
+                }
                 @Override
                 public String contentType() {
                     return contentEncoder.contentType();

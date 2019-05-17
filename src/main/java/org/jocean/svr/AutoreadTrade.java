@@ -8,6 +8,7 @@ import org.jocean.http.WriteCtrl;
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
 import org.jocean.idiom.rx.RxSubscribers;
 
+import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpRequest;
 import rx.Completable;
 import rx.Observable;
@@ -38,6 +39,9 @@ public class AutoreadTrade implements HttpTrade {
                         cachedContent.subscribe(RxSubscribers.ignoreNext(), RxSubscribers.ignoreError());
                         return new MessageBody() {
                             @Override
+                            public HttpHeaders headers() {
+                                return body.headers();
+                            }                            @Override
                             public String contentType() {
                                 return body.contentType();
                             }

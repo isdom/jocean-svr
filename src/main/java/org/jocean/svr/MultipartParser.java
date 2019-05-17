@@ -365,6 +365,10 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
                         final ByteBufSlice content = dwbs2bbs(dwbs, stepable);
                         ctx.appendMessageBody(new MessageBody() {
                             @Override
+                            public HttpHeaders headers() {
+                                return _headers;
+                            }
+                            @Override
                             public String contentType() {
                                 return _headers.get(HttpHeaderNames.CONTENT_TYPE);
                             }
@@ -406,6 +410,10 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
                         ctx.appendMakeSlice( stepable -> {
                             final ByteBufSlice content = dwbs2bbs(dwbs, stepable);
                             ctx.appendMessageBody(new MessageBody() {
+                                @Override
+                                public HttpHeaders headers() {
+                                    return _headers;
+                                }
                                 @Override
                                 public String contentType() {
                                     return _headers.get(HttpHeaderNames.CONTENT_TYPE);
