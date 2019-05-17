@@ -519,7 +519,7 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
                     parsing.set(false);
                 }};
 
-            while (bufin.available() > 0 && parsing.get() && null != currentParser.get()) {
+            while (makeslices.isEmpty() && bufin.available() > 0 && parsing.get() && null != currentParser.get()) {
                 currentParser.set(currentParser.get().parse(ctx));
             }
 
@@ -529,9 +529,25 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
                 return Observable.empty();
             }
 
-            // make sure forward stepable.step() on last slice
-            while (makeslices.size() > 1) {
-                makeslices.remove(0).call(null);
+            if ( bufin.available() > 0 && parsing.get() && null != currentParser.get()) {
+                // can continue parsing
+                // makeslices.size() == 1
+                final PublishSubject<MessageBody> bodySubject = PublishSubject.create();
+
+                final Stepable<?> callnext = new Stepable<Object> () {
+                    @Override
+                    public void step() {
+                        doParse(bodySubject, ctx, bufin, parsing, currentParser, makeslices, bodys, bbs);
+                    }
+                    @Override
+                    public Object element() {
+                        return null;
+                    }};
+                makeslices.remove(0).call(callnext);
+                //  如果该 bbs 是上一个 part 的结尾部分，并附带了后续的1个或多个 part (部分内容)
+                //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
+                //  因此需要分别处理 bodys.size() == 1 及 bodys.size() == 0
+                return bodys.isEmpty() ? bodySubject : Observable.just(bodys.remove(0)).concatWith(bodySubject);
             }
 
             makeslices.remove(0).call(bbs);
@@ -543,6 +559,58 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
                 return Observable.from(bodys);
             }
         });
+    }
+
+    private void doParse(final PublishSubject<MessageBody> bodySubject,
+            final ParseContext ctx,
+            final BufsInputStream<DisposableWrapper<? extends ByteBuf>> bufin,
+            final AtomicBoolean parsing,
+            final AtomicReference<SliceParser> currentParser,
+            final List<MakeSlice> makeslices,
+            final List<MessageBody> bodys,
+            final ByteBufSlice bbs) {
+        while (makeslices.isEmpty() && bufin.available() > 0 && parsing.get() && null != currentParser.get()) {
+            currentParser.set(currentParser.get().parse(ctx));
+        }
+
+        if (makeslices.isEmpty()) {
+            // this bbs has been consumed
+            bodySubject.onCompleted();
+            // no downstream msgbody or slice generate, auto step updtgream
+            bbs.step();
+            return;
+        }
+
+        if ( bufin.available() > 0 && parsing.get() && null != currentParser.get()) {
+            // can continue parsing
+            // makeslices.size() == 1
+            final Stepable<?> callnext = new Stepable<Object> () {
+                @Override
+                public void step() {
+                    doParse(bodySubject, ctx, bufin, parsing, currentParser, makeslices, bodys, bbs);
+                }
+                @Override
+                public Object element() {
+                    return null;
+                }};
+            makeslices.remove(0).call(callnext);
+            //  如果该 bbs 是上一个 part 的结尾部分，并附带了后续的1个或多个 part (部分内容)
+            //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
+            //  因此需要分别处理 bodys.size() == 1 及 bodys.size() == 0
+            if (!bodys.isEmpty()) {
+                bodySubject.onNext(bodys.remove(0));
+            }
+            return;
+        }
+
+        makeslices.remove(0).call(bbs);
+
+        if (!bodys.isEmpty()) {
+            bodySubject.onNext(bodys.remove(0));
+        }
+
+        // this bbs has been consumed
+        bodySubject.onCompleted();
     }
 
     private static ByteBufSlice dwbs2bbs(final Iterable<DisposableWrapper<? extends ByteBuf>> dwbs, final Stepable<?> upstream) {

@@ -111,12 +111,18 @@ public class MultipartParserTestCase {
         final TestSubscriber<MessageBody> bodySubscriber = new TestSubscriber<>();
         Observable.just(dwbs2bbs(Arrays.asList(dwb), null)).compose(parser).subscribe(bodySubscriber);
 
-        assertEquals(2, bodySubscriber.getValueCount());
+        assertEquals(1, bodySubscriber.getValueCount());
+        bodySubscriber.assertNoTerminalEvent();
         assertEquals("text/plain", bodySubscriber.getOnNextEvents().get(0).contentType());
         assertEquals("ABCDE", content2bytes(bodySubscriber.getOnNextEvents().get(0).content()));
 
+        // msgbody NO.2 step by content2bytes
+        assertEquals(2, bodySubscriber.getValueCount());
+
         assertEquals("text/plain", bodySubscriber.getOnNextEvents().get(1).contentType());
         assertEquals("0123456", content2bytes(bodySubscriber.getOnNextEvents().get(1).content()));
+
+        bodySubscriber.assertCompleted();
     }
 
     private static ByteBufSlice dwbs2bbs(final Iterable<DisposableWrapper<? extends ByteBuf>> dwbs, final Stepable<?> upstream) {
