@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
@@ -27,10 +28,13 @@ import net.lingala.zip4j.model.ZipParameters;
 import net.lingala.zip4j.util.Zip4jConstants;
 import rx.Observable;
 import rx.Observable.Transformer;
+import rx.Subscription;
+import rx.functions.Action0;
 import rx.functions.Action1;
 import rx.functions.Func0;
 import rx.functions.Func1;
 import rx.subjects.PublishSubject;
+import rx.subscriptions.Subscriptions;
 
 public class ZipUtil {
     private static final Logger LOG = LoggerFactory.getLogger(ZipUtil.class);
@@ -61,6 +65,136 @@ public class ZipUtil {
         public Unzipper unzip(final int pageSize, final int bufsize);
         public Unzipper unzipWithPasswd(final int pageSize, final int bufsize, final String passwd);
     }
+
+    // unzip new impl begin 20190518
+    private static ByteBufSlice dwbs2bbs(final Iterable<DisposableWrapper<? extends ByteBuf>> dwbs, final Action0 dostep) {
+        final Subscription subscription = Subscriptions.create(dostep);
+        return new ByteBufSlice() {
+            @Override
+            public void step() {
+                subscription.unsubscribe();
+            }
+
+            @Override
+            public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                return dwbs;
+            }};
+    }
+
+    interface MakeSlice extends Action1<Action0> {
+    }
+
+    interface UnzipContext {
+        ZipInputStreamX zipin();
+        Iterable<DisposableWrapper<? extends ByteBuf>> in2dwbs(AtomicBoolean eoe); // end of current entry
+        void appendMakeSlice(MakeSlice makeSlice);
+        void appendUnzipEntity(UnzipEntity entity);
+        void stopProcess();
+    }
+
+    interface UnzipParser {
+        UnzipParser parse(UnzipContext ctx);
+    }
+
+    class GetEntryParser implements UnzipParser {
+
+        @Override
+        public UnzipParser parse(final UnzipContext ctx) {
+            try {
+                // if return null means End Of Stream
+                final ZipEntry entry = ctx.zipin().getNextEntry();
+                if (null != entry) {
+                    LOG.debug("zipin.getNextEntry() return: {}, get new UnzipEntity", entry);
+                    return new UnzipEntryParser(entry);
+                }
+                else {
+                    // TODO , no more entries
+                    LOG.debug("zipin.getNextEntry() return null, no more entries");
+                    return null;
+                }
+            } catch (final IOException e) {
+                if (e instanceof NoDataException) {
+                    LOG.debug("zipin.getNextEntry() throw NoDataException, stop unzip and wait for input");
+                    return this;
+                } else {
+                    LOG.debug("zipin.getNextEntry() throw {}", ExceptionUtils.exception2detail(e));
+//                    throw e;
+                    return null;
+                }
+            }
+        }
+
+    }
+
+    class UnzipEntryParser implements UnzipParser {
+
+        public UnzipEntryParser(final ZipEntry entry) {
+            this._entry = entry;
+        }
+
+        @Override
+        public UnzipParser parse(final UnzipContext ctx) {
+            final AtomicBoolean eoe = new AtomicBoolean(false);
+            final Iterable<DisposableWrapper<? extends ByteBuf>> dwbs = ctx.in2dwbs(eoe);
+            if (null == _subject) {
+                if (eoe.get()) {
+                    //  end of entry
+                    ctx.appendMakeSlice(dostep -> {
+                        final ByteBufSlice content = dwbs2bbs(dwbs, dostep);
+                        ctx.appendUnzipEntity(new UnzipEntity() {
+                            @Override
+                            public ZipEntry entry() {
+                                return _entry;
+                            }
+                            @Override
+                            public Observable<? extends ByteBufSlice> body() {
+                                return Observable.just(content);
+                            }});
+                    });
+                    return new GetEntryParser();
+                }
+                else {
+                    // !NOT! end of entry
+                    _subject = PublishSubject.create();
+                    ctx.appendMakeSlice(dostep -> {
+                        final ByteBufSlice content = dwbs2bbs(dwbs, dostep);
+                        ctx.appendUnzipEntity(new UnzipEntity() {
+                            @Override
+                            public ZipEntry entry() {
+                                return _entry;
+                            }
+                            @Override
+                            public Observable<? extends ByteBufSlice> body() {
+                                return Observable.just(content).concatWith(_subject);
+                            }});
+                    });
+                    return this;
+                }
+            }
+            else {
+                if (eoe.get()) {
+                    //  end of entry
+                    ctx.appendMakeSlice(dostep -> {
+                        _subject.onNext(dwbs2bbs(dwbs, dostep));
+                        // entry end, so notify downstream onCompleted event
+                        _subject.onCompleted();
+                    });
+                    return new GetEntryParser();
+                }
+                else {
+                    // !NOT! end of entry
+                    ctx.appendMakeSlice(dostep -> {
+                        _subject.onNext(dwbs2bbs(dwbs, dostep));
+                    });
+                    return this;
+                }
+            }
+        }
+
+        private PublishSubject<ByteBufSlice> _subject;
+        private final ZipEntry _entry;
+    }
+    // --- end of --- unzip new impl begin 20190518
 
     public static Unzipper unzipToEntities(
             final Func0<DisposableWrapper<? extends ByteBuf>> allocator,

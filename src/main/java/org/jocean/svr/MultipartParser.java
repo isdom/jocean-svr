@@ -481,6 +481,8 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
 
         return content.flatMap(bbs -> {
             bufin.appendIterable(bbs.element());
+
+            // TBD: 简化 makeslices & bodys
             final List<MakeSlice> makeslices = new ArrayList<>();
             final List<MessageBody> bodys = new ArrayList<>();
 
