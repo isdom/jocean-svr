@@ -9,7 +9,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.jocean.http.ByteBufSlice;
 import org.jocean.http.MessageBody;
 import org.jocean.idiom.DisposableWrapper;
-import org.jocean.idiom.Stepable;
 import org.jocean.netty.util.BufsInputStream;
 import org.jocean.netty.util.BufsOutputStream;
 import org.jocean.netty.util.ByteProcessors;
@@ -29,9 +28,12 @@ import io.netty.util.ByteProcessor;
 import io.netty.util.internal.AppendableCharSequence;
 import rx.Observable;
 import rx.Observable.Transformer;
+import rx.Subscription;
+import rx.functions.Action0;
 import rx.functions.Action1;
 import rx.functions.Func0;
 import rx.subjects.PublishSubject;
+import rx.subscriptions.Subscriptions;
 
 //  HEX DUMP for multipart/form-data with 2 tiny files part
 //         +-------------------------------------------------+
@@ -135,7 +137,7 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
 
     private static final byte[] TAG_CRLFCRLF = new byte[]{0x0d, 0x0a, 0x0d, 0x0a};
 
-    interface MakeSlice extends Action1<Stepable<?>> {
+    interface MakeSlice extends Action1<Action0> {
     }
 
     interface ParseContext {
@@ -542,23 +544,14 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
                 // makeslices.size() == 1
                 final PublishSubject<MessageBody> bodySubject = PublishSubject.create();
 
-                final Stepable<?> callnext = new Stepable<Object> () {
-                    @Override
-                    public void step() {
-                        doParse(bodySubject, ctx, bufin, parsing, currentParser, makeslices, bodys, bbs);
-                    }
-                    @Override
-                    public Object element() {
-                        return null;
-                    }};
-                makeslices.remove(0).call(callnext);
+                makeslices.remove(0).call(() -> doParse(bodySubject, ctx, bufin, parsing, currentParser, makeslices, bodys, () -> bbs.step()));
                 //  如果该 bbs 是上一个 part 的结尾部分，并附带了后续的1个或多个 part (部分内容)
                 //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
                 //  因此需要分别处理 bodys.size() == 1 及 bodys.size() == 0
                 return bodys.isEmpty() ? bodySubject : Observable.just(bodys.remove(0)).concatWith(bodySubject);
             }
 
-            makeslices.remove(0).call(bbs);
+            makeslices.remove(0).call(() -> bbs.step());
 
             if (bodys.isEmpty()) {
                 return Observable.empty();
@@ -576,7 +569,7 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
             final AtomicReference<SliceParser> currentParser,
             final List<MakeSlice> makeslices,
             final List<MessageBody> bodys,
-            final ByteBufSlice bbs) {
+            final Action0 dostep) {
         while (makeslices.isEmpty() && bufin.available() > 0 && parsing.get() && null != currentParser.get()) {
             currentParser.set(currentParser.get().parse(ctx));
         }
@@ -585,23 +578,14 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
             // this bbs has been consumed
             bodySubject.onCompleted();
             // no downstream msgbody or slice generate, auto step updtgream
-            bbs.step();
+            dostep.call();
             return;
         }
 
         if ( bufin.available() > 0 && parsing.get() && null != currentParser.get()) {
             // can continue parsing
             // makeslices.size() == 1
-            final Stepable<?> callnext = new Stepable<Object> () {
-                @Override
-                public void step() {
-                    doParse(bodySubject, ctx, bufin, parsing, currentParser, makeslices, bodys, bbs);
-                }
-                @Override
-                public Object element() {
-                    return null;
-                }};
-            makeslices.remove(0).call(callnext);
+            makeslices.remove(0).call(() -> doParse(bodySubject, ctx, bufin, parsing, currentParser, makeslices, bodys, dostep));
             //  如果该 bbs 是上一个 part 的结尾部分，并附带了后续的1个或多个 part (部分内容)
             //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
             //  因此需要分别处理 bodys.size() == 1 及 bodys.size() == 0
@@ -611,7 +595,7 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
             return;
         }
 
-        makeslices.remove(0).call(bbs);
+        makeslices.remove(0).call(dostep);
 
         if (!bodys.isEmpty()) {
             bodySubject.onNext(bodys.remove(0));
@@ -621,13 +605,12 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
         bodySubject.onCompleted();
     }
 
-    private static ByteBufSlice dwbs2bbs(final Iterable<DisposableWrapper<? extends ByteBuf>> dwbs, final Stepable<?> upstream) {
+    private static ByteBufSlice dwbs2bbs(final Iterable<DisposableWrapper<? extends ByteBuf>> dwbs, final Action0 dostep) {
+        final Subscription subscription = Subscriptions.create(dostep);
         return new ByteBufSlice() {
             @Override
             public void step() {
-                if (null != upstream) {
-                    upstream.step();
-                }
+                subscription.unsubscribe();
             }
 
             @Override
