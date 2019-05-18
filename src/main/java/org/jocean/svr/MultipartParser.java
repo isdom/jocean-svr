@@ -143,8 +143,8 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
     interface ParseContext {
         BufsInputStream<?> in();
         Iterable<DisposableWrapper<? extends ByteBuf>> in2dwbs(final int size);
-        void appendMakeSlice(MakeSlice makeSlice);
-        void appendMessageBody(MessageBody body);
+        void setMakeSlice(MakeSlice makeSlice);
+        void setMessageBody(MessageBody body);
         void stopParsing();
     }
 
@@ -363,9 +363,9 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
                 final Iterable<DisposableWrapper<? extends ByteBuf>> dwbs = ctx.in2dwbs(length);
                 if (null == _subject) {
                     // begin of MessageBody
-                    ctx.appendMakeSlice(stepable -> {
+                    ctx.setMakeSlice(stepable -> {
                         final ByteBufSlice content = dwbs2bbs(dwbs, stepable);
-                        ctx.appendMessageBody(new MessageBody() {
+                        ctx.setMessageBody(new MessageBody() {
                             @Override
                             public HttpHeaders headers() {
                                 return _headers;
@@ -385,7 +385,7 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
                     });
                 }
                 else {
-                    ctx.appendMakeSlice(stepable -> {
+                    ctx.setMakeSlice(stepable -> {
                         _subject.onNext(dwbs2bbs(dwbs, stepable));
                         // part end, so notify downstream onCompleted event
                         _subject.onCompleted();
@@ -409,9 +409,9 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
 
                     if (null == _subject) {
                         _subject = PublishSubject.create();
-                        ctx.appendMakeSlice( stepable -> {
+                        ctx.setMakeSlice( stepable -> {
                             final ByteBufSlice content = dwbs2bbs(dwbs, stepable);
-                            ctx.appendMessageBody(new MessageBody() {
+                            ctx.setMessageBody(new MessageBody() {
                                 @Override
                                 public HttpHeaders headers() {
                                     return _headers;
@@ -435,7 +435,7 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
                         });
                     }
                     else {
-                        ctx.appendMakeSlice(stepable -> _subject.onNext(dwbs2bbs(dwbs, stepable)) );
+                        ctx.setMakeSlice(stepable -> _subject.onNext(dwbs2bbs(dwbs, stepable)) );
                     }
                 }
                 ctx.stopParsing();
@@ -483,8 +483,8 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
             bufin.appendIterable(bbs.element());
 
             // TBD: 简化 makeslices & bodys
-            final List<MakeSlice> makeslices = new ArrayList<>();
-            final List<MessageBody> bodys = new ArrayList<>();
+            final AtomicReference<MakeSlice> makeslices = new AtomicReference<>();
+            final AtomicReference<MessageBody> bodys = new AtomicReference<>();
 
             final AtomicBoolean parsing = new AtomicBoolean(true);
 
@@ -517,13 +517,13 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
                 }
 
                 @Override
-                public void appendMakeSlice(final MakeSlice makeSlice) {
-                    makeslices.add(makeSlice);
+                public void setMakeSlice(final MakeSlice makeSlice) {
+                    makeslices.set(makeSlice);
                 }
 
                 @Override
-                public void appendMessageBody(final MessageBody body) {
-                    bodys.add(body);
+                public void setMessageBody(final MessageBody body) {
+                    bodys.set(body);
                 }
 
                 @Override
@@ -531,11 +531,11 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
                     parsing.set(false);
                 }};
 
-            while (makeslices.isEmpty() && bufin.available() > 0 && parsing.get() && null != currentParser.get()) {
+            while (null == makeslices.get() && bufin.available() > 0 && parsing.get() && null != currentParser.get()) {
                 currentParser.set(currentParser.get().parse(ctx));
             }
 
-            if (makeslices.isEmpty()) {
+            if (null == makeslices.get()) {
                 // no downstream msgbody or slice generate, auto step updtgream
                 bbs.step();
                 return Observable.empty();
@@ -546,21 +546,16 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
                 // makeslices.size() == 1
                 final PublishSubject<MessageBody> bodySubject = PublishSubject.create();
 
-                makeslices.remove(0).call(() -> doParse(bodySubject, ctx, bufin, parsing, currentParser, makeslices, bodys, () -> bbs.step()));
+                makeslices.getAndSet(null).call(() -> doParse(bodySubject, ctx, bufin, parsing, currentParser, makeslices, bodys, () -> bbs.step()));
                 //  如果该 bbs 是上一个 part 的结尾部分，并附带了后续的1个或多个 part (部分内容)
                 //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
                 //  因此需要分别处理 bodys.size() == 1 及 bodys.size() == 0
-                return bodys.isEmpty() ? bodySubject : Observable.just(bodys.remove(0)).concatWith(bodySubject);
+                return null == bodys.get() ? bodySubject : Observable.just(bodys.getAndSet(null)).concatWith(bodySubject);
             }
 
-            makeslices.remove(0).call(() -> bbs.step());
+            makeslices.getAndSet(null).call(() -> bbs.step());
 
-            if (bodys.isEmpty()) {
-                return Observable.empty();
-            }
-            else {
-                return Observable.from(bodys);
-            }
+            return null == bodys.get() ? Observable.empty() : Observable.just(bodys.getAndSet(null));
         });
     }
 
@@ -569,14 +564,14 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
             final BufsInputStream<DisposableWrapper<? extends ByteBuf>> bufin,
             final AtomicBoolean parsing,
             final AtomicReference<SliceParser> currentParser,
-            final List<MakeSlice> makeslices,
-            final List<MessageBody> bodys,
+            final AtomicReference<MakeSlice> makeslices,
+            final AtomicReference<MessageBody> bodys,
             final Action0 dostep) {
-        while (makeslices.isEmpty() && bufin.available() > 0 && parsing.get() && null != currentParser.get()) {
+        while (null == makeslices.get() && bufin.available() > 0 && parsing.get() && null != currentParser.get()) {
             currentParser.set(currentParser.get().parse(ctx));
         }
 
-        if (makeslices.isEmpty()) {
+        if (null == makeslices.get()) {
             // this bbs has been consumed
             bodySubject.onCompleted();
             // no downstream msgbody or slice generate, auto step updtgream
@@ -587,20 +582,20 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
         if ( bufin.available() > 0 && parsing.get() && null != currentParser.get()) {
             // can continue parsing
             // makeslices.size() == 1
-            makeslices.remove(0).call(() -> doParse(bodySubject, ctx, bufin, parsing, currentParser, makeslices, bodys, dostep));
+            makeslices.getAndSet(null).call(() -> doParse(bodySubject, ctx, bufin, parsing, currentParser, makeslices, bodys, dostep));
             //  如果该 bbs 是上一个 part 的结尾部分，并附带了后续的1个或多个 part (部分内容)
             //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
             //  因此需要分别处理 bodys.size() == 1 及 bodys.size() == 0
-            if (!bodys.isEmpty()) {
-                bodySubject.onNext(bodys.remove(0));
+            if (null != bodys.get()) {
+                bodySubject.onNext(bodys.getAndSet(null));
             }
             return;
         }
 
-        makeslices.remove(0).call(dostep);
+        makeslices.getAndSet(null).call(dostep);
 
-        if (!bodys.isEmpty()) {
-            bodySubject.onNext(bodys.remove(0));
+        if (null != bodys.get()) {
+            bodySubject.onNext(bodys.getAndSet(null));
         }
 
         // this bbs has been consumed
