@@ -150,6 +150,7 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
         boolean noMakeSlice();
         void doMakeSlice(Action0 dostep);
         MessageBody getBody();
+        void parse();
     }
 
     interface SliceParser {
@@ -493,7 +494,6 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
             final AtomicBoolean parsing = new AtomicBoolean(true);
 
             final ParseContext ctx = new ParseContext() {
-
                 @Override
                 public BufsInputStream<?> in() {
                     return bufin;
@@ -537,7 +537,7 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
 
                 @Override
                 public boolean canParsing() {
-                    return bufin.available() > 0 && parsing.get();
+                    return bufin.available() > 0 && parsing.get() && null != currentParser.get();
                 }
 
                 @Override
@@ -553,10 +553,15 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
                 @Override
                 public MessageBody getBody() {
                     return bodys.getAndSet(null);
+                }
+
+                @Override
+                public void parse() {
+                    currentParser.set(currentParser.get().parse(this));
                 }};
 
-            while (ctx.noMakeSlice() && ctx.canParsing() && null != currentParser.get()) {
-                currentParser.set(currentParser.get().parse(ctx));
+            while (ctx.noMakeSlice() && ctx.canParsing()) {
+                ctx.parse();
             }
 
             if (ctx.noMakeSlice()) {
@@ -564,12 +569,12 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
                 bbs.step();
                 return Observable.empty();
             }
-            else if ( ctx.canParsing() && null != currentParser.get()) {
+            else if (ctx.canParsing()) {
                 // can continue parsing
                 // makeslices.size() == 1
                 final PublishSubject<MessageBody> bodySubject = PublishSubject.create();
 
-                ctx.doMakeSlice(() -> doParse(ctx, bodySubject, currentParser, () -> bbs.step()));
+                ctx.doMakeSlice(() -> doParse(ctx, bodySubject, () -> bbs.step()));
                 //  如果该 bbs 是上一个 part 的结尾部分，并附带了后续的1个或多个 part (部分内容)
                 //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
                 //  因此需要分别处理 bodys.size() == 1 及 bodys.size() == 0
@@ -586,10 +591,9 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
 
     private void doParse(final ParseContext ctx,
             final PublishSubject<MessageBody> bodySubject,
-            final AtomicReference<SliceParser> currentParser,
             final Action0 dostep) {
-        while (ctx.noMakeSlice() && ctx.canParsing() && null != currentParser.get()) {
-            currentParser.set(currentParser.get().parse(ctx));
+        while (ctx.noMakeSlice() && ctx.canParsing()) {
+            ctx.parse();
         }
 
         if (ctx.noMakeSlice()) {
@@ -598,10 +602,10 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
             // no downstream msgbody or slice generate, auto step updtgream
             dostep.call();
         }
-        else if ( ctx.canParsing() && null != currentParser.get()) {
+        else if (ctx.canParsing()) {
             // can continue parsing
             // makeslices.size() == 1
-            ctx.doMakeSlice(() -> doParse(ctx, bodySubject, currentParser, dostep));
+            ctx.doMakeSlice(() -> doParse(ctx, bodySubject, dostep));
             //  如果该 bbs 是上一个 part 的结尾部分，并附带了后续的1个或多个 part (部分内容)
             //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
             //  因此需要分别处理 bodys.size() == 1 及 bodys.size() == 0
