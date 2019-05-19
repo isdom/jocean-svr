@@ -23,7 +23,7 @@ import rx.Observable;
 import rx.functions.Action1;
 import rx.observers.TestSubscriber;
 
-public class MultipartParserTestCase {
+public class MultipartTransformerTestCase {
 
 //  HEX DUMP for multipart/form-data with 2 tiny files part
 //  +-------------------------------------------------+
@@ -105,7 +105,7 @@ public class MultipartParserTestCase {
     public final void testMultipartParser1() {
         final DisposableWrapper<? extends ByteBuf> dwb = DisposableWrapperUtil.wrap(Unpooled.wrappedBuffer(body), (Action1<ByteBuf>)null);
 
-        final MultipartParser parser = new MultipartParser(MessageUtil.pooledAllocator(null, 128),
+        final MultipartTransformer parser = new MultipartTransformer(MessageUtil.pooledAllocator(null, 128),
                 "--" + "--------------------------471184645406406420474399");
 
         final TestSubscriber<MessageBody> bodySubscriber = new TestSubscriber<>();

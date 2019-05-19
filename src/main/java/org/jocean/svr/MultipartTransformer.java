@@ -3,8 +3,6 @@ package org.jocean.svr;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 import org.jocean.http.ByteBufSlice;
 import org.jocean.http.MessageBody;
@@ -13,6 +11,9 @@ import org.jocean.netty.util.BufsInputStream;
 import org.jocean.netty.util.BufsOutputStream;
 import org.jocean.netty.util.ByteProcessors;
 import org.jocean.netty.util.ByteProcessors.IndexOfBytesProcessor;
+import org.jocean.svr.parse.AbstractParseContext;
+import org.jocean.svr.parse.EntityParser;
+import org.jocean.svr.parse.ParseContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,7 +31,6 @@ import rx.Observable;
 import rx.Observable.Transformer;
 import rx.Subscription;
 import rx.functions.Action0;
-import rx.functions.Action1;
 import rx.functions.Func0;
 import rx.subjects.PublishSubject;
 import rx.subscriptions.Subscriptions;
@@ -115,16 +115,16 @@ import rx.subscriptions.Subscriptions;
 //|00000150| 6b 65 65 70 2d 61 6c 69 76 65 0d 0a 0d 0a       |keep-alive....  |
 //+--------+-------------------------------------------------+----------------+
 
-public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
+public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBody> {
 
     @SuppressWarnings("unused")
-    private static final Logger LOG = LoggerFactory.getLogger(MultipartParser.class);
+    private static final Logger LOG = LoggerFactory.getLogger(MultipartTransformer.class);
 
-    public MultipartParser(final Func0<DisposableWrapper<? extends ByteBuf>> allocator, final String multipartDataBoundary) {
+    public MultipartTransformer(final Func0<DisposableWrapper<? extends ByteBuf>> allocator, final String multipartDataBoundary) {
         this(allocator, multipartDataBoundary, 8192, 128);
     }
 
-    public MultipartParser(final Func0<DisposableWrapper<? extends ByteBuf>> allocator, final String multipartDataBoundary,
+    public MultipartTransformer(final Func0<DisposableWrapper<? extends ByteBuf>> allocator, final String multipartDataBoundary,
             final int maxHeaderSize,
             final int initialBufferSize) {
         this._allocator = allocator;
@@ -137,24 +137,66 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
 
     private static final byte[] TAG_CRLFCRLF = new byte[]{0x0d, 0x0a, 0x0d, 0x0a};
 
-    interface MakeSlice extends Action1<Action0> {
-    }
-
-    interface ParseContext {
+    interface MultipartContext extends ParseContext<MessageBody> {
         BufsInputStream<?> in();
         Iterable<DisposableWrapper<? extends ByteBuf>> in2dwbs(final int size);
-        void setMakeSlice(MakeSlice makeSlice);
-        void setMessageBody(MessageBody body);
-        void stopParsing();
-        boolean canParsing();
-        boolean noMakeSlice();
-        void doMakeSlice(Action0 dostep);
-        MessageBody getBody();
-        void parse();
     }
 
-    interface SliceParser {
-        SliceParser parse(ParseContext ctx);
+    interface MultipartParser extends EntityParser<MessageBody, MultipartContext> {
+        @Override
+        MultipartParser parse(MultipartContext ctx);
+    }
+
+    static class DefaultMultipartContext extends AbstractParseContext<MessageBody, MultipartContext> implements MultipartContext {
+
+        DefaultMultipartContext(final BufsInputStream<?> bufin,
+                final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout,
+                final int bufsize,
+                final MultipartParser initParser) {
+            this._bufin = bufin;
+            this._bufout = bufout;
+            this._buf = new byte[bufsize];
+            this._currentParser.set(initParser);
+        }
+
+        public void resetParsing() {
+            _parsing.set(true);
+        }
+
+        @Override
+        public boolean canParsing() {
+            return _bufin.available() > 0 && _parsing.get() && null != _currentParser.get();
+        }
+
+        @Override
+        public BufsInputStream<?> in() {
+            return _bufin;
+        }
+
+        @Override
+        public Iterable<DisposableWrapper<? extends ByteBuf>> in2dwbs(int size) {
+            final List<DisposableWrapper<? extends ByteBuf>> dwbs = new ArrayList<>();
+            _bufout.setOutput(dwb -> dwbs.add(dwb));
+
+            try {
+                while (size > 0) {
+                    final int toread = Math.min(_buf.length, size);
+                    final int readed = _bufin.read(_buf, 0, toread);
+                    if (readed > 0) {
+                        _bufout.write(_buf, 0, readed);
+                    }
+                    size -= readed;
+                }
+                _bufout.flush();
+            } catch (final Exception e) {
+            }
+
+            return dwbs;
+        }
+
+        final BufsInputStream<?> _bufin;
+        final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> _bufout;
+        final byte[] _buf;
     }
 
     private static final String EMPTY_VALUE = "";
@@ -233,9 +275,9 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
         }
     }
 
-    private final SliceParser _headerParser = new SliceParser() {
+    private final MultipartParser _headerParser = new MultipartParser() {
         @Override
-        public SliceParser parse(final ParseContext ctx) {
+        public MultipartParser parse(final MultipartContext ctx) {
             final int headerStartIdx = ctx.in().forEachByte(ByteProcessors.indexOfBytes(_boundaryCRLF));
             if (headerStartIdx == -1) {
                 // need more data
@@ -354,13 +396,13 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
         private CharSequence _value;
     };
 
-    class BodyParser implements SliceParser {
+    class BodyParser implements MultipartParser {
         public BodyParser(final HttpHeaders headers) {
             this._headers = headers;
         }
 
         @Override
-        public SliceParser parse(final ParseContext ctx) {
+        public MultipartParser parse(final MultipartContext ctx) {
             final IndexOfBytesProcessor ibp = ByteProcessors.indexOfBytes(_CRLFBoundary);
             final int bodyEndIdx = ctx.in().forEachByte(ibp);
             if (bodyEndIdx > 0) {
@@ -370,7 +412,7 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
                     // begin of MessageBody
                     ctx.setMakeSlice(stepable -> {
                         final ByteBufSlice content = dwbs2bbs(dwbs, stepable);
-                        ctx.setMessageBody(new MessageBody() {
+                        ctx.setEntity(new MessageBody() {
                             @Override
                             public HttpHeaders headers() {
                                 return _headers;
@@ -416,7 +458,7 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
                         _subject = PublishSubject.create();
                         ctx.setMakeSlice( stepable -> {
                             final ByteBufSlice content = dwbs2bbs(dwbs, stepable);
-                            ctx.setMessageBody(new MessageBody() {
+                            ctx.setEntity(new MessageBody() {
                                 @Override
                                 public HttpHeaders headers() {
                                     return _headers;
@@ -452,9 +494,9 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
         private final HttpHeaders _headers;
     }
 
-    private final SliceParser _endParser = new SliceParser() {
+    private final MultipartParser _endParser = new MultipartParser() {
         @Override
-        public SliceParser parse(final ParseContext ctx) {
+        public MultipartParser parse(final MultipartContext ctx) {
             //     Boundary + CRLF: next part
             // or  Boundary + "--" + CRLF: end of multipart body
 
@@ -479,152 +521,16 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
     public Observable<MessageBody> call(final Observable<ByteBufSlice> content) {
         final BufsInputStream<DisposableWrapper<? extends ByteBuf>> bufin = new BufsInputStream<>(dwb -> dwb.unwrap(), dwb -> dwb.dispose());
         final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout = new BufsOutputStream<>(_allocator, dwb->dwb.unwrap());
-        final byte[] buf = new byte[512];
 
-        final AtomicReference<SliceParser> currentParser = new AtomicReference<>(_headerParser);
+        final DefaultMultipartContext mctx = new DefaultMultipartContext(bufin, bufout, 512, _headerParser);
         bufin.markEOS();
 
         return content.flatMap(bbs -> {
             bufin.appendIterable(bbs.element());
+            mctx.resetParsing();
 
-            // TBD: 简化 makeslices & bodys
-            final AtomicReference<MakeSlice> makeslices = new AtomicReference<>();
-            final AtomicReference<MessageBody> bodys = new AtomicReference<>();
-
-            final AtomicBoolean parsing = new AtomicBoolean(true);
-
-            final ParseContext ctx = new ParseContext() {
-                @Override
-                public BufsInputStream<?> in() {
-                    return bufin;
-                }
-
-                @Override
-                public Iterable<DisposableWrapper<? extends ByteBuf>> in2dwbs(int size) {
-                    final List<DisposableWrapper<? extends ByteBuf>> dwbs = new ArrayList<>();
-                    bufout.setOutput(dwb -> dwbs.add(dwb));
-
-                    try {
-                        while (size > 0) {
-                            final int toread = Math.min(buf.length, size);
-                            final int readed = bufin.read(buf, 0, toread);
-                            if (readed > 0) {
-                                bufout.write(buf, 0, readed);
-                            }
-                            size -= readed;
-                        }
-                        bufout.flush();
-                    } catch (final Exception e) {
-                    }
-
-                    return dwbs;
-                }
-
-                @Override
-                public void setMakeSlice(final MakeSlice makeSlice) {
-                    makeslices.set(makeSlice);
-                }
-
-                @Override
-                public void setMessageBody(final MessageBody body) {
-                    bodys.set(body);
-                }
-
-                @Override
-                public void stopParsing() {
-                    parsing.set(false);
-                }
-
-                @Override
-                public boolean canParsing() {
-                    return bufin.available() > 0 && parsing.get() && null != currentParser.get();
-                }
-
-                @Override
-                public boolean noMakeSlice() {
-                    return null == makeslices.get();
-                }
-
-                @Override
-                public void doMakeSlice(final Action0 dostep) {
-                    makeslices.getAndSet(null).call(dostep);
-                }
-
-                @Override
-                public MessageBody getBody() {
-                    return bodys.getAndSet(null);
-                }
-
-                @Override
-                public void parse() {
-                    currentParser.set(currentParser.get().parse(this));
-                }};
-
-            while (ctx.noMakeSlice() && ctx.canParsing()) {
-                ctx.parse();
-            }
-
-            if (ctx.noMakeSlice()) {
-                // no downstream msgbody or slice generate, auto step updtgream
-                bbs.step();
-                return Observable.empty();
-            }
-            else if (ctx.canParsing()) {
-                // can continue parsing
-                // makeslices.size() == 1
-                final PublishSubject<MessageBody> bodySubject = PublishSubject.create();
-
-                ctx.doMakeSlice(() -> doParse(ctx, bodySubject, () -> bbs.step()));
-                //  如果该 bbs 是上一个 part 的结尾部分，并附带了后续的1个或多个 part (部分内容)
-                //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
-                //  因此需要分别处理 bodys.size() == 1 及 bodys.size() == 0
-                final MessageBody body = ctx.getBody();
-                return null == body ? bodySubject : Observable.just(body).concatWith(bodySubject);
-            }
-            else {
-                ctx.doMakeSlice(() -> bbs.step());
-                final MessageBody body = ctx.getBody();
-                return null == body ? Observable.empty() : Observable.just(body);
-            }
+            return mctx.parseEntity(() -> bbs.step());
         });
-    }
-
-    private void doParse(final ParseContext ctx,
-            final PublishSubject<MessageBody> bodySubject,
-            final Action0 dostep) {
-        while (ctx.noMakeSlice() && ctx.canParsing()) {
-            ctx.parse();
-        }
-
-        if (ctx.noMakeSlice()) {
-            // this bbs has been consumed
-            bodySubject.onCompleted();
-            // no downstream msgbody or slice generate, auto step updtgream
-            dostep.call();
-        }
-        else if (ctx.canParsing()) {
-            // can continue parsing
-            // makeslices.size() == 1
-            ctx.doMakeSlice(() -> doParse(ctx, bodySubject, dostep));
-            //  如果该 bbs 是上一个 part 的结尾部分，并附带了后续的1个或多个 part (部分内容)
-            //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
-            //  因此需要分别处理 bodys.size() == 1 及 bodys.size() == 0
-            final MessageBody body = ctx.getBody();
-            if (null != body) {
-                bodySubject.onNext(body);
-            }
-        }
-        else {
-            ctx.doMakeSlice(dostep);
-            final MessageBody body = ctx.getBody();
-
-            if (null != body) {
-                bodySubject.onNext(body);
-            }
-
-            // this bbs has been consumed
-            bodySubject.onCompleted();
-        }
     }
 
     private static ByteBufSlice dwbs2bbs(final Iterable<DisposableWrapper<? extends ByteBuf>> dwbs, final Action0 dostep) {
