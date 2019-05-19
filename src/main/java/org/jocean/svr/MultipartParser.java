@@ -146,6 +146,10 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
         void setMakeSlice(MakeSlice makeSlice);
         void setMessageBody(MessageBody body);
         void stopParsing();
+        boolean canParsing();
+        boolean noMakeSlice();
+        void doMakeSlice(Action0 dostep);
+        MessageBody getBody();
     }
 
     interface SliceParser {
@@ -529,77 +533,94 @@ public class MultipartParser implements Transformer<ByteBufSlice, MessageBody> {
                 @Override
                 public void stopParsing() {
                     parsing.set(false);
+                }
+
+                @Override
+                public boolean canParsing() {
+                    return bufin.available() > 0 && parsing.get();
+                }
+
+                @Override
+                public boolean noMakeSlice() {
+                    return null == makeslices.get();
+                }
+
+                @Override
+                public void doMakeSlice(final Action0 dostep) {
+                    makeslices.getAndSet(null).call(dostep);
+                }
+
+                @Override
+                public MessageBody getBody() {
+                    return bodys.getAndSet(null);
                 }};
 
-            while (null == makeslices.get() && bufin.available() > 0 && parsing.get() && null != currentParser.get()) {
+            while (ctx.noMakeSlice() && ctx.canParsing() && null != currentParser.get()) {
                 currentParser.set(currentParser.get().parse(ctx));
             }
 
-            if (null == makeslices.get()) {
+            if (ctx.noMakeSlice()) {
                 // no downstream msgbody or slice generate, auto step updtgream
                 bbs.step();
                 return Observable.empty();
             }
-
-            if ( bufin.available() > 0 && parsing.get() && null != currentParser.get()) {
+            else if ( ctx.canParsing() && null != currentParser.get()) {
                 // can continue parsing
                 // makeslices.size() == 1
                 final PublishSubject<MessageBody> bodySubject = PublishSubject.create();
 
-                makeslices.getAndSet(null).call(() -> doParse(bodySubject, ctx, bufin, parsing, currentParser, makeslices, bodys, () -> bbs.step()));
+                ctx.doMakeSlice(() -> doParse(ctx, bodySubject, currentParser, () -> bbs.step()));
                 //  如果该 bbs 是上一个 part 的结尾部分，并附带了后续的1个或多个 part (部分内容)
                 //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
                 //  因此需要分别处理 bodys.size() == 1 及 bodys.size() == 0
-                return null == bodys.get() ? bodySubject : Observable.just(bodys.getAndSet(null)).concatWith(bodySubject);
+                final MessageBody body = ctx.getBody();
+                return null == body ? bodySubject : Observable.just(body).concatWith(bodySubject);
             }
-
-            makeslices.getAndSet(null).call(() -> bbs.step());
-
-            return null == bodys.get() ? Observable.empty() : Observable.just(bodys.getAndSet(null));
+            else {
+                ctx.doMakeSlice(() -> bbs.step());
+                final MessageBody body = ctx.getBody();
+                return null == body ? Observable.empty() : Observable.just(body);
+            }
         });
     }
 
-    private void doParse(final PublishSubject<MessageBody> bodySubject,
-            final ParseContext ctx,
-            final BufsInputStream<DisposableWrapper<? extends ByteBuf>> bufin,
-            final AtomicBoolean parsing,
+    private void doParse(final ParseContext ctx,
+            final PublishSubject<MessageBody> bodySubject,
             final AtomicReference<SliceParser> currentParser,
-            final AtomicReference<MakeSlice> makeslices,
-            final AtomicReference<MessageBody> bodys,
             final Action0 dostep) {
-        while (null == makeslices.get() && bufin.available() > 0 && parsing.get() && null != currentParser.get()) {
+        while (ctx.noMakeSlice() && ctx.canParsing() && null != currentParser.get()) {
             currentParser.set(currentParser.get().parse(ctx));
         }
 
-        if (null == makeslices.get()) {
+        if (ctx.noMakeSlice()) {
             // this bbs has been consumed
             bodySubject.onCompleted();
             // no downstream msgbody or slice generate, auto step updtgream
             dostep.call();
-            return;
         }
-
-        if ( bufin.available() > 0 && parsing.get() && null != currentParser.get()) {
+        else if ( ctx.canParsing() && null != currentParser.get()) {
             // can continue parsing
             // makeslices.size() == 1
-            makeslices.getAndSet(null).call(() -> doParse(bodySubject, ctx, bufin, parsing, currentParser, makeslices, bodys, dostep));
+            ctx.doMakeSlice(() -> doParse(ctx, bodySubject, currentParser, dostep));
             //  如果该 bbs 是上一个 part 的结尾部分，并附带了后续的1个或多个 part (部分内容)
             //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
             //  因此需要分别处理 bodys.size() == 1 及 bodys.size() == 0
-            if (null != bodys.get()) {
-                bodySubject.onNext(bodys.getAndSet(null));
+            final MessageBody body = ctx.getBody();
+            if (null != body) {
+                bodySubject.onNext(body);
             }
-            return;
         }
+        else {
+            ctx.doMakeSlice(dostep);
+            final MessageBody body = ctx.getBody();
 
-        makeslices.getAndSet(null).call(dostep);
+            if (null != body) {
+                bodySubject.onNext(body);
+            }
 
-        if (null != bodys.get()) {
-            bodySubject.onNext(bodys.getAndSet(null));
+            // this bbs has been consumed
+            bodySubject.onCompleted();
         }
-
-        // this bbs has been consumed
-        bodySubject.onCompleted();
     }
 
     private static ByteBufSlice dwbs2bbs(final Iterable<DisposableWrapper<? extends ByteBuf>> dwbs, final Action0 dostep) {
