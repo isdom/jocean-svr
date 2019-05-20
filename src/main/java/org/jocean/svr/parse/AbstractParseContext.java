@@ -9,12 +9,20 @@ import rx.subjects.PublishSubject;
 
 public abstract class AbstractParseContext<E, CTX extends ParseContext<E>> implements ParseContext<E> {
 
+    protected AbstractParseContext(final EntityParser<E, CTX> initParser) {
+        this._currentParser.set(initParser);
+    }
+
+    public void resetParsing() {
+        this._parsing.set(true);
+    }
+
     public Observable<? extends E> parseEntity(final Action0 dostep) {
-        while (noMakeSlice() && canParsing()) {
+        while (noSliceBuilder() && canParsing()) {
             parse();
         }
 
-        if (noMakeSlice()) {
+        if (noSliceBuilder()) {
             // no downstream msgbody or slice generate, auto step updtgream
             dostep.call();
             return Observable.empty();
@@ -27,24 +35,24 @@ public abstract class AbstractParseContext<E, CTX extends ParseContext<E>> imple
             //  如果该 bbs 是上一个 part 的结尾部分，并附带了后续的1个或多个 part (部分内容)
             //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
             //  因此需要分别处理 body != null 及 body == null
-            final E entity = doMakeSlice(() -> parseLeft(bodySubject, dostep));
+            final E entity = buildSlice(() -> parseRemains(bodySubject, dostep));
             return null == entity ? bodySubject : Observable.just(entity).concatWith(bodySubject);
         }
         else {
-            final E entity = doMakeSlice(dostep);
+            final E entity = buildSlice(dostep);
             return null == entity ? Observable.empty() : Observable.just(entity);
         }
     }
 
-    private void parseLeft(final PublishSubject<E> subject, final Action0 dostep) {
-        while (noMakeSlice() && canParsing()) {
+    private void parseRemains(final PublishSubject<E> subject, final Action0 dostep) {
+        while (noSliceBuilder() && canParsing()) {
             parse();
         }
 
-        if (noMakeSlice()) {
+        if (noSliceBuilder()) {
             // this bbs has been consumed
             subject.onCompleted();
-            // no downstream msgbody or slice generate, auto step updtgream
+            // no downstream entity or slice generate, auto step upstream
             dostep.call();
         }
         else if (canParsing()) {
@@ -53,13 +61,13 @@ public abstract class AbstractParseContext<E, CTX extends ParseContext<E>> imple
             //  如果该 bbs 是上一个 part 的结尾部分，并附带了后续的1个或多个 part (部分内容)
             //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
             //  因此需要分别处理 body != null 及 body == null
-            final E entity = doMakeSlice(() -> parseLeft(subject, dostep));
+            final E entity = buildSlice(() -> parseRemains(subject, dostep));
             if (null != entity) {
                 subject.onNext(entity);
             }
         }
         else {
-            final E entity = doMakeSlice(dostep);
+            final E entity = buildSlice(dostep);
 
             if (null != entity) {
                 subject.onNext(entity);
@@ -71,8 +79,8 @@ public abstract class AbstractParseContext<E, CTX extends ParseContext<E>> imple
     }
 
     @Override
-    public void setMakeSlice(final MakeSlice makeSlice) {
-        _makesliceRef.set(makeSlice);
+    public void setSliceBuilder(final SliceBuilder makeSlice) {
+        _sliceBuilderRef.set(makeSlice);
     }
 
     @Override
@@ -85,12 +93,18 @@ public abstract class AbstractParseContext<E, CTX extends ParseContext<E>> imple
         _parsing.set(false);
     }
 
-    private boolean noMakeSlice() {
-        return null == _makesliceRef.get();
+    protected abstract boolean hasData();
+
+    private boolean canParsing() {
+        return hasData() && _parsing.get() && null != _currentParser.get();
     }
 
-    private E doMakeSlice(final Action0 dostep) {
-        _makesliceRef.getAndSet(null).call(dostep);
+    private boolean noSliceBuilder() {
+        return null == _sliceBuilderRef.get();
+    }
+
+    private E buildSlice(final Action0 dostep) {
+        _sliceBuilderRef.getAndSet(null).call(dostep);
         return _entityRef.getAndSet(null);
     }
 
@@ -100,7 +114,7 @@ public abstract class AbstractParseContext<E, CTX extends ParseContext<E>> imple
     }
 
     protected final AtomicBoolean _parsing = new AtomicBoolean(true);
-    protected final AtomicReference<MakeSlice> _makesliceRef = new AtomicReference<>();
+    protected final AtomicReference<SliceBuilder> _sliceBuilderRef = new AtomicReference<>();
     protected final AtomicReference<E> _entityRef = new AtomicReference<>();
     protected final AtomicReference<EntityParser<E, CTX>> _currentParser = new AtomicReference<>(null);
 }

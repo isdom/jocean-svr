@@ -153,19 +153,15 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
                 final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout,
                 final int bufsize,
                 final MultipartParser initParser) {
+            super(initParser);
             this._bufin = bufin;
             this._bufout = bufout;
             this._buf = new byte[bufsize];
-            this._currentParser.set(initParser);
-        }
-
-        public void resetParsing() {
-            _parsing.set(true);
         }
 
         @Override
-        public boolean canParsing() {
-            return _bufin.available() > 0 && _parsing.get() && null != _currentParser.get();
+        protected boolean hasData() {
+            return _bufin.available() > 0;
         }
 
         @Override
@@ -410,8 +406,8 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
                 final Iterable<DisposableWrapper<? extends ByteBuf>> dwbs = ctx.in2dwbs(length);
                 if (null == _subject) {
                     // begin of MessageBody
-                    ctx.setMakeSlice(stepable -> {
-                        final ByteBufSlice content = dwbs2bbs(dwbs, stepable);
+                    ctx.setSliceBuilder(dostep -> {
+                        final ByteBufSlice content = dwbs2bbs(dwbs, dostep);
                         ctx.setEntity(new MessageBody() {
                             @Override
                             public HttpHeaders headers() {
@@ -432,8 +428,8 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
                     });
                 }
                 else {
-                    ctx.setMakeSlice(stepable -> {
-                        _subject.onNext(dwbs2bbs(dwbs, stepable));
+                    ctx.setSliceBuilder(dostep -> {
+                        _subject.onNext(dwbs2bbs(dwbs, dostep));
                         // part end, so notify downstream onCompleted event
                         _subject.onCompleted();
                     });
@@ -456,8 +452,8 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
 
                     if (null == _subject) {
                         _subject = PublishSubject.create();
-                        ctx.setMakeSlice( stepable -> {
-                            final ByteBufSlice content = dwbs2bbs(dwbs, stepable);
+                        ctx.setSliceBuilder( dostep -> {
+                            final ByteBufSlice content = dwbs2bbs(dwbs, dostep);
                             ctx.setEntity(new MessageBody() {
                                 @Override
                                 public HttpHeaders headers() {
@@ -482,7 +478,7 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
                         });
                     }
                     else {
-                        ctx.setMakeSlice(stepable -> _subject.onNext(dwbs2bbs(dwbs, stepable)) );
+                        ctx.setSliceBuilder(dostep -> _subject.onNext(dwbs2bbs(dwbs, dostep)) );
                     }
                 }
                 ctx.stopParsing();
@@ -533,6 +529,7 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
         });
     }
 
+    // TBD: extract to common toolkit class
     private static ByteBufSlice dwbs2bbs(final Iterable<DisposableWrapper<? extends ByteBuf>> dwbs, final Action0 dostep) {
         final Subscription subscription = Subscriptions.create(dostep);
         return new ByteBufSlice() {
