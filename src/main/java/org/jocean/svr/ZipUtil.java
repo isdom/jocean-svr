@@ -19,6 +19,9 @@ import org.jocean.netty.util.BufsInputStream;
 import org.jocean.netty.util.BufsOutputStream;
 import org.jocean.netty.util.NoDataException;
 import org.jocean.netty.zip.ZipInputStreamX;
+import org.jocean.svr.parse.AbstractParseContext;
+import org.jocean.svr.parse.EntityParser;
+import org.jocean.svr.parse.ParseContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,13 +31,10 @@ import net.lingala.zip4j.model.ZipParameters;
 import net.lingala.zip4j.util.Zip4jConstants;
 import rx.Observable;
 import rx.Observable.Transformer;
-import rx.Subscription;
-import rx.functions.Action0;
 import rx.functions.Action1;
 import rx.functions.Func0;
 import rx.functions.Func1;
 import rx.subjects.PublishSubject;
-import rx.subscriptions.Subscriptions;
 
 public class ZipUtil {
     private static final Logger LOG = LoggerFactory.getLogger(ZipUtil.class);
@@ -67,36 +67,84 @@ public class ZipUtil {
     }
 
     // unzip new impl begin 20190518
-    private static ByteBufSlice dwbs2bbs(final Iterable<DisposableWrapper<? extends ByteBuf>> dwbs, final Action0 dostep) {
-        final Subscription subscription = Subscriptions.create(dostep);
-        return new ByteBufSlice() {
-            @Override
-            public void step() {
-                subscription.unsubscribe();
-            }
-
-            @Override
-            public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                return dwbs;
-            }};
-    }
-
-    interface MakeSlice extends Action1<Action0> {
-    }
-
-    interface UnzipContext {
+    interface UnzipContext extends ParseContext<UnzipEntity>{
         ZipInputStreamX zipin();
         Iterable<DisposableWrapper<? extends ByteBuf>> in2dwbs(AtomicBoolean eoe); // end of current entry
-        void appendMakeSlice(MakeSlice makeSlice);
-        void appendUnzipEntity(UnzipEntity entity);
-        void stopProcess();
     }
 
-    interface UnzipParser {
+    interface UnzipParser extends EntityParser<UnzipEntity, UnzipContext> {
+        @Override
         UnzipParser parse(UnzipContext ctx);
     }
 
-    class GetEntryParser implements UnzipParser {
+    static class DefaultUnzipContext extends AbstractParseContext<UnzipEntity, UnzipContext> implements UnzipContext {
+
+        DefaultUnzipContext(final ZipInputStreamX zipin,
+                final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout,
+                final int bufsize,
+                final UnzipParser initParser) {
+            super(initParser);
+            this._zipin = zipin;
+            this._bufout = bufout;
+            this._buf = new byte[bufsize];
+        }
+
+        @Override
+        protected boolean hasData() {
+            try {
+                return _zipin.available() > 0;
+            } catch (final IOException e) {
+                return false;
+            }
+        }
+
+        @Override
+        public ZipInputStreamX zipin() {
+            return _zipin;
+        }
+
+        @Override
+        public Iterable<DisposableWrapper<? extends ByteBuf>> in2dwbs(final AtomicBoolean eoe) {
+            final List<DisposableWrapper<? extends ByteBuf>> dwbs = new ArrayList<>();
+            _bufout.setOutput(dwb -> dwbs.add(dwb));
+
+            int readed = 0;
+            try {
+                do {
+                    readed = _zipin.read(_buf);
+                    if (readed > 0) {
+                        _bufout.write(_buf, 0, readed);
+                    }
+                } while (readed > 0);
+            }
+            catch (final IOException e) {
+                if (e instanceof NoDataException) {
+                    LOG.debug("zipin.read(byte[]) throw NoDataException, stop unzip and wait for input.");
+                    this.stopParsing();
+//                    return entities(entities);
+                } else {
+//                    return Observable.error(e);
+                }
+            }
+            finally {
+                try {
+                    _bufout.flush();
+                } catch (final IOException e) {}
+            }
+
+            if (readed == -1) {
+                LOG.debug("zipin.read(byte[]) return -1, current entry completed.");
+            }
+            eoe.set(readed == -1);
+            return dwbs;
+        }
+
+        final ZipInputStreamX _zipin;
+        final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> _bufout;
+        final byte[] _buf;
+    }
+
+    static class GetEntryParser implements UnzipParser {
 
         @Override
         public UnzipParser parse(final UnzipContext ctx) {
@@ -126,7 +174,7 @@ public class ZipUtil {
 
     }
 
-    class UnzipEntryParser implements UnzipParser {
+    static class UnzipEntryParser implements UnzipParser {
 
         public UnzipEntryParser(final ZipEntry entry) {
             this._entry = entry;
@@ -139,9 +187,7 @@ public class ZipUtil {
             if (null == _subject) {
                 if (eoe.get()) {
                     //  end of entry
-                    ctx.appendMakeSlice(dostep -> {
-                        final ByteBufSlice content = dwbs2bbs(dwbs, dostep);
-                        ctx.appendUnzipEntity(new UnzipEntity() {
+                    ctx.appendContent(dwbs, content -> new UnzipEntity() {
                             @Override
                             public ZipEntry entry() {
                                 return _entry;
@@ -150,15 +196,12 @@ public class ZipUtil {
                             public Observable<? extends ByteBufSlice> body() {
                                 return Observable.just(content);
                             }});
-                    });
                     return new GetEntryParser();
                 }
                 else {
                     // !NOT! end of entry
                     _subject = PublishSubject.create();
-                    ctx.appendMakeSlice(dostep -> {
-                        final ByteBufSlice content = dwbs2bbs(dwbs, dostep);
-                        ctx.appendUnzipEntity(new UnzipEntity() {
+                    ctx.appendContent(dwbs, content -> new UnzipEntity() {
                             @Override
                             public ZipEntry entry() {
                                 return _entry;
@@ -167,24 +210,25 @@ public class ZipUtil {
                             public Observable<? extends ByteBufSlice> body() {
                                 return Observable.just(content).concatWith(_subject);
                             }});
-                    });
                     return this;
                 }
             }
             else {
                 if (eoe.get()) {
                     //  end of entry
-                    ctx.appendMakeSlice(dostep -> {
-                        _subject.onNext(dwbs2bbs(dwbs, dostep));
+                    ctx.appendContent(dwbs, content -> {
+                        _subject.onNext(content);
                         // entry end, so notify downstream onCompleted event
                         _subject.onCompleted();
+                        return null;
                     });
                     return new GetEntryParser();
                 }
                 else {
                     // !NOT! end of entry
-                    ctx.appendMakeSlice(dostep -> {
-                        _subject.onNext(dwbs2bbs(dwbs, dostep));
+                    ctx.appendContent(dwbs, content -> {
+                        _subject.onNext(content);
+                        return null;
                     });
                     return this;
                 }
@@ -193,6 +237,40 @@ public class ZipUtil {
 
         private PublishSubject<ByteBufSlice> _subject;
         private final ZipEntry _entry;
+    }
+
+    public static Unzipper unzipToEntitiesNew(
+            final Func0<DisposableWrapper<? extends ByteBuf>> allocator,
+            final Endable endable,
+            final int bufsize,
+            final Action1<DisposableWrapper<? extends ByteBuf>> onunzipped ) {
+        return content -> {
+            final BufsInputStream<DisposableWrapper<? extends ByteBuf>> bufin = new BufsInputStream<>(dwb->dwb.unwrap(), onunzipped);
+            final ZipInputStreamX zipin = new ZipInputStreamX(bufin);
+            final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
+
+            endable.doOnEnd(() -> {
+                try {
+                    zipin.close();
+                } catch (final IOException e1) {
+                }
+            });
+
+            final DefaultUnzipContext unzipctx = new DefaultUnzipContext(zipin, bufout, 512, new GetEntryParser());
+
+            return content.flatMap(bbs -> {
+                bufin.appendIterable(bbs.element());
+                unzipctx.resetParsing();
+
+                return unzipctx.parseEntity(() -> bbs.step());
+            },
+            e -> Observable.error(e),
+            () -> {
+                bufin.markEOS();
+                unzipctx.resetParsing();
+                return unzipctx.parseEntity(() -> {});
+            });
+        };
     }
     // --- end of --- unzip new impl begin 20190518
 

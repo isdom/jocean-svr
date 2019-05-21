@@ -29,11 +29,8 @@ import io.netty.util.ByteProcessor;
 import io.netty.util.internal.AppendableCharSequence;
 import rx.Observable;
 import rx.Observable.Transformer;
-import rx.Subscription;
-import rx.functions.Action0;
 import rx.functions.Func0;
 import rx.subjects.PublishSubject;
-import rx.subscriptions.Subscriptions;
 
 //  HEX DUMP for multipart/form-data with 2 tiny files part
 //         +-------------------------------------------------+
@@ -406,9 +403,7 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
                 final Iterable<DisposableWrapper<? extends ByteBuf>> dwbs = ctx.in2dwbs(length);
                 if (null == _subject) {
                     // begin of MessageBody
-                    ctx.setSliceBuilder(dostep -> {
-                        final ByteBufSlice content = dwbs2bbs(dwbs, dostep);
-                        ctx.setEntity(new MessageBody() {
+                    ctx.appendContent(dwbs, content -> new MessageBody() {
                             @Override
                             public HttpHeaders headers() {
                                 return _headers;
@@ -425,13 +420,13 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
                             public Observable<? extends ByteBufSlice> content() {
                                 return Observable.just(content);
                             }});
-                    });
                 }
                 else {
-                    ctx.setSliceBuilder(dostep -> {
-                        _subject.onNext(dwbs2bbs(dwbs, dostep));
+                    ctx.appendContent(dwbs, content -> {
+                        _subject.onNext(content);
                         // part end, so notify downstream onCompleted event
                         _subject.onCompleted();
+                        return null;
                     });
                 }
                 try {
@@ -452,9 +447,7 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
 
                     if (null == _subject) {
                         _subject = PublishSubject.create();
-                        ctx.setSliceBuilder( dostep -> {
-                            final ByteBufSlice content = dwbs2bbs(dwbs, dostep);
-                            ctx.setEntity(new MessageBody() {
+                        ctx.appendContent( dwbs, content -> new MessageBody() {
                                 @Override
                                 public HttpHeaders headers() {
                                     return _headers;
@@ -475,10 +468,12 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
                                 public Observable<? extends ByteBufSlice> content() {
                                     return Observable.just(content).concatWith(_subject);
                                 }});
-                        });
                     }
                     else {
-                        ctx.setSliceBuilder(dostep -> _subject.onNext(dwbs2bbs(dwbs, dostep)) );
+                        ctx.appendContent(dwbs, content -> {
+                            _subject.onNext(content);
+                            return null;
+                        });
                     }
                 }
                 ctx.stopParsing();
@@ -527,21 +522,6 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
 
             return mctx.parseEntity(() -> bbs.step());
         });
-    }
-
-    // TBD: extract to common toolkit class
-    private static ByteBufSlice dwbs2bbs(final Iterable<DisposableWrapper<? extends ByteBuf>> dwbs, final Action0 dostep) {
-        final Subscription subscription = Subscriptions.create(dostep);
-        return new ByteBufSlice() {
-            @Override
-            public void step() {
-                subscription.unsubscribe();
-            }
-
-            @Override
-            public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
-                return dwbs;
-            }};
     }
 
     private final AppendableCharSequence _seq;
