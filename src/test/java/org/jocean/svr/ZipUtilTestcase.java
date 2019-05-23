@@ -42,8 +42,7 @@ import rx.schedulers.Schedulers;
 
 public class ZipUtilTestcase {
 
-    private static final Logger LOG
-        = LoggerFactory.getLogger(ZipUtilTestcase.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ZipUtilTestcase.class);
 
     private static Executor exec = Executors.newSingleThreadExecutor();
 
@@ -159,7 +158,7 @@ public class ZipUtilTestcase {
 
     @Test
     public final void testUnzipEntitiesWithinSlice() throws IOException, InterruptedException {
-        final Endable terminable = new Endable() {
+        final Endable endable = new Endable() {
             @Override
             public Action1<Action0> onEnd() {
                 return null;
@@ -176,7 +175,7 @@ public class ZipUtilTestcase {
         final byte[] c2 = new byte[256];
         c2[0] = 22;
 
-        final Func0<DisposableWrapper<? extends ByteBuf>>allocator = MessageUtil.pooledAllocator(terminable, 8192);
+        final Func0<DisposableWrapper<? extends ByteBuf>>allocator = MessageUtil.pooledAllocator(endable, 8192);
 
         final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
         final ZipOutputStream zipout = new ZipOutputStream(bufout, CharsetUtil.UTF_8);
@@ -220,7 +219,7 @@ public class ZipUtilTestcase {
                 }
                 LOG.debug("------------ zipped end");
             })
-            .compose(unzipBy(terminable))
+            .compose(unzipBy(endable))
             .subscribeOn(Schedulers.from(exec))
             .subscribe(entity -> {
                 LOG.debug("entry: {}", entity.entry());
