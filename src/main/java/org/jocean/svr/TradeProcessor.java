@@ -91,7 +91,7 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
                 TraceUtil.hook4serversend(trade.writeCtrl(), span);
                 TraceUtil.logoutmsg(trade.writeCtrl(), span, "http.resp", 1024);
 
-                trade.doOnEnd(() -> span.finish());
+                trade.doOnHalt(() -> span.finish());
                 TraceUtil.addTagNotNull(span, "http.host", fullreq.message().headers().get(HttpHeaderNames.HOST));
 
                 if ( this._maxContentLengthForAutoread <= 0) {

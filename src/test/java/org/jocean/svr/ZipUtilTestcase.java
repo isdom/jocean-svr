@@ -20,8 +20,8 @@ import org.jocean.http.MessageUtil;
 import org.jocean.http.util.Nettys;
 import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.DisposableWrapperUtil;
-import org.jocean.idiom.Endable;
 import org.jocean.idiom.ExceptionUtils;
+import org.jocean.idiom.Haltable;
 import org.jocean.netty.util.BufsOutputStream;
 import org.jocean.svr.ZipUtil.TozipEntity;
 import org.jocean.svr.ZipUtil.UnzipEntity;
@@ -67,24 +67,24 @@ public class ZipUtilTestcase {
             }};
     }
 
-    private Transformer<TozipEntity, ByteBufSlice> zipBy(final Endable endable) {
-        return ZipUtil.zipEntities(MessageUtil.pooledAllocator(endable, 8192), endable, 512, dwb->dwb.dispose());
+    private Transformer<TozipEntity, ByteBufSlice> zipBy(final Haltable haltable) {
+        return ZipUtil.zipEntities(MessageUtil.pooledAllocator(haltable, 8192), haltable, 512, dwb->dwb.dispose());
     }
 
-    private Transformer<ByteBufSlice, UnzipEntity> unzipBy(final Endable endable) {
-        return ZipUtil.unzipToEntities(MessageUtil.pooledAllocator(endable, 8192), endable, 512, dwb->dwb.dispose());
+    private Transformer<ByteBufSlice, UnzipEntity> unzipBy(final Haltable haltable) {
+        return ZipUtil.unzipToEntities(MessageUtil.pooledAllocator(haltable, 8192), haltable, 512, dwb->dwb.dispose());
     }
 
     @Test
     public final void testUnzipEntities() throws IOException, InterruptedException {
-        final Endable terminable = new Endable() {
+        final Haltable haltable = new Haltable() {
             @Override
-            public Action1<Action0> onEnd() {
+            public Action1<Action0> onHalt() {
                 return null;
             }
 
             @Override
-            public Action0 doOnEnd(final Action0 onend) {
+            public Action0 doOnHalt(final Action0 onhalt) {
                 return null;
             }};
 
@@ -109,7 +109,7 @@ public class ZipUtilTestcase {
                 }
                 LOG.debug("------------ to zip content end");
             })
-            .compose(zipBy(terminable))
+            .compose(zipBy(haltable))
             .doOnNext( bbs -> {
                 LOG.debug("=========== zipped slice: {}", bbs);
                 final List<? extends DisposableWrapper<? extends ByteBuf>> dwbs = Observable.from(bbs.element()).toList().toBlocking().single();
@@ -119,7 +119,7 @@ public class ZipUtilTestcase {
                 }
                 LOG.debug("------------ zipped end");
             })
-            .compose(unzipBy(terminable))
+            .compose(unzipBy(haltable))
             .subscribeOn(Schedulers.from(exec))
             .subscribe(entity -> {
                 LOG.debug("entry: {}", entity.entry());
@@ -158,14 +158,14 @@ public class ZipUtilTestcase {
 
     @Test
     public final void testUnzipEntitiesWithinSlice() throws IOException, InterruptedException {
-        final Endable endable = new Endable() {
+        final Haltable endable = new Haltable() {
             @Override
-            public Action1<Action0> onEnd() {
+            public Action1<Action0> onHalt() {
                 return null;
             }
 
             @Override
-            public Action0 doOnEnd(final Action0 onend) {
+            public Action0 doOnHalt(final Action0 onhalt) {
                 return null;
             }};
 

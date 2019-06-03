@@ -70,23 +70,23 @@ public class AutoreadTrade implements HttpTrade {
     }
 
     @Override
-    public Action1<Action0> onEnd() {
-        return _trade.onEnd();
+    public Action1<Action0> onHalt() {
+        return _trade.onHalt();
     }
 
     @Override
-    public Action1<Action1<HttpTrade>> onEndOf() {
-        return _trade.onEndOf();
+    public Action1<Action1<HttpTrade>> onHaltOf() {
+        return _trade.onHaltOf();
     }
 
     @Override
-    public Action0 doOnEnd(final Action0 onTerminate) {
-        return _trade.doOnEnd(onTerminate);
+    public Action0 doOnHalt(final Action0 onhalt) {
+        return _trade.doOnHalt(onhalt);
     }
 
     @Override
-    public Action0 doOnEnd(final Action1<HttpTrade> onTerminate) {
-        return _trade.doOnEnd(onTerminate);
+    public Action0 doOnHalt(final Action1<HttpTrade> onhalt) {
+        return _trade.doOnHalt(onhalt);
     }
 
     @Override

@@ -42,7 +42,7 @@ public class HttpClientDashboard extends Subscriber<HttpInitiator> implements Ht
     @Override
     public void onNext(final HttpInitiator initiator) {
         this._initiators.add(initiator);
-        initiator.doOnEnd(()->this._initiators.remove(initiator));
+        initiator.doOnHalt(()->this._initiators.remove(initiator));
     }
 
     @Override

@@ -25,8 +25,8 @@ import org.jocean.http.client.HttpClient.HttpInitiator;
 import org.jocean.http.client.HttpClient.InitiatorBuilder;
 import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.DisposableWrapperUtil;
-import org.jocean.idiom.Endable;
 import org.jocean.idiom.ExceptionUtils;
+import org.jocean.idiom.Haltable;
 import org.jocean.netty.util.BufsOutputStream;
 import org.jocean.svr.tracing.TraceUtil;
 import org.slf4j.Logger;
@@ -71,11 +71,11 @@ public class InteractBuilderImpl implements InteractBuilder {
     }
 
     public InteractBuilderImpl(
-            final Endable endable,
+            final Haltable haltable,
             final Span span,
             final Observable<Tracer> getTracer,
             final Scheduler scheduler) {
-        this._endable = endable;
+        this._haltable = haltable;
         this._span = span;
         this._getTracer = getTracer;
         this._scheduler = scheduler;
@@ -233,8 +233,8 @@ public class InteractBuilderImpl implements InteractBuilder {
                 addQueryParams();
                 return addSSLFeatureIfNeed(_initiatorBuilder).build()
                         .flatMap(initiator -> {
-                            if ( null != _endable) {
-                                _endable.doOnEnd(initiator.closer());
+                            if ( null != _haltable) {
+                                _haltable.doOnHalt(initiator.closer());
                             }
 
                             TraceUtil.logoutmsg(initiator.writeCtrl(), span, "http.req", 1024);
@@ -275,8 +275,8 @@ public class InteractBuilderImpl implements InteractBuilder {
                 addQueryParams();
                 return addSSLFeatureIfNeed(_initiatorBuilder).build()
                         .flatMap(initiator -> {
-                            if ( null != _endable) {
-                                _endable.doOnEnd(initiator.closer());
+                            if ( null != _haltable) {
+                                _haltable.doOnHalt(initiator.closer());
                             }
 
                             TraceUtil.logoutmsg(initiator.writeCtrl(), span, "http.req", 1024);
@@ -307,7 +307,7 @@ public class InteractBuilderImpl implements InteractBuilder {
             TraceUtil.setTag4bean(bean, span, "req.bd.", "record.reqbean.error");
 
             final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout =
-                    new BufsOutputStream<>(MessageUtil.pooledAllocator(this._endable, 8192), dwb->dwb.unwrap());
+                    new BufsOutputStream<>(MessageUtil.pooledAllocator(this._haltable, 8192), dwb->dwb.unwrap());
             final Iterable<? extends DisposableWrapper<? extends ByteBuf>> dwbs = MessageUtil.out2dwbs(bufout,
                     out -> contentEncoder.encoder().call(bean, out));
 
@@ -390,7 +390,7 @@ public class InteractBuilderImpl implements InteractBuilder {
         return false;
     }
 
-    private final Endable _endable;
+    private final Haltable _haltable;
     private final Span _span;
     private final Observable<Tracer> _getTracer;
     private final Scheduler _scheduler;

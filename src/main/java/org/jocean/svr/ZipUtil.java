@@ -13,8 +13,8 @@ import java.util.zip.ZipOutputStream;
 import org.jocean.http.ByteBufSlice;
 import org.jocean.http.MessageUtil;
 import org.jocean.idiom.DisposableWrapper;
-import org.jocean.idiom.Endable;
 import org.jocean.idiom.ExceptionUtils;
+import org.jocean.idiom.Haltable;
 import org.jocean.netty.util.BufsInputStream;
 import org.jocean.netty.util.BufsOutputStream;
 import org.jocean.netty.util.NoDataException;
@@ -241,7 +241,7 @@ public class ZipUtil {
 
     public static Unzipper unzipToEntitiesNew(
             final Func0<DisposableWrapper<? extends ByteBuf>> allocator,
-            final Endable endable,
+            final Haltable haltable,
             final int bufsize,
             final Action1<DisposableWrapper<? extends ByteBuf>> onunzipped ) {
         return content -> {
@@ -249,7 +249,7 @@ public class ZipUtil {
             final ZipInputStreamX zipin = new ZipInputStreamX(bufin);
             final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
 
-            endable.doOnEnd(() -> {
+            haltable.doOnHalt(() -> {
                 try {
                     zipin.close();
                 } catch (final IOException e1) {
@@ -276,7 +276,7 @@ public class ZipUtil {
 
     public static Unzipper unzipToEntities(
             final Func0<DisposableWrapper<? extends ByteBuf>> allocator,
-            final Endable endable,
+            final Haltable haltable,
             final int bufsize,
             final Action1<DisposableWrapper<? extends ByteBuf>> onunzipped ) {
         return bbses -> {
@@ -286,7 +286,7 @@ public class ZipUtil {
             final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout = new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
             final byte[] readbuf = new byte[bufsize];
 
-            endable.doOnEnd(() -> {
+            haltable.doOnHalt(() -> {
                 try {
                     zipin.close();
                 } catch (final IOException e1) {
@@ -532,7 +532,7 @@ public class ZipUtil {
 
     public static Zipper zipEntities(
             final Func0<DisposableWrapper<? extends ByteBuf>> allocator,
-            final Endable endable,
+            final Haltable haltable,
             final int bufsize,
             final Action1<DisposableWrapper<? extends ByteBuf>> onzipped) {
         return entities -> {
@@ -542,7 +542,7 @@ public class ZipUtil {
 
             final byte[] readbuf = new byte[bufsize];
 
-            endable.doOnEnd(() -> {
+            haltable.doOnHalt(() -> {
                 try {
                     zipout.close();
                 } catch (final IOException e1) {
@@ -684,7 +684,7 @@ public class ZipUtil {
 
     public static Zipper zipEntitiesWithPassword(
             final Func0<DisposableWrapper<? extends ByteBuf>> allocator,
-            final Endable endable,
+            final Haltable haltable,
             final int bufsize,
             final Action1<DisposableWrapper<? extends ByteBuf>> onzipped,
             final String password) {
@@ -694,7 +694,7 @@ public class ZipUtil {
 
             final byte[] readbuf = new byte[bufsize];
 
-            endable.doOnEnd(() -> {
+            haltable.doOnHalt(() -> {
                 try {
                     zipout.close();
                 } catch (final IOException e1) {

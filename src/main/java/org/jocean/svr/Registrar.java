@@ -58,9 +58,9 @@ import org.jocean.idiom.BeanHolder;
 import org.jocean.idiom.BeanHolderAware;
 import org.jocean.idiom.Beans;
 import org.jocean.idiom.DisposableWrapper;
-import org.jocean.idiom.Endable;
-import org.jocean.idiom.EndableUtil;
 import org.jocean.idiom.ExceptionUtils;
+import org.jocean.idiom.Haltable;
+import org.jocean.idiom.HaltableUtil;
 import org.jocean.idiom.Pair;
 import org.jocean.idiom.ReflectUtils;
 import org.jocean.idiom.Regexs;
@@ -141,7 +141,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
 
         @Override
-        public Endable endable() {
+        public Haltable haltable() {
             return _trade;
         }
 
@@ -156,7 +156,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
 
         public InteractBuilder interactBuilderOutofTrade(final Span parentSpan, final int delayInSeconds) {
-            return new InteractBuilderImpl(EndableUtil.delay(delayInSeconds, TimeUnit.SECONDS), parentSpan,
+            return new InteractBuilderImpl(HaltableUtil.delay(delayInSeconds, TimeUnit.SECONDS), parentSpan,
                     Observable.just(_tracer), _ts.scheduler());
         }
 
@@ -1061,7 +1061,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return request;
         } else if (argType.equals(HttpTrade.class)) {
             return trade;
-        } else if (argType.equals(Endable.class)) {
+        } else if (argType.equals(Haltable.class)) {
             return trade;
         } else if (argType.equals(BeanHolder.class)) {
             return this._beanHolder;
@@ -1161,17 +1161,17 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return new ZipBuilder() {
             @Override
             public Zipper zip(final int pageSize, final int bufsize) {
-                return ZipUtil.zipEntities(tradeCtx.allocatorBuilder().build(pageSize), tradeCtx.endable(), bufsize, dwb->dwb.dispose());
+                return ZipUtil.zipEntities(tradeCtx.allocatorBuilder().build(pageSize), tradeCtx.haltable(), bufsize, dwb->dwb.dispose());
             }
 
             @Override
             public Zipper zipWithPasswd(final int pageSize, final int bufsize, final String passwd) {
-                return ZipUtil.zipEntitiesWithPassword(tradeCtx.allocatorBuilder().build(pageSize), tradeCtx.endable(), bufsize, dwb->dwb.dispose(), passwd);
+                return ZipUtil.zipEntitiesWithPassword(tradeCtx.allocatorBuilder().build(pageSize), tradeCtx.haltable(), bufsize, dwb->dwb.dispose(), passwd);
             }
 
             @Override
             public Unzipper unzip(final int pageSize, final int bufsize) {
-                return ZipUtil.unzipToEntities(tradeCtx.allocatorBuilder().build(pageSize), tradeCtx.endable(), bufsize, dwb->dwb.dispose());
+                return ZipUtil.unzipToEntities(tradeCtx.allocatorBuilder().build(pageSize), tradeCtx.haltable(), bufsize, dwb->dwb.dispose());
             }
 
             @Override
