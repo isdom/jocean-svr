@@ -1279,11 +1279,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 //        this._register = register;
     }
 
-    private final Map<String, ResContext> _resCtxs =
-            new HashMap<String, ResContext>();
+    private final Map<String, ResContext> _resCtxs = new HashMap<String, ResContext>();
 
-    private final Multimap<String, Pair<PathMatcher, ResContext>> _pathMatchers =
-            ArrayListMultimap.create();
+    private final Multimap<String, Pair<PathMatcher, ResContext>> _pathMatchers = ArrayListMultimap.create();
 
     private final UnitListener _unitListener = new UnitListener() {
         @Override
