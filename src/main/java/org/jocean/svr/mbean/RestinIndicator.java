@@ -1,5 +1,7 @@
 package org.jocean.svr.mbean;
 
+import java.util.concurrent.atomic.AtomicInteger;
+
 import org.jocean.http.server.mbean.InboundIndicator;
 import org.jocean.http.util.Nettys.ServerChannelAware;
 import org.jocean.idiom.jmx.MBeanRegister;
@@ -68,6 +70,15 @@ public class RestinIndicator extends InboundIndicator
         this._priority = priority;
     }
 
+    @Override
+    public int getTradeCount() {
+        return _tradeCount.get();
+    }
+
+    public void incTradeCount() {
+        this._tradeCount.incrementAndGet();
+    }
+
     private MBeanRegister _register;
 
     private String _mbeanName;
@@ -75,4 +86,5 @@ public class RestinIndicator extends InboundIndicator
     private String _hostPattern;
     private String _category;
     private int _priority;
+    private final AtomicInteger _tradeCount = new AtomicInteger(0);
 }

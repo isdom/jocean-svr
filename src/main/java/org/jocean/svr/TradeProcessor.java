@@ -15,7 +15,7 @@ import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Tuple;
 import org.jocean.idiom.jmx.MBeanRegister;
 import org.jocean.idiom.jmx.MBeanRegisterAware;
-import org.jocean.svr.mbean.RestinMXBean;
+import org.jocean.svr.mbean.RestinIndicator;
 import org.jocean.svr.tracing.TraceUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,7 +43,7 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
 
     private static final Logger LOG = LoggerFactory.getLogger(TradeProcessor.class);
 
-    public TradeProcessor(final Registrar registrar, final RestinMXBean restin) {
+    public TradeProcessor(final Registrar registrar, final RestinIndicator restin) {
         this._registrar = registrar;
         this._restin = restin;
     }
@@ -59,6 +59,8 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
 
     @Override
     public void onNext(final HttpTrade trade) {
+        this._restin.incTradeCount();
+
         trade.inbound().first().flatMap(fullreq ->
             getTradeScheduler().flatMap(ts ->
                 getTracer().subscribeOn(ts.scheduler()).map(tracer -> {
@@ -166,7 +168,7 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
     @Value("${scheduler.name}")
     String _schedulerName = "scheduler_default";
 
-    private final RestinMXBean _restin;
+    private final RestinIndicator _restin;
 
     private final Registrar _registrar;
 

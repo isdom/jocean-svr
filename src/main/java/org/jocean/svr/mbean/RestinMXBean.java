@@ -13,4 +13,6 @@ public interface RestinMXBean extends InboundMXBean {
     public int getPriority();
 
     public String getPid();
+
+    public int getTradeCount();
 }
