@@ -1,5 +1,7 @@
 package org.jocean.svr.mbean;
 
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.management.ListenerNotFoundException;
@@ -18,6 +20,7 @@ import org.jocean.j2se.os.OSUtil;
 import org.springframework.beans.factory.annotation.Value;
 
 import io.netty.channel.ServerChannel;
+import rx.Observable;
 
 public class RestinIndicator extends InboundIndicator
     implements RestinMXBean, ServerChannelAware, MBeanRegisterAware, NotificationEmitter {
@@ -86,7 +89,32 @@ public class RestinIndicator extends InboundIndicator
 
     public void incTradeCount() {
         this._tradeCount.incrementAndGet();
-        _notificationBroadcasterSupport.sendNotification(new Notification(_notificationType, this, 0));
+
+        startNotification();
+    }
+
+    private void startNotification() {
+        if (_notifying.compareAndSet(false, true)) {
+            // get notify's permission
+            final long now = System.currentTimeMillis();
+            if (now - _lastNotifyTimestamp > _interval ) {
+                // notify now
+                doNotification(now);
+            }
+            else {
+                Observable.timer(_lastNotifyTimestamp + _interval - now, TimeUnit.MILLISECONDS)
+                    .subscribe(ms -> doNotification(System.currentTimeMillis()));
+            }
+        }
+    }
+
+    private void doNotification(final long now) {
+        try {
+            _notificationBroadcasterSupport.sendNotification(new Notification(_notificationType, this, 0));
+        } finally {
+            _lastNotifyTimestamp = now;
+            _notifying.set(false);
+        }
     }
 
     private MBeanRegister _register;
@@ -99,6 +127,13 @@ public class RestinIndicator extends InboundIndicator
 
     @Value("${notification.type}")
     private final String _notificationType = "property.changed.restin";
+
+    @Value("${notification.interval}")
+    private final long _interval = 30 * 1000;
+
+    private final AtomicBoolean _notifying = new AtomicBoolean(false);
+
+    private long _lastNotifyTimestamp = 0;
 
     private final AtomicInteger _tradeCount = new AtomicInteger(0);
 
