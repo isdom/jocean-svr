@@ -116,6 +116,7 @@ import io.opentracing.Span;
 import io.opentracing.Tracer;
 import rx.Completable;
 import rx.Observable;
+import rx.Scheduler;
 import rx.functions.Actions;
 import rx.functions.Func0;
 
@@ -1104,6 +1105,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 final Span span = tradeCtx._tracer.buildSpan(branchName)
                         .addReference(References.FOLLOWS_FROM, tradeCtx._span.context()).start();
                 final Tracing tracing = buildTracing(tradeCtx, span);
+                final Scheduler scheduler = tradeCtx.scheduler().scheduler();
                 return new Branch() {
                     @Override
                     public Span span() {
@@ -1118,6 +1120,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     @Override
                     public RpcExecutor rpcExecutor() {
                         return buildRpcExecutor(processor, tradeCtx.interactBuilderOutofTrade(span, 30));
+                    }
+
+                    @Override
+                    public Scheduler scheduler() {
+                        return scheduler;
                     }};
             }
         };
