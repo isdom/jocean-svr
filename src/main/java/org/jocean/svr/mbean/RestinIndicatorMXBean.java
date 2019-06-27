@@ -2,7 +2,7 @@ package org.jocean.svr.mbean;
 
 import org.jocean.http.server.mbean.InboundMXBean;
 
-public interface RestinMXBean extends InboundMXBean {
+public interface RestinIndicatorMXBean extends InboundMXBean {
 
     public String getCategory();
 

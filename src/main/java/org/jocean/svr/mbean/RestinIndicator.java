@@ -1,5 +1,7 @@
 package org.jocean.svr.mbean;
 
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -23,7 +25,7 @@ import io.netty.channel.ServerChannel;
 import rx.Observable;
 
 public class RestinIndicator extends InboundIndicator
-    implements RestinMXBean, ServerChannelAware, MBeanRegisterAware, NotificationEmitter {
+    implements RestinIndicatorMXBean, ServerChannelAware, MBeanRegisterAware, NotificationEmitter {
 
     @Override
     public String getPid() {
@@ -87,10 +89,30 @@ public class RestinIndicator extends InboundIndicator
         return _tradeCount.get();
     }
 
-    public void incTradeCount() {
+    public void incTradeCount(final String operationName) {
         this._tradeCount.incrementAndGet();
 
         startNotification();
+
+        getOperationInd(operationName).incTradeCount();
+    }
+
+    private OperationIndicator getOperationInd(final String operationName) {
+        OperationIndicator ind = this._operationInds.get(operationName);
+
+        if (null == ind) {
+            ind = new OperationIndicator(this, operationName);
+            final OperationIndicator old = this._operationInds.putIfAbsent(operationName, ind);
+            if (null != old) {
+                ind = old;
+            }
+            else {
+                // register OperationIndicator mbean
+                this._register.registerMBean("name="+this._mbeanName+",address=" + this.getBindIp().replace(':', '_')
+                        +",port=" + this.getPort() + ",operation=" + operationName, ind);
+            }
+        }
+        return ind;
     }
 
     private void startNotification() {
@@ -160,4 +182,6 @@ public class RestinIndicator extends InboundIndicator
             throws ListenerNotFoundException {
         _notificationBroadcasterSupport.removeNotificationListener(listener, filter, handback);
     }
+
+    private final ConcurrentMap<String, OperationIndicator> _operationInds = new ConcurrentHashMap<>();
 }

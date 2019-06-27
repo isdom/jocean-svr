@@ -95,7 +95,7 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
                 TraceUtil.addTagNotNull(span, "http.host", fullreq.message().headers().get(HttpHeaderNames.HOST));
 
                 // increment trade count
-                this._restin.incTradeCount();
+//                this._restin.incTradeCount();
 
                 if ( this._maxContentLengthForAutoread <= 0) {
                     LOG.debug("disable autoread full request, handle raw {}.", trade);
@@ -147,7 +147,7 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
 
     private void handleTrade(final FullMessage<HttpRequest> fullreq, final HttpTrade trade, final Tracer tracer, final Span span, final TradeScheduler ts) {
         try {
-            final Observable<? extends Object> outbound = this._registrar.buildResource(fullreq.message(), trade, tracer, span, ts);
+            final Observable<? extends Object> outbound = this._registrar.buildResource(fullreq.message(), trade, tracer, span, ts, this._restin);
             trade.outbound(outbound.doOnNext(DisposableWrapperUtil.disposeOnForAny(trade)).doOnError(error -> {
                 span.setTag(Tags.ERROR.getKey(), true);
                 span.log(Collections.singletonMap("error.detail", ExceptionUtils.exception2detail(error)));

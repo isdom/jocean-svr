@@ -79,6 +79,7 @@ import org.jocean.svr.FinderUtil.CallerContext;
 import org.jocean.svr.ZipUtil.Unzipper;
 import org.jocean.svr.ZipUtil.ZipBuilder;
 import org.jocean.svr.ZipUtil.Zipper;
+import org.jocean.svr.mbean.RestinIndicator;
 import org.jocean.svr.tracing.TraceUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -420,7 +421,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final HttpTrade trade,
             final Tracer tracer,
             final Span span,
-            final TradeScheduler ts) throws Exception {
+            final TradeScheduler ts,
+            final RestinIndicator restin) throws Exception {
 
         // try direct path match
         final Pair<ResContext, Map<String, String>> pair = findResourceCtx(request);
@@ -431,7 +433,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final Object resource = this._beanHolder.getBean(pair.first._cls);
 
             if (null!=resource) {
-                span.setOperationName(resource.getClass().getSimpleName() + "." + processor.getName());
+                final String operationName = resource.getClass().getSimpleName() + "." + processor.getName();
+
+                restin.incTradeCount(operationName);
+                span.setOperationName(operationName);
 
                 final Deque<MethodInterceptor> interceptors = new LinkedList<>();
                 final MethodInterceptor.Context interceptorCtx = new MethodInterceptor.Context() {
