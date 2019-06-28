@@ -108,7 +108,7 @@ public class RestinIndicator extends InboundIndicator
             }
             else {
                 // register OperationIndicator mbean
-                this._register.registerMBean("name="+this._mbeanName+",address=" + this.getBindIp().replace(':', '_')
+                this._register.registerMBean("endpoint_type="+this._mbeanName+",bindip=" + this.getBindIp().replace(':', '_')
                         +",port=" + this.getPort() + ",operation=" + operationName, ind);
             }
         }
