@@ -6,6 +6,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import javax.inject.Inject;
 import javax.management.ListenerNotFoundException;
 import javax.management.MBeanNotificationInfo;
 import javax.management.Notification;
@@ -21,6 +22,7 @@ import org.jocean.idiom.jmx.MBeanRegisterAware;
 import org.jocean.j2se.os.OSUtil;
 import org.springframework.beans.factory.annotation.Value;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import io.netty.channel.ServerChannel;
 import rx.Observable;
 
@@ -94,14 +96,14 @@ public class RestinIndicator extends InboundIndicator
 
         startNotification();
 
-        getOperationInd(operationName).incTradeCount();
+        getOrCreateOperationInd(operationName).incTradeCount();
     }
 
-    private OperationIndicator getOperationInd(final String operationName) {
+    private OperationIndicator getOrCreateOperationInd(final String operationName) {
         OperationIndicator ind = this._operationInds.get(operationName);
 
         if (null == ind) {
-            ind = new OperationIndicator(this, operationName);
+            ind = new OperationIndicator(this, operationName, _meterRegistry);
             final OperationIndicator old = this._operationInds.putIfAbsent(operationName, ind);
             if (null != old) {
                 ind = old;
@@ -138,6 +140,9 @@ public class RestinIndicator extends InboundIndicator
             _notifying.set(false);
         }
     }
+
+    @Inject
+    MeterRegistry _meterRegistry;
 
     private MBeanRegister _register;
 

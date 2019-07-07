@@ -9,13 +9,28 @@ import javax.management.NotificationBroadcasterSupport;
 
 import org.springframework.beans.factory.annotation.Value;
 
+import io.micrometer.core.instrument.FunctionCounter;
+import io.micrometer.core.instrument.MeterRegistry;
 import rx.Observable;
 
 public class OperationIndicator extends NotificationBroadcasterSupport implements OperationIndicatorMXBean {
 
-    OperationIndicator(final RestinIndicator restin, final String operationName) {
+    OperationIndicator(final RestinIndicator restin, final String operationName, final MeterRegistry meterRegistry) {
         this._restin = restin;
         this._operationName = operationName;
+
+        FunctionCounter.builder("jocean.svr.operation.call", _tradeCount, cnt -> cnt.doubleValue())
+            .tags(  "operation", operationName,
+                    "host", _restin.getHostPattern(),
+                    "path", _restin.getPathPattern(),
+                    "priority", Integer.toString(_restin.getPriority()),
+                    "pid", _restin.getPid(),
+                    "port", Integer.toString(_restin.getPort()),
+                    "category", _restin.getCategory()
+                    )
+            .description("The total number of jocean service operation's call")
+            .baseUnit("calls")
+            .register(meterRegistry);
     }
 
     @Override
