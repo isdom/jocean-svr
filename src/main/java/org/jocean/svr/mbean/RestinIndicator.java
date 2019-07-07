@@ -55,6 +55,10 @@ public class RestinIndicator extends InboundIndicator
         return this._priority;
     }
 
+    public String getMbeanName() {
+        return this._mbeanName;
+    }
+
     @Override
     public void setServerChannel(final ServerChannel serverChannel) {
         super.setServerChannel(serverChannel);

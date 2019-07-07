@@ -20,13 +20,14 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
         this._operationName = operationName;
 
         FunctionCounter.builder("jocean.svr.operation.call", _tradeCount, cnt -> cnt.doubleValue())
-            .tags(  "operation", operationName,
-                    "host", _restin.getHostPattern(),
-                    "path", _restin.getPathPattern(),
-                    "priority", Integer.toString(_restin.getPriority()),
-                    "pid", _restin.getPid(),
-                    "port", Integer.toString(_restin.getPort()),
-                    "category", _restin.getCategory()
+            .tags(  "operation",    operationName,
+                    "hostregex",    _restin.getHostPattern(),
+                    "pathregex",    _restin.getPathPattern(),
+                    "endpoint_type", _restin.getMbeanName(),
+                    "category",     _restin.getCategory(),
+                    "priority",     Integer.toString(_restin.getPriority()),
+                    "pid",          _restin.getPid(),
+                    "port",         Integer.toString(_restin.getPort())
                     )
             .description("The total number of jocean service operation's call")
             .register(meterRegistry);
