@@ -1,5 +1,6 @@
 package org.jocean.svr.mbean;
 
+import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -11,6 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 
 import io.micrometer.core.instrument.FunctionCounter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import rx.Observable;
 
 public class OperationIndicator extends NotificationBroadcasterSupport implements OperationIndicatorMXBean {
@@ -30,6 +32,21 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
                     "port",         Integer.toString(_restin.getPort())
                     )
             .description("The total number of jocean service operation's call")
+            .register(meterRegistry);
+
+        this._durationTimer = Timer.builder("jocean.svr.operation.duration")
+            .tags(  "operation",    operationName,
+                    "hostregex",    _restin.getHostPattern(),
+                    "pathregex",    _restin.getPathPattern(),
+                    "endpoint_type", _restin.getMbeanName(),
+                    "category",     _restin.getCategory(),
+                    "priority",     Integer.toString(_restin.getPriority()),
+                    "pid",          _restin.getPid(),
+                    "port",         Integer.toString(_restin.getPort())
+                    )
+            .description("The duration of jocean service operation")
+            .publishPercentileHistogram()
+            .maximumExpectedValue(Duration.ofSeconds(30))
             .register(meterRegistry);
     }
 
@@ -94,6 +111,10 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
         startNotification();
     }
 
+    public void recordTradeDuration(final long durationMillis) {
+        this._durationTimer.record(durationMillis, TimeUnit.MILLISECONDS);
+    }
+
     private void startNotification() {
         if (_notifying.compareAndSet(false, true)) {
             // get notify's permission
@@ -120,6 +141,8 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
 
     private final RestinIndicator _restin;
     private final String _operationName;
+
+    private final Timer _durationTimer;
 
     @Value("${notification.type}")
     private final String _notificationType = "property.changed.operation";

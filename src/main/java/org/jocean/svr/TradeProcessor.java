@@ -94,9 +94,6 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
                 trade.doOnHalt(() -> span.finish());
                 TraceUtil.addTagNotNull(span, "http.host", fullreq.message().headers().get(HttpHeaderNames.HOST));
 
-                // increment trade count
-//                this._restin.incTradeCount();
-
                 if ( this._maxContentLengthForAutoread <= 0) {
                     LOG.debug("disable autoread full request, handle raw {}.", trade);
                     handleTrade(fullreq, trade, tracer, span, ts);

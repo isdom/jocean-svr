@@ -143,4 +143,9 @@ public class AutoreadTrade implements HttpTrade {
     public String toString() {
         return new StringBuilder().append("(Autoread Enabled) ").append(_trade.toString()).toString();
     }
+
+    @Override
+    public long startTimeMillis() {
+        return _trade.startTimeMillis();
+    }
 }
