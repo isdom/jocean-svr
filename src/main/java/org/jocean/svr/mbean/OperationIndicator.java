@@ -29,7 +29,6 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
                     "category", _restin.getCategory()
                     )
             .description("The total number of jocean service operation's call")
-            .baseUnit("calls")
             .register(meterRegistry);
     }
 
