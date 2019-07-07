@@ -23,6 +23,7 @@ import org.jocean.j2se.os.OSUtil;
 import org.springframework.beans.factory.annotation.Value;
 
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Metrics;
 import io.netty.channel.ServerChannel;
 import rx.Observable;
 
@@ -142,7 +143,7 @@ public class RestinIndicator extends InboundIndicator
     }
 
     @Inject
-    MeterRegistry _meterRegistry;
+    MeterRegistry _meterRegistry = Metrics.globalRegistry;
 
     private MBeanRegister _register;
 
