@@ -39,13 +39,13 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
 
         Gauge.builder("jocean.svr.activetrade", _activeTradeCount, cnt -> cnt.doubleValue())
             .tags(  "operation",    operationName,
-//                    "hostregex",    _restin.getHostPattern(),
-//                    "pathregex",    _restin.getPathPattern(),
+                    "hostregex",    _restin.getHostPattern(),
+                    "pathregex",    _restin.getPathPattern(),
                     "endpoint_type", _restin.getMbeanName(),
-                    "category",     _restin.getCategory()
-//                    "priority",     Integer.toString(_restin.getPriority()),
-//                    "pid",          _restin.getPid(),
-//                    "port",         Integer.toString(_restin.getPort())
+                    "category",     _restin.getCategory(),
+                    "priority",     Integer.toString(_restin.getPriority()),
+                    "pid",          _restin.getPid(),
+                    "port",         Integer.toString(_restin.getPort())
                     )
             .description("The active number of service trade") // optional
             .register(meterRegistry);
