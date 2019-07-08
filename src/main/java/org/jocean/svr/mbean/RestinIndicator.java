@@ -26,6 +26,8 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Metrics;
 import io.netty.channel.ServerChannel;
 import rx.Observable;
+import rx.functions.Action0;
+import rx.functions.Action1;
 
 public class RestinIndicator extends InboundIndicator
     implements RestinIndicatorMXBean, ServerChannelAware, MBeanRegisterAware, NotificationEmitter {
@@ -96,12 +98,12 @@ public class RestinIndicator extends InboundIndicator
         return _tradeCount.get();
     }
 
-    public void incTradeCount(final String operationName) {
+    public void incTradeCount(final String operationName, final Action1<Action0> onHalt) {
         this._tradeCount.incrementAndGet();
 
         startNotification();
 
-        getOrCreateOperationInd(operationName).incTradeCount();
+        getOrCreateOperationInd(operationName).incTradeCount(onHalt);
     }
 
     public void recordTradeDuration(final String operationName, final long durationMillis) {

@@ -435,7 +435,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (null!=resource) {
                 final String operationName = resource.getClass().getSimpleName() + "." + processor.getName();
 
-                restin.incTradeCount(operationName);
+                restin.incTradeCount(operationName, trade.onHalt());
 
                 trade.doOnHalt(() -> restin.recordTradeDuration(operationName, System.currentTimeMillis() - trade.startTimeMillis()));
 

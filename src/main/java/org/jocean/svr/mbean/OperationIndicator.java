@@ -11,9 +11,12 @@ import javax.management.NotificationBroadcasterSupport;
 import org.springframework.beans.factory.annotation.Value;
 
 import io.micrometer.core.instrument.FunctionCounter;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import rx.Observable;
+import rx.functions.Action0;
+import rx.functions.Action1;
 
 public class OperationIndicator extends NotificationBroadcasterSupport implements OperationIndicatorMXBean {
 
@@ -21,7 +24,7 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
         this._restin = restin;
         this._operationName = operationName;
 
-        FunctionCounter.builder("jocean.svr.operation.call", _tradeCount, cnt -> cnt.doubleValue())
+        FunctionCounter.builder("jocean.svr.operation.call", _totalTradeCount, cnt -> cnt.doubleValue())
             .tags(  "operation",    operationName,
                     "hostregex",    _restin.getHostPattern(),
                     "pathregex",    _restin.getPathPattern(),
@@ -32,6 +35,19 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
                     "port",         Integer.toString(_restin.getPort())
                     )
             .description("The total number of jocean service operation's call")
+            .register(meterRegistry);
+
+        Gauge.builder("jocean.svr.activetrade", _activeTradeCount, cnt -> cnt.doubleValue())
+            .tags(  "operation",    operationName,
+//                    "hostregex",    _restin.getHostPattern(),
+//                    "pathregex",    _restin.getPathPattern(),
+                    "endpoint_type", _restin.getMbeanName(),
+                    "category",     _restin.getCategory()
+//                    "priority",     Integer.toString(_restin.getPriority()),
+//                    "pid",          _restin.getPid(),
+//                    "port",         Integer.toString(_restin.getPort())
+                    )
+            .description("The active number of service trade") // optional
             .register(meterRegistry);
 
         this._durationTimer = Timer.builder("jocean.svr.operation.duration")
@@ -97,7 +113,7 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
 
     @Override
     public int getTradeCount() {
-        return _tradeCount.get();
+        return _totalTradeCount.get();
     }
 
     @Override
@@ -105,8 +121,11 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
         return this._operationName;
     }
 
-    public void incTradeCount() {
-        this._tradeCount.incrementAndGet();
+    public void incTradeCount(final Action1<Action0> onHalt) {
+        this._totalTradeCount.incrementAndGet();
+
+        this._activeTradeCount.incrementAndGet();
+        onHalt.call(()-> this._activeTradeCount.decrementAndGet());
 
         startNotification();
     }
@@ -154,5 +173,6 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
 
     private long _lastNotifyTimestamp = 0;
 
-    private final AtomicInteger _tradeCount = new AtomicInteger(0);
+    private final AtomicInteger _totalTradeCount = new AtomicInteger(0);
+    private final AtomicInteger _activeTradeCount = new AtomicInteger(0);
 }
