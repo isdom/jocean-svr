@@ -1,14 +1,19 @@
 package org.jocean.svr.scheduler;
 
+import java.util.Collections;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import javax.inject.Inject;
+
 import org.jocean.idiom.BeanFinder;
 import org.jocean.svr.TradeScheduler;
 import org.springframework.beans.factory.annotation.Value;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.binder.jvm.ExecutorServiceMetrics;
 import rx.Observable.Transformer;
 import rx.Scheduler;
 import rx.schedulers.Schedulers;
@@ -55,6 +60,10 @@ public class DefaultTradeScheduler implements TradeScheduler {
     void start() {
         this._workers = Executors.newFixedThreadPool(this._workerCount, new DefaultThreadFactory(_threadName));
         this._workerScheduler = Schedulers.from(this._workers);
+
+        if (null != this._meterRegistry) {
+            new ExecutorServiceMetrics(this._workers, this._threadName, Collections.emptyList()).bindTo(_meterRegistry);
+        }
     }
 
     void stop() {
@@ -83,4 +92,7 @@ public class DefaultTradeScheduler implements TradeScheduler {
 
     ExecutorService _workers;
     Scheduler _workerScheduler;
+
+    @Inject
+    MeterRegistry _meterRegistry;
 }
