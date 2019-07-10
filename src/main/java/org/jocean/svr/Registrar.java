@@ -74,6 +74,7 @@ import org.jocean.j2se.unit.UnitAgent;
 import org.jocean.j2se.unit.UnitListener;
 import org.jocean.j2se.util.BeanHolders;
 import org.jocean.netty.util.BufsOutputStream;
+import org.jocean.opentracing.DurationRecorder;
 import org.jocean.opentracing.TracingUtil;
 import org.jocean.svr.FinderUtil.CallerContext;
 import org.jocean.svr.ZipUtil.Unzipper;
@@ -130,11 +131,13 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     static class DefaultTradeContext implements TradeContext {
 
-        DefaultTradeContext(final HttpTrade trade, final Tracer tracer, final Span span, final TradeScheduler ts) {
+        DefaultTradeContext(final HttpTrade trade, final Tracer tracer, final Span span, final TradeScheduler ts, final String operation, final RestinIndicator restin) {
             this._trade = trade;
             this._tracer = tracer;
             this._span = span;
             this._ts = ts;
+            this._restin = restin;
+            this._operation = operation;
         }
 
         @Override
@@ -185,10 +188,20 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return _ts;
         }
 
+        public DurationRecorder durationRecorder() {
+            return new DurationRecorder() {
+                @Override
+                public void record(final long amount, final TimeUnit unit, final String... tags) {
+                    _restin.recordTradePartDuration(_operation, unit.toMillis(amount), tags);
+                }};
+        }
+
         HttpTrade _trade;
         final Tracer _tracer;
         final Span _span;
         final TradeScheduler _ts;
+        final String _operation;
+        final RestinIndicator _restin;
     }
 
     public void start() {
@@ -488,7 +501,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             argctx,
                             tracer,
                             span,
-                            ts);
+                            ts,
+                            operationName,
+                            restin);
                     return doPostInvoke(interceptors, copyCtxOverrideResponse(interceptorCtx, obsResponse));
                 }
             }
@@ -506,10 +521,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final ArgsCtx argsctx,
             final Tracer tracer,
             final Span span,
-            final TradeScheduler ts
+            final TradeScheduler ts,
+            final String operation,
+            final RestinIndicator restin
             ) {
         try {
-            final DefaultTradeContext tctx = new DefaultTradeContext(trade, tracer, span, ts);
+            final DefaultTradeContext tctx = new DefaultTradeContext(trade, tracer, span, ts, operation, restin);
             final Object returnValue = processor.invoke(resource, buildArgs(resource, tctx, argsctx));
             if (null!=returnValue) {
                 final Observable<? extends Object> obsResponse = returnValue2ObsResponse(
@@ -1145,11 +1162,16 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 final Tracer restore = TracingUtil.get();
                 TracingUtil.set(tradeCtx._tracer);
                 final io.opentracing.Scope scope = tradeCtx._tracer.scopeManager().activate(span, false);
+
+                // TBD: restore previous durationRecorder
+                TracingUtil.setDurationRecorder(tradeCtx.durationRecorder());
+
                 return () -> {
                     scope.close();
                     if (tradeCtx._tracer == TracingUtil.get()) {
                         TracingUtil.set(restore);
                     }
+                    TracingUtil.setDurationRecorder(null);
                 };
             }};
     }

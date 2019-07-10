@@ -110,6 +110,10 @@ public class RestinIndicator extends InboundIndicator
         getOrCreateOperationInd(operationName).recordTradeDuration(durationMillis);
     }
 
+    public void recordTradePartDuration(final String operationName, final long durationMillis, final String... tags) {
+        getOrCreateOperationInd(operationName).recordTradePartDuration(durationMillis, tags);
+    }
+
     private OperationIndicator getOrCreateOperationInd(final String operationName) {
         OperationIndicator ind = this._operationInds.get(operationName);
 

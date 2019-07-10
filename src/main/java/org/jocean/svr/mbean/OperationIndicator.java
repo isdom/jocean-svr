@@ -1,6 +1,9 @@
 package org.jocean.svr.mbean;
 
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -23,6 +26,7 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
     OperationIndicator(final RestinIndicator restin, final String operationName, final MeterRegistry meterRegistry) {
         this._restin = restin;
         this._operationName = operationName;
+        this._meterRegistry = meterRegistry;
 
         FunctionCounter.builder("jocean.svr.operation.call", _totalTradeCount, cnt -> cnt.doubleValue())
             .tags(  "operation",    operationName,
@@ -134,6 +138,40 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
         this._durationTimer.record(durationMillis, TimeUnit.MILLISECONDS);
     }
 
+    public void recordTradePartDuration(final long durationMillis, final String... tags) {
+        getOrCreatePartTimer(tags).record(durationMillis, TimeUnit.MILLISECONDS);
+    }
+
+    private Timer getOrCreatePartTimer(final String... tags) {
+        final StringTags keyOfTags = new StringTags(tags);
+
+        Timer timer = this._partTimers.get(keyOfTags);
+
+        if (null == timer) {
+            timer = Timer.builder("jocean.svr.operation.duration.part")
+                .tags(  "operation",    _operationName,
+                        "hostregex",    _restin.getHostPattern(),
+                        "pathregex",    _restin.getPathPattern(),
+                        "endpoint_type", _restin.getMbeanName(),
+                        "category",     _restin.getCategory(),
+                        "priority",     Integer.toString(_restin.getPriority()),
+                        "pid",          _restin.getPid(),
+                        "port",         Integer.toString(_restin.getPort())
+                        )
+                .tags(tags)
+                .description("The part duration of jocean service operation")
+                .publishPercentileHistogram()
+                .maximumExpectedValue(Duration.ofSeconds(30))
+                .register(_meterRegistry);
+
+            final Timer old = this._partTimers.putIfAbsent(keyOfTags, timer);
+            if (null != old) {
+                timer = old;
+            }
+        }
+        return timer;
+    }
+
     private void startNotification() {
         if (_notifying.compareAndSet(false, true)) {
             // get notify's permission
@@ -158,8 +196,46 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
         }
     }
 
+    static class StringTags {
+        StringTags(final String... array) {
+            this._array = array;
+        }
+
+
+        @Override
+        public int hashCode() {
+            final int prime = 31;
+            int result = 1;
+            result = prime * result + Arrays.hashCode(_array);
+            return result;
+        }
+
+
+        @Override
+        public boolean equals(final Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (obj == null) {
+                return false;
+            }
+            if (getClass() != obj.getClass()) {
+                return false;
+            }
+            final StringTags other = (StringTags) obj;
+            if (!Arrays.equals(_array, other._array)) {
+                return false;
+            }
+            return true;
+        }
+
+
+        private final String[] _array;
+    }
+
     private final RestinIndicator _restin;
     private final String _operationName;
+    private final MeterRegistry _meterRegistry;
 
     private final Timer _durationTimer;
 
@@ -175,4 +251,6 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
 
     private final AtomicInteger _totalTradeCount = new AtomicInteger(0);
     private final AtomicInteger _activeTradeCount = new AtomicInteger(0);
+
+    private final ConcurrentMap<StringTags, Timer> _partTimers = new ConcurrentHashMap<>();
 }
