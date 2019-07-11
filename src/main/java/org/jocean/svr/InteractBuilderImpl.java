@@ -77,12 +77,14 @@ public class InteractBuilderImpl implements InteractBuilder {
             final Span span,
             final Observable<Tracer> getTracer,
             final Scheduler scheduler,
-            final DurationRecorder durationRecorder) {
+            final DurationRecorder durationRecorder,
+            final TrafficRecorder tafficRecorder) {
         this._haltable = haltable;
         this._span = span;
         this._getTracer = getTracer;
         this._scheduler = scheduler;
         this._durationRecorder = durationRecorder;
+        this._tafficRecorder = tafficRecorder;
     }
 
     @Override
@@ -258,6 +260,7 @@ public class InteractBuilderImpl implements InteractBuilder {
                                             if (isSpanFinished.compareAndSet(false, true)) {
                                                 span.finish();
                                                 recordDuration(operationRef.get(), System.currentTimeMillis() - startRef.get().longValue());
+                                                recordTraffic(operationRef.get(), initiator.traffic().inboundBytes(), initiator.traffic().outboundBytes());
                                                 LOG.debug("call span {} finish by doOnTerminate", span);
                                             }
                                         })
@@ -265,6 +268,7 @@ public class InteractBuilderImpl implements InteractBuilder {
                                             if (isSpanFinished.compareAndSet(false, true)) {
                                                 span.finish();
                                                 recordDuration(operationRef.get(), System.currentTimeMillis() - startRef.get().longValue());
+                                                recordTraffic(operationRef.get(), initiator.traffic().inboundBytes(), initiator.traffic().outboundBytes());
                                                 LOG.debug("call span {} finish by doOnUnsubscribe", span);
                                             }
                                         })
@@ -300,6 +304,7 @@ public class InteractBuilderImpl implements InteractBuilder {
                                     if (isSpanFinished.compareAndSet(false, true)) {
                                         span.finish();
                                         recordDuration(operationRef.get(), System.currentTimeMillis() - startRef.get().longValue());
+                                        recordTraffic(operationRef.get(), initiator.traffic().inboundBytes(), initiator.traffic().outboundBytes());
                                         LOG.info("call span {} finish by doOnTerminate", span);
                                     }
                                 })
@@ -307,6 +312,7 @@ public class InteractBuilderImpl implements InteractBuilder {
                                     if (isSpanFinished.compareAndSet(false, true)) {
                                         span.finish();
                                         recordDuration(operationRef.get(), System.currentTimeMillis() - startRef.get().longValue());
+                                        recordTraffic(operationRef.get(), initiator.traffic().inboundBytes(), initiator.traffic().outboundBytes());
                                         LOG.info("call span {} finish by doOnUnsubscribe", span);
                                     }
                                 });
@@ -314,6 +320,10 @@ public class InteractBuilderImpl implements InteractBuilder {
                     );
             }
         };
+    }
+
+    private void recordTraffic(final String operation, final long inboundBytes, final long outboundBytes) {
+        this._tafficRecorder.record(inboundBytes, outboundBytes, "operation", operation);
     }
 
     private void recordDuration(final String operation, final long duration) {
@@ -417,5 +427,5 @@ public class InteractBuilderImpl implements InteractBuilder {
     private final Observable<Tracer> _getTracer;
     private final Scheduler _scheduler;
     private final DurationRecorder _durationRecorder;
-
+    private final TrafficRecorder _tafficRecorder;
 }

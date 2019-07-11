@@ -101,9 +101,11 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 
+import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Metrics;
 import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.binder.BaseUnits;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultHttpResponse;
@@ -165,13 +167,15 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         @Override
         public InteractBuilder interactBuilder() {
             return new InteractBuilderImpl(_trade, _span, Observable.just(_tracer), _ts.scheduler(),
-                    (amount, unit, tags) -> recordDuration(amount, unit, tags));
+                    (amount, unit, tags) -> recordDuration(amount, unit, tags),
+                    (inboundBytes, outboundBytes, tags) -> recordTraffic(inboundBytes, outboundBytes, tags));
         }
 
         public InteractBuilder interactBuilderOutofTrade(final Span parentSpan, final int delayInSeconds) {
             return new InteractBuilderImpl(HaltableUtil.delay(delayInSeconds, TimeUnit.SECONDS), parentSpan,
                     Observable.just(_tracer), _ts.scheduler(),
-                    (amount, unit, tags) -> recordDuration(amount, unit, tags));
+                    (amount, unit, tags) -> recordDuration(amount, unit, tags),
+                    (inboundBytes, outboundBytes, tags) -> recordTraffic(inboundBytes, outboundBytes, tags));
         }
 
         @Override
@@ -217,10 +221,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private void recordDuration(final long amount, final TimeUnit unit, final String... tags) {
-        getOrCreatePartTimer(tags).record(amount, unit);
+        getOrCreateDurationTimer(tags).record(amount, unit);
     }
 
-    private Timer getOrCreatePartTimer(final String... tags) {
+    private Timer getOrCreateDurationTimer(final String... tags) {
         final StringTags keyOfTags = new StringTags(tags);
 
         Timer timer = this._durationTimers.get(keyOfTags);
@@ -239,6 +243,55 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
         }
         return timer;
+    }
+
+    public void recordTraffic(final long inboundBytes, final long outboundBytes, final String... tags) {
+        getOrCreateInboundSummary(tags).record(inboundBytes);
+        getOrCreateOutboundSummary(tags).record(outboundBytes);
+    }
+
+    private DistributionSummary getOrCreateInboundSummary(final String... tags) {
+        final StringTags keyOfTags = new StringTags(tags);
+
+        DistributionSummary summary = this._inboundSummarys.get(keyOfTags);
+
+        if (null == summary) {
+            summary = DistributionSummary.builder("jocean.svr.interact.inbound")
+                .tags(tags)
+                .description("The inbound size of jocean service interact") // optional
+                .baseUnit(BaseUnits.BYTES)
+                .publishPercentileHistogram()
+                .maximumExpectedValue( 8 * 1024L)
+                .register(_meterRegistry);
+
+            final DistributionSummary old = this._inboundSummarys.putIfAbsent(keyOfTags, summary);
+            if (null != old) {
+                summary = old;
+            }
+        }
+        return summary;
+    }
+
+    private DistributionSummary getOrCreateOutboundSummary(final String... tags) {
+        final StringTags keyOfTags = new StringTags(tags);
+
+        DistributionSummary summary = this._outboundSummarys.get(keyOfTags);
+
+        if (null == summary) {
+            summary = DistributionSummary.builder("jocean.svr.interact.outbound")
+                .tags(tags)
+                .description("The outbound size of jocean service interact") // optional
+                .baseUnit(BaseUnits.BYTES)
+                .publishPercentileHistogram()
+                .maximumExpectedValue( 8 * 1024L)
+                .register(_meterRegistry);
+
+            final DistributionSummary old = this._outboundSummarys.putIfAbsent(keyOfTags, summary);
+            if (null != old) {
+                summary = old;
+            }
+        }
+        return summary;
     }
 
     public void start() {
@@ -1384,6 +1437,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     MeterRegistry _meterRegistry = Metrics.globalRegistry;
 
     private final ConcurrentMap<StringTags, Timer> _durationTimers = new ConcurrentHashMap<>();
+    private final ConcurrentMap<StringTags, DistributionSummary> _inboundSummarys = new ConcurrentHashMap<>();
+    private final ConcurrentMap<StringTags, DistributionSummary> _outboundSummarys = new ConcurrentHashMap<>();
 
     @Inject
     private BeanFinder _finder;
