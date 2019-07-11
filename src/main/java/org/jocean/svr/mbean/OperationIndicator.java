@@ -28,7 +28,7 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
         this._operationName = operationName;
         this._meterRegistry = meterRegistry;
 
-        FunctionCounter.builder("jocean.svr.operation.call", _totalTradeCount, cnt -> cnt.doubleValue())
+        FunctionCounter.builder("jocean.svr.trade.call", _totalTradeCount, cnt -> cnt.doubleValue())
             .tags(  "operation",    operationName,
                     "hostregex",    _restin.getHostPattern(),
                     "pathregex",    _restin.getPathPattern(),
@@ -38,7 +38,7 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
                     "pid",          _restin.getPid(),
                     "port",         Integer.toString(_restin.getPort())
                     )
-            .description("The total number of jocean service operation's call")
+            .description("The total number of jocean service trade call")
             .register(meterRegistry);
 
         Gauge.builder("jocean.svr.activetrade", _activeTradeCount, cnt -> cnt.doubleValue())
@@ -54,7 +54,7 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
             .description("The active number of service trade") // optional
             .register(meterRegistry);
 
-        this._durationTimer = Timer.builder("jocean.svr.operation.duration")
+        this._durationTimer = Timer.builder("jocean.svr.trade.duration")
             .tags(  "operation",    operationName,
                     "hostregex",    _restin.getHostPattern(),
                     "pathregex",    _restin.getPathPattern(),
@@ -64,7 +64,7 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
                     "pid",          _restin.getPid(),
                     "port",         Integer.toString(_restin.getPort())
                     )
-            .description("The duration of jocean service operation")
+            .description("The duration of jocean service trade")
             .publishPercentileHistogram()
             .maximumExpectedValue(Duration.ofSeconds(30))
             .register(meterRegistry);
@@ -148,7 +148,7 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
         Timer timer = this._partTimers.get(keyOfTags);
 
         if (null == timer) {
-            timer = Timer.builder("jocean.svr.operation.duration.part")
+            timer = Timer.builder("jocean.svr.trade.duration.part")
                 .tags(  "operation",    _operationName,
                         "hostregex",    _restin.getHostPattern(),
                         "pathregex",    _restin.getPathPattern(),
@@ -159,7 +159,7 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
                         "port",         Integer.toString(_restin.getPort())
                         )
                 .tags(tags)
-                .description("The part duration of jocean service operation")
+                .description("The part duration of jocean service trade")
                 .publishPercentileHistogram()
                 .maximumExpectedValue(Duration.ofSeconds(30))
                 .register(_meterRegistry);
