@@ -487,7 +487,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
                 restin.incTradeCount(operationName, trade.onHalt());
 
-                trade.doOnHalt(() -> restin.recordTradeDuration(operationName, System.currentTimeMillis() - trade.startTimeMillis()));
+                trade.doOnHalt(() -> restin.recordTradeInfo(operationName,
+                        System.currentTimeMillis() - trade.startTimeMillis(),
+                        trade.traffic().inboundBytes(), trade.traffic().outboundBytes()));
 
                 span.setOperationName(operationName);
 

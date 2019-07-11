@@ -13,10 +13,12 @@ import javax.management.NotificationBroadcasterSupport;
 import org.jocean.svr.StringTags;
 import org.springframework.beans.factory.annotation.Value;
 
+import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.FunctionCounter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.binder.BaseUnits;
 import rx.Observable;
 import rx.functions.Action0;
 import rx.functions.Action1;
@@ -68,6 +70,38 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
             .publishPercentileHistogram()
             .maximumExpectedValue(Duration.ofSeconds(30))
             .register(meterRegistry);
+
+        this._inboundSummary = DistributionSummary.builder("jocean.svr.trade.inbound")
+                .tags(  "operation",    operationName,
+                        "hostregex",    _restin.getHostPattern(),
+                        "pathregex",    _restin.getPathPattern(),
+                        "endpoint_type", _restin.getMbeanName(),
+                        "category",     _restin.getCategory(),
+                        "priority",     Integer.toString(_restin.getPriority()),
+                        "pid",          _restin.getPid(),
+                        "port",         Integer.toString(_restin.getPort())
+                        )
+                .description("The inbound size of jocean service trade") // optional
+                .baseUnit(BaseUnits.BYTES)
+                .publishPercentileHistogram()
+                .maximumExpectedValue( 8 * 1024L)
+                .register(meterRegistry);
+
+        this._outboundSummary = DistributionSummary.builder("jocean.svr.trade.outbound")
+                .tags(  "operation",    operationName,
+                        "hostregex",    _restin.getHostPattern(),
+                        "pathregex",    _restin.getPathPattern(),
+                        "endpoint_type", _restin.getMbeanName(),
+                        "category",     _restin.getCategory(),
+                        "priority",     Integer.toString(_restin.getPriority()),
+                        "pid",          _restin.getPid(),
+                        "port",         Integer.toString(_restin.getPort())
+                        )
+                .description("The outbound size of jocean service trade") // optional
+                .baseUnit(BaseUnits.BYTES)
+                .publishPercentileHistogram()
+                .maximumExpectedValue( 8 * 1024L)
+                .register(meterRegistry);
     }
 
     @Override
@@ -134,8 +168,10 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
         startNotification();
     }
 
-    public void recordTradeDuration(final long durationMillis) {
+    public void recordTradeInfo(final long durationMillis, final long inboundBytes, final long outboundBytes) {
         this._durationTimer.record(durationMillis, TimeUnit.MILLISECONDS);
+        this._inboundSummary.record(inboundBytes);
+        this._outboundSummary.record(outboundBytes);
     }
 
     public void recordTradePartDuration(final long durationMillis, final String... tags) {
@@ -201,6 +237,8 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
     private final MeterRegistry _meterRegistry;
 
     private final Timer _durationTimer;
+    private final DistributionSummary _inboundSummary;
+    private final DistributionSummary _outboundSummary;
 
     @Value("${notification.type}")
     private final String _notificationType = "property.changed.operation";
