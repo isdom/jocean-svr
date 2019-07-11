@@ -11,6 +11,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Deque;
 import java.util.HashMap;
@@ -188,11 +189,14 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return _ts;
         }
 
-        public DurationRecorder durationRecorder() {
+        public DurationRecorder durationRecorder(final String location) {
             return new DurationRecorder() {
                 @Override
                 public void record(final long amount, final TimeUnit unit, final String... tags) {
-                    _restin.recordTradePartDuration(_operation, unit.toMillis(amount), tags);
+                    final String[] newTags = Arrays.copyOf(tags, tags.length + 2);
+                    newTags[tags.length] = "callee.location";
+                    newTags[tags.length+1] = location;
+                    _restin.recordTradePartDuration(_operation, unit.toMillis(amount), newTags);
                 }};
         }
 
@@ -1158,13 +1162,13 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private Tracing buildTracing(final DefaultTradeContext tradeCtx, final Span span) {
         return new Tracing() {
             @Override
-            public Scope activate() {
+            public Scope activate(final String location) {
                 final Tracer restore = TracingUtil.get();
                 TracingUtil.set(tradeCtx._tracer);
                 final io.opentracing.Scope scope = tradeCtx._tracer.scopeManager().activate(span, false);
 
                 // TBD: restore previous durationRecorder
-                TracingUtil.setDurationRecorder(tradeCtx.durationRecorder());
+                TracingUtil.setDurationRecorder(tradeCtx.durationRecorder(location));
 
                 return () -> {
                     scope.close();
