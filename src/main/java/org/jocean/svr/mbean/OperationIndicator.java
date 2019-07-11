@@ -1,7 +1,6 @@
 package org.jocean.svr.mbean;
 
 import java.time.Duration;
-import java.util.Arrays;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
@@ -11,6 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import javax.management.Notification;
 import javax.management.NotificationBroadcasterSupport;
 
+import org.jocean.svr.StringTags;
 import org.springframework.beans.factory.annotation.Value;
 
 import io.micrometer.core.instrument.FunctionCounter;
@@ -194,43 +194,6 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
             _lastNotifyTimestamp = now;
             _notifying.set(false);
         }
-    }
-
-    static class StringTags {
-        StringTags(final String... array) {
-            this._array = array;
-        }
-
-
-        @Override
-        public int hashCode() {
-            final int prime = 31;
-            int result = 1;
-            result = prime * result + Arrays.hashCode(_array);
-            return result;
-        }
-
-
-        @Override
-        public boolean equals(final Object obj) {
-            if (this == obj) {
-                return true;
-            }
-            if (obj == null) {
-                return false;
-            }
-            if (getClass() != obj.getClass()) {
-                return false;
-            }
-            final StringTags other = (StringTags) obj;
-            if (!Arrays.equals(_array, other._array)) {
-                return false;
-            }
-            return true;
-        }
-
-
-        private final String[] _array;
     }
 
     private final RestinIndicator _restin;

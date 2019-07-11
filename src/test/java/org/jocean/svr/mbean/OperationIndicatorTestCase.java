@@ -3,7 +3,7 @@ package org.jocean.svr.mbean;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 
-import org.jocean.svr.mbean.OperationIndicator.StringTags;
+import org.jocean.svr.StringTags;
 import org.junit.Test;
 
 public class OperationIndicatorTestCase {

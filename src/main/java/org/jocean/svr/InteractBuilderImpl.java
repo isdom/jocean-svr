@@ -5,6 +5,7 @@ import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -28,6 +29,7 @@ import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Haltable;
 import org.jocean.netty.util.BufsOutputStream;
+import org.jocean.opentracing.DurationRecorder;
 import org.jocean.svr.tracing.TraceUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -74,11 +76,13 @@ public class InteractBuilderImpl implements InteractBuilder {
             final Haltable haltable,
             final Span span,
             final Observable<Tracer> getTracer,
-            final Scheduler scheduler) {
+            final Scheduler scheduler,
+            final DurationRecorder durationRecorder) {
         this._haltable = haltable;
         this._span = span;
         this._getTracer = getTracer;
         this._scheduler = scheduler;
+        this._durationRecorder = durationRecorder;
     }
 
     @Override
@@ -237,8 +241,11 @@ public class InteractBuilderImpl implements InteractBuilder {
                                 _haltable.doOnHalt(initiator.closer());
                             }
 
+                            final AtomicReference<String> operationRef = new AtomicReference<>();
+                            final AtomicReference<Long> startRef = new AtomicReference<Long>();
+
                             TraceUtil.logoutmsg(initiator.writeCtrl(), span, "http.req", 1024);
-                            traceAndInjectRequest(initiator.writeCtrl(), tracer, span);
+                            traceAndInjectRequest(initiator.writeCtrl(), tracer, span, operationRef, startRef);
 
                             initiator.writeCtrl().sended().subscribe(sended -> DisposableWrapperUtil.dispose(sended));
 
@@ -250,12 +257,14 @@ public class InteractBuilderImpl implements InteractBuilder {
                                         .doOnTerminate(() -> {
                                             if (isSpanFinished.compareAndSet(false, true)) {
                                                 span.finish();
+                                                recordDuration(operationRef.get(), System.currentTimeMillis() - startRef.get().longValue());
                                                 LOG.debug("call span {} finish by doOnTerminate", span);
                                             }
                                         })
                                         .doOnUnsubscribe(() -> {
                                             if (isSpanFinished.compareAndSet(false, true)) {
                                                 span.finish();
+                                                recordDuration(operationRef.get(), System.currentTimeMillis() - startRef.get().longValue());
                                                 LOG.debug("call span {} finish by doOnUnsubscribe", span);
                                             }
                                         })
@@ -279,20 +288,25 @@ public class InteractBuilderImpl implements InteractBuilder {
                                 _haltable.doOnHalt(initiator.closer());
                             }
 
+                            final AtomicReference<String> operationRef = new AtomicReference<>();
+                            final AtomicReference<Long> startRef = new AtomicReference<Long>();
+
                             TraceUtil.logoutmsg(initiator.writeCtrl(), span, "http.req", 1024);
-                            traceAndInjectRequest(initiator.writeCtrl(), tracer, span);
+                            traceAndInjectRequest(initiator.writeCtrl(), tracer, span, operationRef, startRef);
                             initiator.writeCtrl().sended().subscribe(sended -> DisposableWrapperUtil.dispose(sended));
 
                             final AtomicBoolean isSpanFinished = new AtomicBoolean(false);
                             return defineInteraction(initiator).doOnTerminate(() -> {
                                     if (isSpanFinished.compareAndSet(false, true)) {
                                         span.finish();
+                                        recordDuration(operationRef.get(), System.currentTimeMillis() - startRef.get().longValue());
                                         LOG.info("call span {} finish by doOnTerminate", span);
                                     }
                                 })
                                 .doOnUnsubscribe(() -> {
                                     if (isSpanFinished.compareAndSet(false, true)) {
                                         span.finish();
+                                        recordDuration(operationRef.get(), System.currentTimeMillis() - startRef.get().longValue());
                                         LOG.info("call span {} finish by doOnUnsubscribe", span);
                                     }
                                 });
@@ -300,6 +314,10 @@ public class InteractBuilderImpl implements InteractBuilder {
                     );
             }
         };
+    }
+
+    private void recordDuration(final String operation, final long duration) {
+        this._durationRecorder.record(duration, TimeUnit.MILLISECONDS, "operation", operation);
     }
 
     private Observable<? extends MessageBody> tobody(final Object bean, final ContentEncoder contentEncoder, final Span span) {
@@ -338,7 +356,8 @@ public class InteractBuilderImpl implements InteractBuilder {
         });
     }
 
-    private void traceAndInjectRequest(final WriteCtrl writeCtrl, final Tracer tracer, final Span span) {
+    private void traceAndInjectRequest(final WriteCtrl writeCtrl, final Tracer tracer, final Span span,
+            final AtomicReference<String> operationRef, final AtomicReference<Long> startRef) {
         writeCtrl.sending().subscribe(obj -> {
             if (obj instanceof HttpRequest) {
                 final HttpRequest req = (HttpRequest) obj;
@@ -346,6 +365,9 @@ public class InteractBuilderImpl implements InteractBuilder {
                 final QueryStringDecoder decoder = new QueryStringDecoder(req.uri());
 
                 span.setOperationName(decoder.path());
+                operationRef.set(decoder.path());
+                startRef.set(System.currentTimeMillis());
+
                 for (final Map.Entry<String, List<String>> entry : decoder.parameters().entrySet()) {
                     final String value = entry.getValue().size() == 1 ? entry.getValue().get(0)
                             : (entry.getValue().size() > 1 ? entry.getValue().toString() : "(null)");
@@ -394,4 +416,6 @@ public class InteractBuilderImpl implements InteractBuilder {
     private final Span _span;
     private final Observable<Tracer> _getTracer;
     private final Scheduler _scheduler;
+    private final DurationRecorder _durationRecorder;
+
 }

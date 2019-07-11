@@ -10,6 +10,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -20,6 +21,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
@@ -98,6 +101,9 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.Timer;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultHttpResponse;
@@ -130,7 +136,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     private static final Logger LOG = LoggerFactory.getLogger(Registrar.class);
 
-    static class DefaultTradeContext implements TradeContext {
+    class DefaultTradeContext implements TradeContext {
 
         DefaultTradeContext(final HttpTrade trade, final Tracer tracer, final Span span, final TradeScheduler ts, final String operation, final RestinIndicator restin) {
             this._trade = trade;
@@ -158,12 +164,14 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
         @Override
         public InteractBuilder interactBuilder() {
-            return new InteractBuilderImpl(_trade, _span, Observable.just(_tracer), _ts.scheduler());
+            return new InteractBuilderImpl(_trade, _span, Observable.just(_tracer), _ts.scheduler(),
+                    (amount, unit, tags) -> recordDuration(amount, unit, tags));
         }
 
         public InteractBuilder interactBuilderOutofTrade(final Span parentSpan, final int delayInSeconds) {
             return new InteractBuilderImpl(HaltableUtil.delay(delayInSeconds, TimeUnit.SECONDS), parentSpan,
-                    Observable.just(_tracer), _ts.scheduler());
+                    Observable.just(_tracer), _ts.scheduler(),
+                    (amount, unit, tags) -> recordDuration(amount, unit, tags));
         }
 
         @Override
@@ -206,6 +214,31 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         final TradeScheduler _ts;
         final String _operation;
         final RestinIndicator _restin;
+    }
+
+    private void recordDuration(final long amount, final TimeUnit unit, final String... tags) {
+        getOrCreatePartTimer(tags).record(amount, unit);
+    }
+
+    private Timer getOrCreatePartTimer(final String... tags) {
+        final StringTags keyOfTags = new StringTags(tags);
+
+        Timer timer = this._durationTimers.get(keyOfTags);
+
+        if (null == timer) {
+            timer = Timer.builder("jocean.svr.interact.duration")
+                .tags(tags)
+                .description("The duration of jocean interact")
+                .publishPercentileHistogram()
+                .maximumExpectedValue(Duration.ofSeconds(30))
+                .register(_meterRegistry);
+
+            final Timer old = this._durationTimers.putIfAbsent(keyOfTags, timer);
+            if (null != old) {
+                timer = old;
+            }
+        }
+        return timer;
     }
 
     public void start() {
@@ -1344,6 +1377,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     @Inject
     @Named("pkg2interceptors")
     Map<String, Class<? extends MethodInterceptor>[]> _pkg2interceptors;
+
+    @Inject
+    MeterRegistry _meterRegistry = Metrics.globalRegistry;
+
+    private final ConcurrentMap<StringTags, Timer> _durationTimers = new ConcurrentHashMap<>();
 
     @Inject
     private BeanFinder _finder;
