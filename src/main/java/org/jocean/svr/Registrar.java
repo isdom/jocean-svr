@@ -95,6 +95,9 @@ import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.stereotype.Controller;
 
+import com.alibaba.csp.sentinel.AsyncEntry;
+import com.alibaba.csp.sentinel.SphU;
+import com.alibaba.csp.sentinel.slots.block.BlockException;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
@@ -545,6 +548,14 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         trade.traffic().inboundBytes(), trade.traffic().outboundBytes()));
 
                 span.setOperationName(operationName);
+
+                try {
+                    // First we call an asynchronous resource.
+                    final AsyncEntry entry = SphU.asyncEntry(operationName);
+                    trade.doOnHalt(() -> entry.exit());
+                } catch (final BlockException e) {
+                    return Observable.error(e);
+                }
 
                 final Deque<MethodInterceptor> interceptors = new LinkedList<>();
                 final MethodInterceptor.Context interceptorCtx = new MethodInterceptor.Context() {
