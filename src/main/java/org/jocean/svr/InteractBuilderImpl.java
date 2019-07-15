@@ -235,8 +235,9 @@ public class InteractBuilderImpl implements InteractBuilder {
                 return this;
             }
 
-            private Observable<FullMessage<HttpResponse>> defineInteraction(final HttpInitiator initiator) {
-                return initiator.defineInteraction(_obsreqRef.get().flatMap(hookSentinel(initiator)))
+            private Observable<FullMessage<HttpResponse>> defineInteraction(final HttpInitiator initiator,
+                    final AtomicReference<AsyncEntry> entryRef) {
+                return initiator.defineInteraction(_obsreqRef.get().flatMap(hookSentinel(initiator, entryRef)))
                         .doOnNext(TraceUtil.hookhttpresp(span))
                         .compose(TraceUtil.logbody(span, "http.resp", 1024));
             }
@@ -259,14 +260,17 @@ public class InteractBuilderImpl implements InteractBuilder {
 
                             initiator.writeCtrl().sended().subscribe(sended -> DisposableWrapperUtil.dispose(sended));
 
-
+                            final AtomicReference<AsyncEntry> entryRef = new AtomicReference<>();
                             final AtomicBoolean isSpanFinished = new AtomicBoolean(false);
-                            return defineInteraction(initiator).flatMap(MessageUtil.fullmsg2body())
+                            return defineInteraction(initiator, entryRef).flatMap(MessageUtil.fullmsg2body())
                                         .compose(MessageUtil.body2bean(decoder, type))
                                         .doOnNext(TraceUtil.setTag4bean(span, "resp.", "record.respbean.error"))
                                         .doOnTerminate(() -> {
                                             if (isSpanFinished.compareAndSet(false, true)) {
                                                 span.finish();
+                                                if (null != entryRef.get()) {
+                                                    entryRef.get().exit();
+                                                }
                                                 recordDuration(operationRef.get(), System.currentTimeMillis() - startRef.get().longValue());
                                                 recordTraffic(operationRef.get(), initiator.traffic().inboundBytes(), initiator.traffic().outboundBytes());
                                                 LOG.debug("call span {} finish by doOnTerminate", span);
@@ -275,6 +279,9 @@ public class InteractBuilderImpl implements InteractBuilder {
                                         .doOnUnsubscribe(() -> {
                                             if (isSpanFinished.compareAndSet(false, true)) {
                                                 span.finish();
+                                                if (null != entryRef.get()) {
+                                                    entryRef.get().exit();
+                                                }
                                                 recordDuration(operationRef.get(), System.currentTimeMillis() - startRef.get().longValue());
                                                 recordTraffic(operationRef.get(), initiator.traffic().inboundBytes(), initiator.traffic().outboundBytes());
                                                 LOG.debug("call span {} finish by doOnUnsubscribe", span);
@@ -307,10 +314,14 @@ public class InteractBuilderImpl implements InteractBuilder {
                             traceAndInjectRequest(initiator.writeCtrl(), tracer, span, operationRef, startRef);
                             initiator.writeCtrl().sended().subscribe(sended -> DisposableWrapperUtil.dispose(sended));
 
+                            final AtomicReference<AsyncEntry> entryRef = new AtomicReference<>();
                             final AtomicBoolean isSpanFinished = new AtomicBoolean(false);
-                            return defineInteraction(initiator).doOnTerminate(() -> {
+                            return defineInteraction(initiator, entryRef).doOnTerminate(() -> {
                                     if (isSpanFinished.compareAndSet(false, true)) {
                                         span.finish();
+                                        if (null != entryRef.get()) {
+                                            entryRef.get().exit();
+                                        }
                                         recordDuration(operationRef.get(), System.currentTimeMillis() - startRef.get().longValue());
                                         recordTraffic(operationRef.get(), initiator.traffic().inboundBytes(), initiator.traffic().outboundBytes());
                                         LOG.info("call span {} finish by doOnTerminate", span);
@@ -319,6 +330,9 @@ public class InteractBuilderImpl implements InteractBuilder {
                                 .doOnUnsubscribe(() -> {
                                     if (isSpanFinished.compareAndSet(false, true)) {
                                         span.finish();
+                                        if (null != entryRef.get()) {
+                                            entryRef.get().exit();
+                                        }
                                         recordDuration(operationRef.get(), System.currentTimeMillis() - startRef.get().longValue());
                                         recordTraffic(operationRef.get(), initiator.traffic().inboundBytes(), initiator.traffic().outboundBytes());
                                         LOG.info("call span {} finish by doOnUnsubscribe", span);
@@ -398,7 +412,8 @@ public class InteractBuilderImpl implements InteractBuilder {
         });
     }
 
-    private Func1<? super Object, ? extends Observable<? extends Object>> hookSentinel(final HttpInitiator initiator) {
+    private Func1<? super Object, ? extends Observable<? extends Object>> hookSentinel(final HttpInitiator initiator,
+            final AtomicReference<AsyncEntry> entryRef) {
         return obj -> {
                     if (obj instanceof HttpRequest) {
                         final QueryStringDecoder decoder = new QueryStringDecoder(((HttpRequest)obj).uri());
@@ -408,8 +423,7 @@ public class InteractBuilderImpl implements InteractBuilder {
                         final Runnable startAsyncEntry = () -> {
                             try {
                                 // First we call an asynchronous resource.
-                                final AsyncEntry entry = SphU.asyncEntry(decoder.path());
-                                initiator.doOnHalt(() -> entry.exit());
+                                entryRef.set(SphU.asyncEntry(decoder.path()));
                             } catch (final Exception e) {
                                 exceptionRef.set(e);
                             }
