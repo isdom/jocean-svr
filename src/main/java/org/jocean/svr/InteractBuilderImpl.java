@@ -401,29 +401,27 @@ public class InteractBuilderImpl implements InteractBuilder {
     private Func1<? super Object, ? extends Observable<? extends Object>> hookSentinel(final HttpInitiator initiator) {
         return obj -> {
                     if (obj instanceof HttpRequest) {
-                        if (null != _asyncContext) {
-                            final QueryStringDecoder decoder = new QueryStringDecoder(((HttpRequest)obj).uri());
+                        final QueryStringDecoder decoder = new QueryStringDecoder(((HttpRequest)obj).uri());
 
-                            final AtomicReference<Exception> exceptionRef = new AtomicReference<>(null);
+                        final AtomicReference<Exception> exceptionRef = new AtomicReference<>(null);
 
-                            final Runnable startAsyncEntry = () -> {
-                                try {
-                                    // First we call an asynchronous resource.
-                                    final AsyncEntry entry = SphU.asyncEntry(decoder.path());
-                                    initiator.doOnHalt(() -> entry.exit());
-                                } catch (final Exception e) {
-                                    exceptionRef.set(e);
-                                }
-                            };
-    //                        if (null != _asyncContext) {
-                                ContextUtil.runOnContext(_asyncContext, startAsyncEntry);
-    //                        }
-    //                        else {
-    //                            startAsyncEntry.run();
-    //                        }
-                            if (null != exceptionRef.get()) {
-                                return Observable.error(exceptionRef.get());
+                        final Runnable startAsyncEntry = () -> {
+                            try {
+                                // First we call an asynchronous resource.
+                                final AsyncEntry entry = SphU.asyncEntry(decoder.path());
+                                initiator.doOnHalt(() -> entry.exit());
+                            } catch (final Exception e) {
+                                exceptionRef.set(e);
                             }
+                        };
+//                        if (null != _asyncContext) {
+                            ContextUtil.runOnContext(_asyncContext, startAsyncEntry);
+//                        }
+//                        else {
+//                            startAsyncEntry.run();
+//                        }
+                        if (null != exceptionRef.get()) {
+                            return Observable.error(exceptionRef.get());
                         }
                     }
                     return Observable.just(obj);
