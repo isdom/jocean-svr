@@ -404,7 +404,8 @@ public class InteractBuilderImpl implements InteractBuilder {
                         final QueryStringDecoder decoder = new QueryStringDecoder(((HttpRequest)obj).uri());
 
                         final AtomicReference<Exception> exceptionRef = new AtomicReference<>(null);
-                        ContextUtil.runOnContext(_asyncContext, () -> {
+
+                        final Runnable startAsyncEntry = () -> {
                             try {
                                 // First we call an asynchronous resource.
                                 final AsyncEntry entry = SphU.asyncEntry(decoder.path());
@@ -412,7 +413,13 @@ public class InteractBuilderImpl implements InteractBuilder {
                             } catch (final Exception e) {
                                 exceptionRef.set(e);
                             }
-                        });
+                        };
+                        if (null != _asyncContext) {
+                            ContextUtil.runOnContext(_asyncContext, startAsyncEntry);
+                        }
+                        else {
+                            startAsyncEntry.run();
+                        }
                         if (null != exceptionRef.get()) {
                             return Observable.error(exceptionRef.get());
                         }

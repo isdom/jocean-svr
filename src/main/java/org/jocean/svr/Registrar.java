@@ -180,7 +180,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         public InteractBuilder interactBuilderOutofTrade(final Span parentSpan, final int delayInSeconds) {
             return new InteractBuilderImpl(HaltableUtil.delay(delayInSeconds, TimeUnit.SECONDS), parentSpan,
                     Observable.just(_tracer), _ts.scheduler(),
-                    this._asyncEntry.getAsyncContext(),
+                    null,   // 分支产生的 interact 暂不作为 trade 的子 interact
+//                    this._asyncEntry.getAsyncContext(),
                     (amount, unit, tags) -> recordDuration(amount, unit, tags),
                     (inboundBytes, outboundBytes, tags) -> recordTraffic(inboundBytes, outboundBytes, tags));
         }
