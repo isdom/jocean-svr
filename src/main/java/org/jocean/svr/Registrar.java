@@ -143,13 +143,15 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     class DefaultTradeContext implements TradeContext {
 
-        DefaultTradeContext(final HttpTrade trade, final Tracer tracer, final Span span, final TradeScheduler ts, final String operation, final RestinIndicator restin) {
+        DefaultTradeContext(final HttpTrade trade, final Tracer tracer, final Span span, final TradeScheduler ts,
+                final String operation, final RestinIndicator restin, final AsyncEntry asyncEntry) {
             this._trade = trade;
             this._tracer = tracer;
             this._span = span;
             this._ts = ts;
             this._restin = restin;
             this._operation = operation;
+            this._asyncEntry = asyncEntry;
         }
 
         @Override
@@ -170,6 +172,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         @Override
         public InteractBuilder interactBuilder() {
             return new InteractBuilderImpl(_trade, _span, Observable.just(_tracer), _ts.scheduler(),
+                    this._asyncEntry.getAsyncContext(),
                     (amount, unit, tags) -> recordDuration(amount, unit, tags),
                     (inboundBytes, outboundBytes, tags) -> recordTraffic(inboundBytes, outboundBytes, tags));
         }
@@ -177,6 +180,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         public InteractBuilder interactBuilderOutofTrade(final Span parentSpan, final int delayInSeconds) {
             return new InteractBuilderImpl(HaltableUtil.delay(delayInSeconds, TimeUnit.SECONDS), parentSpan,
                     Observable.just(_tracer), _ts.scheduler(),
+                    this._asyncEntry.getAsyncContext(),
                     (amount, unit, tags) -> recordDuration(amount, unit, tags),
                     (inboundBytes, outboundBytes, tags) -> recordTraffic(inboundBytes, outboundBytes, tags));
         }
@@ -221,6 +225,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         final TradeScheduler _ts;
         final String _operation;
         final RestinIndicator _restin;
+        final AsyncEntry _asyncEntry;
     }
 
     private void recordDuration(final long amount, final TimeUnit unit, final String... tags) {
@@ -549,13 +554,16 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
                 span.setOperationName(operationName);
 
+                AsyncEntry asyncEntry = null;
                 try {
                     // First we call an asynchronous resource.
                     final AsyncEntry entry = SphU.asyncEntry(operationName);
                     trade.doOnHalt(() -> entry.exit());
+                    asyncEntry = entry;
                 } catch (final BlockException e) {
                     return Observable.error(e);
                 }
+                final DefaultTradeContext tctx = new DefaultTradeContext(trade, tracer, span, ts, operationName, restin, asyncEntry);
 
                 final Deque<MethodInterceptor> interceptors = new LinkedList<>();
                 final MethodInterceptor.Context interceptorCtx = new MethodInterceptor.Context() {
@@ -597,16 +605,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             pair.second,
                             interceptors.toArray(new MethodInterceptor[0]));
                     final Observable<? extends Object> obsResponse = invokeProcessor(
-                            trade,
+                            tctx,
                             request,
                             resource,
                             processor,
-                            argctx,
-                            tracer,
-                            span,
-                            ts,
-                            operationName,
-                            restin);
+                            argctx
+                            );
                     return doPostInvoke(interceptors, copyCtxOverrideResponse(interceptorCtx, obsResponse));
                 }
             }
@@ -617,19 +621,13 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Observable<? extends Object> invokeProcessor(
-            final HttpTrade trade,
+            final DefaultTradeContext tctx,
             final HttpRequest request,
             final Object resource,
             final Method processor,
-            final ArgsCtx argsctx,
-            final Tracer tracer,
-            final Span span,
-            final TradeScheduler ts,
-            final String operation,
-            final RestinIndicator restin
+            final ArgsCtx argsctx
             ) {
         try {
-            final DefaultTradeContext tctx = new DefaultTradeContext(trade, tracer, span, ts, operation, restin);
             final Object returnValue = processor.invoke(resource, buildArgs(resource, tctx, argsctx));
             if (null!=returnValue) {
                 final Observable<? extends Object> obsResponse = returnValue2ObsResponse(

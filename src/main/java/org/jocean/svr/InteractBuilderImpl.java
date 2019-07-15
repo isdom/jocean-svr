@@ -34,6 +34,11 @@ import org.jocean.svr.tracing.TraceUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.alibaba.csp.sentinel.AsyncEntry;
+import com.alibaba.csp.sentinel.SphU;
+import com.alibaba.csp.sentinel.context.Context;
+import com.alibaba.csp.sentinel.context.ContextUtil;
+
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.EmptyHttpHeaders;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -53,6 +58,7 @@ import rx.Observable;
 import rx.Observable.Transformer;
 import rx.Scheduler;
 import rx.functions.Action1;
+import rx.functions.Func1;
 
 public class InteractBuilderImpl implements InteractBuilder {
 
@@ -77,6 +83,7 @@ public class InteractBuilderImpl implements InteractBuilder {
             final Span span,
             final Observable<Tracer> getTracer,
             final Scheduler scheduler,
+            final Context asyncContext,
             final DurationRecorder durationRecorder,
             final TrafficRecorder tafficRecorder) {
         this._haltable = haltable;
@@ -85,6 +92,7 @@ public class InteractBuilderImpl implements InteractBuilder {
         this._scheduler = scheduler;
         this._durationRecorder = durationRecorder;
         this._tafficRecorder = tafficRecorder;
+        this._asyncContext = asyncContext;
     }
 
     @Override
@@ -228,7 +236,7 @@ public class InteractBuilderImpl implements InteractBuilder {
             }
 
             private Observable<FullMessage<HttpResponse>> defineInteraction(final HttpInitiator initiator) {
-                return initiator.defineInteraction(_obsreqRef.get())
+                return initiator.defineInteraction(_obsreqRef.get().flatMap(hookSentinel(initiator)))
                         .doOnNext(TraceUtil.hookhttpresp(span))
                         .compose(TraceUtil.logbody(span, "http.resp", 1024));
             }
@@ -390,6 +398,29 @@ public class InteractBuilderImpl implements InteractBuilder {
         });
     }
 
+    private Func1<? super Object, ? extends Observable<? extends Object>> hookSentinel(final HttpInitiator initiator) {
+        return obj -> {
+                    if (obj instanceof HttpRequest) {
+                        final QueryStringDecoder decoder = new QueryStringDecoder(((HttpRequest)obj).uri());
+
+                        final AtomicReference<Exception> exceptionRef = new AtomicReference<>(null);
+                        ContextUtil.runOnContext(_asyncContext, () -> {
+                            try {
+                                // First we call an asynchronous resource.
+                                final AsyncEntry entry = SphU.asyncEntry(decoder.path());
+                                initiator.doOnHalt(() -> entry.exit());
+                            } catch (final Exception e) {
+                                exceptionRef.set(e);
+                            }
+                        });
+                        if (null != exceptionRef.get()) {
+                            return Observable.error(exceptionRef.get());
+                        }
+                    }
+                    return Observable.just(obj);
+                };
+    }
+
     public static Transformer<Object, Object> addBody(final Observable<? extends MessageBody> obsbody) {
         return msg -> {
                 return msg.concatMap(obj -> {
@@ -426,6 +457,7 @@ public class InteractBuilderImpl implements InteractBuilder {
     private final Span _span;
     private final Observable<Tracer> _getTracer;
     private final Scheduler _scheduler;
+    private final Context _asyncContext;
     private final DurationRecorder _durationRecorder;
     private final TrafficRecorder _tafficRecorder;
 }
