@@ -24,9 +24,12 @@ import io.netty.handler.codec.TooLongFrameException;
 import io.netty.handler.codec.http.DefaultHttpHeaders;
 import io.netty.handler.codec.http.HttpConstants;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpHeaders;
+import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder.ErrorDataDecoderException;
 import io.netty.util.ByteProcessor;
 import io.netty.util.internal.AppendableCharSequence;
+import io.netty.util.internal.StringUtil;
 import rx.Observable;
 import rx.Observable.Transformer;
 import rx.functions.Func0;
@@ -116,6 +119,123 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
 
     @SuppressWarnings("unused")
     private static final Logger LOG = LoggerFactory.getLogger(MultipartTransformer.class);
+
+    public static String getBoundary(final String contentType) {
+        final String[] dataBoundary = getMultipartDataBoundary(contentType);
+
+        if (dataBoundary != null) {
+            return dataBoundary[0];
+        } else {
+            return null;
+        }
+    }
+
+    /**
+     * Check from the request ContentType if this request is a Multipart request.
+     * @return an array of String if multipartDataBoundary exists with the multipartDataBoundary
+     * as first element, charset if any as second (missing if not set), else null
+     */
+    protected static String[] getMultipartDataBoundary(final String contentType) {
+        // Check if Post using "multipart/form-data; boundary=--89421926422648 [; charset=xxx]"
+        final String[] headerContentType = splitHeaderContentType(contentType);
+        final String multiPartHeader = HttpHeaderValues.MULTIPART_FORM_DATA.toString();
+        if (headerContentType[0].regionMatches(true, 0, multiPartHeader, 0 , multiPartHeader.length())) {
+            int mrank;
+            int crank;
+            final String boundaryHeader = HttpHeaderValues.BOUNDARY.toString();
+            if (headerContentType[1].regionMatches(true, 0, boundaryHeader, 0, boundaryHeader.length())) {
+                mrank = 1;
+                crank = 2;
+            } else if (headerContentType[2].regionMatches(true, 0, boundaryHeader, 0, boundaryHeader.length())) {
+                mrank = 2;
+                crank = 1;
+            } else {
+                return null;
+            }
+            String boundary = StringUtil.substringAfter(headerContentType[mrank], '=');
+            if (boundary == null) {
+                throw new ErrorDataDecoderException("Needs a boundary value");
+            }
+            if (boundary.charAt(0) == '"') {
+                final String bound = boundary.trim();
+                final int index = bound.length() - 1;
+                if (bound.charAt(index) == '"') {
+                    boundary = bound.substring(1, index);
+                }
+            }
+            final String charsetHeader = HttpHeaderValues.CHARSET.toString();
+            if (headerContentType[crank].regionMatches(true, 0, charsetHeader, 0, charsetHeader.length())) {
+                final String charset = StringUtil.substringAfter(headerContentType[crank], '=');
+                if (charset != null) {
+                    return new String[] {"--" + boundary, charset};
+                }
+            }
+            return new String[] {"--" + boundary};
+        }
+        return null;
+    }
+
+    /**
+     * Split the very first line (Content-Type value) in 3 Strings
+     *
+     * @return the array of 3 Strings
+     */
+    private static String[] splitHeaderContentType(final String sb) {
+        int aStart;
+        int aEnd;
+        int bStart;
+        int bEnd;
+        int cStart;
+        int cEnd;
+        aStart = findNonWhitespace(sb, 0);
+        aEnd =  sb.indexOf(';');
+        if (aEnd == -1) {
+            return new String[] { sb, "", "" };
+        }
+        bStart = findNonWhitespace(sb, aEnd + 1);
+        if (sb.charAt(aEnd - 1) == ' ') {
+            aEnd--;
+        }
+        bEnd =  sb.indexOf(';', bStart);
+        if (bEnd == -1) {
+            bEnd = findEndOfString(sb);
+            return new String[] { sb.substring(aStart, aEnd), sb.substring(bStart, bEnd), "" };
+        }
+        cStart = findNonWhitespace(sb, bEnd + 1);
+        if (sb.charAt(bEnd - 1) == ' ') {
+            bEnd--;
+        }
+        cEnd = findEndOfString(sb);
+        return new String[] { sb.substring(aStart, aEnd), sb.substring(bStart, bEnd), sb.substring(cStart, cEnd) };
+    }
+
+    /**
+     * Find the first non whitespace
+     * @return the rank of the first non whitespace
+     */
+    static int findNonWhitespace(final String sb, final int offset) {
+        int result;
+        for (result = offset; result < sb.length(); result ++) {
+            if (!Character.isWhitespace(sb.charAt(result))) {
+                break;
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Find the end of String
+     * @return the rank of the end of string
+     */
+    static int findEndOfString(final String sb) {
+        int result;
+        for (result = sb.length(); result > 0; result --) {
+            if (!Character.isWhitespace(sb.charAt(result - 1))) {
+                break;
+            }
+        }
+        return result;
+    }
 
     public MultipartTransformer(final Func0<DisposableWrapper<? extends ByteBuf>> allocator, final String multipartDataBoundary) {
         this(allocator, multipartDataBoundary, 8192, 128);
