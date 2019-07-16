@@ -10,6 +10,7 @@ import java.util.List;
 import org.jocean.http.ByteBufSlice;
 import org.jocean.http.MessageUtil;
 import org.jocean.idiom.DisposableWrapper;
+import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Stepable;
 import org.jocean.netty.util.BufsInputStream;
@@ -19,9 +20,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import rx.Observable;
 import rx.Observable.Transformer;
 import rx.Subscriber;
+import rx.functions.Action1;
 import rx.functions.Action2;
 import rx.functions.Func0;
 import rx.functions.Func2;
@@ -31,6 +34,20 @@ public class ByteBufSliceUtil {
 
     private ByteBufSliceUtil() {
         throw new IllegalStateException("No instances!");
+    }
+
+    public static ByteBufSlice wrappedSlice(final byte[] array) {
+        final List<DisposableWrapper<ByteBuf>> element =
+                Arrays.asList(DisposableWrapperUtil.wrap(Unpooled.wrappedBuffer(array), (Action1<ByteBuf>)null));
+        return new ByteBufSlice() {
+
+            @Override
+            public void step() {}
+
+            @Override
+            public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                return element;
+            }};
     }
 
     public static <T extends Stepable<?>> Transformer<T, ByteBufSlice> stepable2bbs(
