@@ -128,6 +128,7 @@ import io.netty.handler.codec.http.QueryStringDecoder;
 import io.opentracing.References;
 import io.opentracing.Span;
 import io.opentracing.Tracer;
+import io.opentracing.tag.Tags;
 import rx.Completable;
 import rx.Observable;
 import rx.Scheduler;
@@ -1257,13 +1258,19 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         };
     }
 
-    private Tracing buildTracing(final DefaultTradeContext tradeCtx, final Span span) {
+    private Tracing buildTracing(final DefaultTradeContext tradeCtx, final Span parentSpan) {
         return new Tracing() {
             @Override
             public Scope activate(final String location) {
                 final Tracer restore = TracingUtil.get();
                 TracingUtil.set(tradeCtx._tracer);
-                final io.opentracing.Scope scope = tradeCtx._tracer.scopeManager().activate(span, false);
+                final Span span = tradeCtx._tracer.buildSpan(location)
+                        .ignoreActiveSpan()
+                        .withTag(Tags.COMPONENT.getKey(), "jocean-svr")
+                        .asChildOf(parentSpan)
+                        .start();
+
+                final io.opentracing.Scope scope = tradeCtx._tracer.scopeManager().activate(span, true);
 
                 // TBD: restore previous durationRecorder
                 TracingUtil.setDurationRecorder(tradeCtx.durationRecorder(location));
