@@ -84,6 +84,7 @@ import org.jocean.svr.FinderUtil.CallerContext;
 import org.jocean.svr.ZipUtil.Unzipper;
 import org.jocean.svr.ZipUtil.ZipBuilder;
 import org.jocean.svr.ZipUtil.Zipper;
+import org.jocean.svr.annotation.PathSample;
 import org.jocean.svr.mbean.RestinIndicator;
 import org.jocean.svr.tracing.TraceUtil;
 import org.slf4j.Logger;
@@ -390,7 +391,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
         for (final Method m : restMethods) {
             final String methodPath = SvrUtil.genMethodPathOf(rootPath, m);
-            if (Regexs.isMatched(this._pathPattern, methodPath)) {
+            final PathSample mps = m.getAnnotation(PathSample.class);
+            final boolean matched = Regexs.isMatched(this._pathPattern, methodPath)
+                    || (null != mps && Regexs.isMatched(this._pathPattern, mps.value()));
+            if (matched) {
                 final PathMatcher pathMatcher = PathMatcher.create(methodPath);
                 if (null != pathMatcher) {
                     // Path !WITH! parameters
