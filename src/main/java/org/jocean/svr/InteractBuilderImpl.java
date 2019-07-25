@@ -2,7 +2,6 @@ package org.jocean.svr;
 
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -106,7 +105,7 @@ public class InteractBuilderImpl implements InteractBuilder {
         final AtomicReference<Observable<Object>> _obsreqRef = new AtomicReference<>(
                 MessageUtil.fullRequestWithoutBody(HttpVersion.HTTP_1_1, HttpMethod.GET));
 
-        final List<String> _nvs = new ArrayList<>();
+//        final List<String> _nvs = new ArrayList<>();
         final AtomicReference<URI> _uriRef = new AtomicReference<>();
         final Span span = tracer.buildSpan("interact")
                 .ignoreActiveSpan()
@@ -121,11 +120,11 @@ public class InteractBuilderImpl implements InteractBuilder {
                 _obsreqRef.set(_obsreqRef.get().doOnNext(action));
             }
 
-            private void addQueryParams() {
-                if (!_nvs.isEmpty()) {
-                    updateObsRequest(MessageUtil.addQueryParam(_nvs.toArray(new String[0])));
-                }
-            }
+//            private void addQueryParams() {
+//                if (!_nvs.isEmpty()) {
+//                    updateObsRequest(MessageUtil.addQueryParam(_nvs.toArray(new String[0])));
+//                }
+//            }
 
             private void extractUriWithHost(final Object...reqbeans) {
                 if (null == _uriRef.get()) {
@@ -196,8 +195,9 @@ public class InteractBuilderImpl implements InteractBuilder {
 
             @Override
             public Interact paramAsQuery(final String name, final String value) {
-                _nvs.add(name);
-                _nvs.add(value);
+//                _nvs.add(name);
+//                _nvs.add(value);
+                updateObsRequest(MessageUtil.addQueryParam(name, value));
                 return this;
             }
 
@@ -245,7 +245,7 @@ public class InteractBuilderImpl implements InteractBuilder {
             @Override
             public <T> Observable<T> responseAs(final ContentDecoder decoder, final Class<T> type) {
                 checkAddr();
-                addQueryParams();
+//                addQueryParams();
                 return addSSLFeatureIfNeed(_initiatorBuilder).build()
                         .flatMap(initiator -> {
                             if ( null != _haltable) {
@@ -300,7 +300,7 @@ public class InteractBuilderImpl implements InteractBuilder {
             @Override
             public Observable<FullMessage<HttpResponse>> response() {
                 checkAddr();
-                addQueryParams();
+//                addQueryParams();
                 return addSSLFeatureIfNeed(_initiatorBuilder).build()
                         .flatMap(initiator -> {
                             if ( null != _haltable) {
