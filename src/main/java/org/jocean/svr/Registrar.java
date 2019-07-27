@@ -49,6 +49,7 @@ import org.jocean.http.ContentDecoder;
 import org.jocean.http.ContentEncoder;
 import org.jocean.http.ContentUtil;
 import org.jocean.http.FullMessage;
+import org.jocean.http.HttpSlice;
 import org.jocean.http.InteractBuilder;
 import org.jocean.http.MessageBody;
 import org.jocean.http.MessageUtil;
@@ -62,6 +63,7 @@ import org.jocean.idiom.BeanHolder;
 import org.jocean.idiom.BeanHolderAware;
 import org.jocean.idiom.Beans;
 import org.jocean.idiom.DisposableWrapper;
+import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Haltable;
 import org.jocean.idiom.HaltableUtil;
@@ -112,6 +114,7 @@ import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.binder.BaseUnits;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import io.netty.handler.codec.http.DefaultHttpContent;
 import io.netty.handler.codec.http.DefaultHttpResponse;
 import io.netty.handler.codec.http.EmptyHttpHeaders;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -135,6 +138,7 @@ import rx.Observable;
 import rx.Scheduler;
 import rx.functions.Actions;
 import rx.functions.Func0;
+import rx.functions.Func1;
 
 /**
  * @author isdom
@@ -1075,7 +1079,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 } else {
                     HttpUtil.setTransferEncodingChunked(resp, true);
                 }
-                return Observable.<Object>just(resp).concatWith(body.content());
+                return Observable.<Object>just(resp).concatWith(body.content().map(bbs2hs()));
             } else {
                 LOG.warn("NOT support multipart body, ignore body {}", body);
                 return Observable.empty();
@@ -1089,6 +1093,25 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 return Observable.just(resp, LastHttpContent.EMPTY_LAST_CONTENT);
             }
         }));
+    }
+
+    private Func1<ByteBufSlice, HttpSlice> bbs2hs() {
+        return bbs -> {
+            final List<DisposableWrapper<? extends HttpObject>> dwhs = new ArrayList<>();
+            for (final DisposableWrapper<? extends ByteBuf> dwb : bbs.element()) {
+                dwhs.add(DisposableWrapperUtil.wrap(new DefaultHttpContent(dwb.unwrap()), dwb));
+            }
+            return new HttpSlice() {
+                @Override
+                public void step() {
+                    bbs.step();
+                }
+
+                @Override
+                public Iterable<? extends DisposableWrapper<? extends HttpObject>> element() {
+                    return dwhs;
+                }};
+        };
     }
 
     private void fillHeaders(final Object obj, final HttpResponse resp) {
