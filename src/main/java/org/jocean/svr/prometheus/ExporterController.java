@@ -58,12 +58,15 @@ public class ExporterController {
             @Override
             public Action2<Stepable<Enumeration<Collector.MetricFamilySamples>>, OutputStream> output() {
                 return (stepable, out) -> {
+                    final long start = System.currentTimeMillis();
                     try(final OutputStreamWriter osw = new OutputStreamWriter(out)) {
                         TextFormat.write004(osw, stepable.element());
                         osw.flush();
                     } catch (final IOException e) {
 //                        // TODO Auto-generated catch block
 //                        e.printStackTrace();
+                    } finally {
+                        LOG.info("restin /metrics's TextFormat.write004 cost: {}", System.currentTimeMillis() - start);
                     }
                 };
             }
