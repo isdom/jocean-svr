@@ -100,7 +100,7 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
                 .description("The outbound size of jocean service trade") // optional
                 .baseUnit(BaseUnits.BYTES)
                 .publishPercentileHistogram()
-                .maximumExpectedValue( 8 * 1024L)
+                .maximumExpectedValue( 128 * 1024L)
                 .register(meterRegistry);
     }
 
