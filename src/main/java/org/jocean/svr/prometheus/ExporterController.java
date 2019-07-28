@@ -9,9 +9,9 @@ import java.util.Enumeration;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
 
-import org.jocean.http.WriteCtrl;
 import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.Stepable;
+import org.jocean.svr.TradeContext;
 import org.jocean.svr.WithStepable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,9 +32,9 @@ public class ExporterController {
 
     @Path("/metrics")
     @GET
-    public WithStepable<Stepable<Enumeration<Collector.MetricFamilySamples>>> getMetrics(final WriteCtrl writeCtrl) {
+    public WithStepable<Stepable<Enumeration<Collector.MetricFamilySamples>>> getMetrics(final TradeContext tctx) {
 
-        writeCtrl.sended().subscribe(obj -> DisposableWrapperUtil.dispose(obj));
+        tctx.writeCtrl().sended().subscribe(obj -> DisposableWrapperUtil.dispose(obj));
 
         return new WithStepable<Stepable<Enumeration<Collector.MetricFamilySamples>>>() {
             @Override
@@ -66,7 +66,8 @@ public class ExporterController {
 //                        // TODO Auto-generated catch block
 //                        e.printStackTrace();
                     } finally {
-                        LOG.info("restin /metrics's TextFormat.write004 cost: {}", System.currentTimeMillis() - start);
+                        LOG.info("restin:{} /metrics's TextFormat.write004 cost: {}", tctx.restin().getPort(),
+                                System.currentTimeMillis() - start);
                     }
                 };
             }

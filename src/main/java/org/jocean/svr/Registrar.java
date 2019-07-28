@@ -88,6 +88,7 @@ import org.jocean.svr.ZipUtil.ZipBuilder;
 import org.jocean.svr.ZipUtil.Zipper;
 import org.jocean.svr.annotation.PathSample;
 import org.jocean.svr.mbean.RestinIndicator;
+import org.jocean.svr.mbean.RestinIndicatorMXBean;
 import org.jocean.svr.tracing.TraceUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -224,6 +225,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     newTags[tags.length+1] = location;
                     _restin.recordTradePartDuration(_operation, unit.toMillis(amount), newTags);
                 }};
+        }
+
+        @Override
+        public RestinIndicatorMXBean restin() {
+            return this._restin;
         }
 
         HttpTrade _trade;
