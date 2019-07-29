@@ -29,6 +29,7 @@ import io.prometheus.client.Collector;
 import io.prometheus.client.Collector.MetricFamilySamples;
 import io.prometheus.client.CollectorRegistry;
 import rx.Observable;
+import rx.functions.Func0;
 
 @Controller
 @Scope("singleton")
@@ -55,20 +56,32 @@ public class ExporterController {
             idx %= mfarray.length;
         }
 
+        final Func0<DisposableWrapper<? extends ByteBuf>> allocator = tctx.allocatorBuilder().build(8192);
         final List<Observable<Iterable<DisposableWrapper<? extends ByteBuf>>>> tobbs = new ArrayList<>();
         for (idx = 0; idx < mfarray.length; idx++) {
             final List<MetricFamilySamples> mflist = mfarray[idx];
             tobbs.add(Observable.defer(() -> {
-                final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout =
-                        new BufsOutputStream<>(tctx.allocatorBuilder().build(8192), dwb->dwb.unwrap());
-                final OutputStreamWriter osw = new OutputStreamWriter(bufout);
-                final Iterable<DisposableWrapper<? extends ByteBuf>> dwbs =MessageUtil.out2dwbs(bufout, out -> {
-                            for (final MetricFamilySamples mf : mflist)
+                Iterable<DisposableWrapper<? extends ByteBuf>> dwbs = Collections.emptyList();
+                try (final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout =
+                        new BufsOutputStream<>(allocator, dwb -> dwb.unwrap())) {
+                    dwbs = MessageUtil.out2dwbs(bufout, out -> {
+                        try (final OutputStreamWriter osw = new OutputStreamWriter(bufout)) {
+                            for (final MetricFamilySamples mf : mflist) {
                                 try {
                                     TextFormatUtil.write004(osw, mf);
                                 } catch (final IOException e) {
                                 }
-                        });
+                            }
+                            osw.flush();
+                        } catch (final IOException e) {
+                            // TODO Auto-generated catch block
+                            e.printStackTrace();
+                        }
+                    });
+                } catch (final IOException e1) {
+                    // TODO Auto-generated catch block
+                    e1.printStackTrace();
+                }
                 return Observable.just(dwbs);
             }).subscribeOn(tctx.scheduler().scheduler()));
         }
