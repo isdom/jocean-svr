@@ -87,6 +87,9 @@ public class ExporterController {
         }
 
 
+        final long start = System.currentTimeMillis();
+        final String startThread = Thread.currentThread().getName();
+
         return new WithSlice() {
             @Override
             public String contentType() {
@@ -95,7 +98,6 @@ public class ExporterController {
 
             @Override
             public Observable<? extends ByteBufSlice> slices() {
-                final long start = System.currentTimeMillis();
                 return Observable.<ByteBufSlice>zip(tobbs, dwbsarray -> {
                     final List<DisposableWrapper<? extends ByteBuf>> dwblist = new ArrayList<>();
                     for (final Object dwbs : dwbsarray) {
@@ -104,9 +106,12 @@ public class ExporterController {
                             dwblist.add(iter.next());
                         }
                     }
-                    LOG.info("restin:{} /metrics's concurrent({}) TextFormat.write004 cost: {}", tctx.restin().getPort(),
+                    LOG.info("restin:{} /metrics's concurrent({}) TextFormat.write004 cost: {}, begin:{}/end:{}",
+                            tctx.restin().getPort(),
                             tobbs.size(),
-                            System.currentTimeMillis() - start);
+                            System.currentTimeMillis() - start,
+                            startThread,
+                            Thread.currentThread().getName());
                     return new ByteBufSlice() {
                         @Override
                         public void step() {}
