@@ -105,8 +105,9 @@ public class InteractBuilderImpl implements InteractBuilder {
         final AtomicReference<Observable<Object>> _obsreqRef = new AtomicReference<>(
                 MessageUtil.fullRequestWithoutBody(HttpVersion.HTTP_1_1, HttpMethod.GET));
 
-//        final List<String> _nvs = new ArrayList<>();
         final AtomicReference<URI> _uriRef = new AtomicReference<>();
+        final AtomicReference<String> _nameRef = new AtomicReference<>();
+
         final Span span = tracer.buildSpan("interact")
                 .ignoreActiveSpan()
                 .withTag(Tags.COMPONENT.getKey(), "jocean-http")
@@ -119,12 +120,6 @@ public class InteractBuilderImpl implements InteractBuilder {
             private void updateObsRequest(final Action1<Object> action) {
                 _obsreqRef.set(_obsreqRef.get().doOnNext(action));
             }
-
-//            private void addQueryParams() {
-//                if (!_nvs.isEmpty()) {
-//                    updateObsRequest(MessageUtil.addQueryParam(_nvs.toArray(new String[0])));
-//                }
-//            }
 
             private void extractUriWithHost(final Object...reqbeans) {
                 if (null == _uriRef.get()) {
@@ -163,6 +158,12 @@ public class InteractBuilderImpl implements InteractBuilder {
             }
 
             @Override
+            public Interact name(final String name) {
+                _nameRef.set(name);
+                return this;
+            }
+
+            @Override
             public Interact method(final HttpMethod method) {
                 updateObsRequest(MessageUtil.setMethod(method));
                 span.setTag(Tags.HTTP_METHOD.getKey(), method.name());
@@ -195,8 +196,6 @@ public class InteractBuilderImpl implements InteractBuilder {
 
             @Override
             public Interact paramAsQuery(final String name, final String value) {
-//                _nvs.add(name);
-//                _nvs.add(value);
                 updateObsRequest(MessageUtil.addQueryParam(name, value));
                 return this;
             }
@@ -245,7 +244,6 @@ public class InteractBuilderImpl implements InteractBuilder {
             @Override
             public <T> Observable<T> responseAs(final ContentDecoder decoder, final Class<T> type) {
                 checkAddr();
-//                addQueryParams();
                 return addSSLFeatureIfNeed(_initiatorBuilder).build()
                         .flatMap(initiator -> {
                             if ( null != _haltable) {
@@ -300,7 +298,6 @@ public class InteractBuilderImpl implements InteractBuilder {
             @Override
             public Observable<FullMessage<HttpResponse>> response() {
                 checkAddr();
-//                addQueryParams();
                 return addSSLFeatureIfNeed(_initiatorBuilder).build()
                         .flatMap(initiator -> {
                             if ( null != _haltable) {
@@ -318,6 +315,9 @@ public class InteractBuilderImpl implements InteractBuilder {
                             final AtomicBoolean isSpanFinished = new AtomicBoolean(false);
                             return defineInteraction(initiator, entryRef).doOnTerminate(() -> {
                                     if (isSpanFinished.compareAndSet(false, true)) {
+                                        if (null != _nameRef.get()) {
+                                            operationRef.set(_nameRef.get());
+                                        }
                                         span.finish();
                                         if (null != entryRef.get()) {
                                             entryRef.get().exit();
@@ -329,6 +329,9 @@ public class InteractBuilderImpl implements InteractBuilder {
                                 })
                                 .doOnUnsubscribe(() -> {
                                     if (isSpanFinished.compareAndSet(false, true)) {
+                                        if (null != _nameRef.get()) {
+                                            operationRef.set(_nameRef.get());
+                                        }
                                         span.finish();
                                         if (null != entryRef.get()) {
                                             entryRef.get().exit();
