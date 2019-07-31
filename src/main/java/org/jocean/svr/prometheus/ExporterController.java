@@ -58,9 +58,9 @@ public class ExporterController {
         }
 
         final String[] labels = new String[]{
+                "app_build",    System.getProperty("service.buildno"),
                 "application",  System.getProperty("app.name"),
-                "hostname",     System.getenv("HOSTNAME"),
-                "app.build",    System.getProperty("service.buildno")
+                "hostname",     System.getenv("HOSTNAME")
         };
 
         final Func0<DisposableWrapper<? extends ByteBuf>> allocator = tctx.allocatorBuilder().build(8192);
