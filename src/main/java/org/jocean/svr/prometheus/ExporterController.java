@@ -16,6 +16,7 @@ import org.jocean.http.ByteBufSlice;
 import org.jocean.http.MessageUtil;
 import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.DisposableWrapperUtil;
+import org.jocean.j2se.prometheus.TextFormatUtil;
 import org.jocean.netty.util.BufsOutputStream;
 import org.jocean.svr.TradeContext;
 import org.jocean.svr.WithSlice;
@@ -56,6 +57,12 @@ public class ExporterController {
             idx %= mfarray.length;
         }
 
+        final String[] labels = new String[]{
+                "application",  System.getProperty("app.name"),
+                "hostname",     System.getenv("HOSTNAME"),
+                "app.build",    System.getProperty("service.buildno")
+        };
+
         final Func0<DisposableWrapper<? extends ByteBuf>> allocator = tctx.allocatorBuilder().build(8192);
         final List<Observable<Iterable<DisposableWrapper<? extends ByteBuf>>>> tobbs = new ArrayList<>();
         for (idx = 0; idx < mfarray.length; idx++) {
@@ -68,7 +75,7 @@ public class ExporterController {
                         try (final OutputStreamWriter osw = new OutputStreamWriter(bufout)) {
                             for (final MetricFamilySamples mf : mflist) {
                                 try {
-                                    TextFormatUtil.write004(osw, mf);
+                                    TextFormatUtil.write004(osw, mf, labels);
                                 } catch (final IOException e) {
                                 }
                             }
@@ -122,44 +129,6 @@ public class ExporterController {
                         }};
                 });
             }};
-            /*
-        return new WithStepable<Stepable<Enumeration<Collector.MetricFamilySamples>>>() {
-            @Override
-            public String contentType() {
-                return TextFormat.CONTENT_TYPE_004;
-            }
-
-            @Override
-            public Observable<Stepable<Enumeration<Collector.MetricFamilySamples>>> stepables() {
-                return Observable.just(new Stepable<Enumeration<Collector.MetricFamilySamples>>() {
-                            @Override
-                            public void step() {}
-
-                            @Override
-                            public Enumeration<Collector.MetricFamilySamples> element() {
-                                return  _registry.filteredMetricFamilySamples(parseQuery(query)Collections.emptySet());
-                            }
-                        });
-            }
-
-            @Override
-            public Action2<Stepable<Enumeration<Collector.MetricFamilySamples>>, OutputStream> output() {
-                return (stepable, out) -> {
-                    final long start = System.currentTimeMillis();
-                    try(final OutputStreamWriter osw = new OutputStreamWriter(out)) {
-                        TextFormat.write004(osw, stepable.element());
-                        osw.flush();
-                    } catch (final IOException e) {
-//                        // TODO Auto-generated catch block
-//                        e.printStackTrace();
-                    } finally {
-                        LOG.info("restin:{} /metrics's TextFormat.write004 cost: {}", tctx.restin().getPort(),
-                                System.currentTimeMillis() - start);
-                    }
-                };
-            }
-        };
-        */
     }
 
     CollectorRegistry _registry = CollectorRegistry.defaultRegistry;
