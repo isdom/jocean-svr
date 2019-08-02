@@ -44,6 +44,7 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
             .register(meterRegistry);
 
         Gauge.builder("jocean.svr.activetrade", _activeTradeCount, cnt -> cnt.doubleValue())
+            .strongReference(true)
             .tags(  "operation",    operationName,
                     "hostregex",    _restin.getHostPattern(),
                     "pathregex",    _restin.getPathPattern(),
