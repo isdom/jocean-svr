@@ -271,6 +271,9 @@ public class ExporterController {
     }
 
     protected int determineWrapper(final String acceptEncoding) {
+        if (null == acceptEncoding) {
+            return _NONE;
+        }
         float starQ = -1.0f;
         float gzipQ = -1.0f;
         float deflateQ = -1.0f;
