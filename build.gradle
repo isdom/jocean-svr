@@ -31,6 +31,8 @@ dependencies {
     
     compile 'com.netflix.hystrix:hystrix-core:1.5.12'
     compile 'com.netflix.hystrix:hystrix-serialization:1.5.12'
+    compile 'io.github.resilience4j:resilience4j-timelimiter:0.17.0'
+    
     compile 'io.micrometer:micrometer-core:1.2.0'
     compile "com.alibaba.csp:sentinel-core:${sentinelVersion}"
     compile 'io.prometheus:simpleclient_common:0.6.0'
