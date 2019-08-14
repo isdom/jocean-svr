@@ -117,7 +117,6 @@ import rx.subjects.PublishSubject;
 
 public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBody> {
 
-    @SuppressWarnings("unused")
     private static final Logger LOG = LoggerFactory.getLogger(MultipartTransformer.class);
 
     public static String getBoundary(final String contentType) {
@@ -261,7 +260,7 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
 
     interface MultipartParser extends EntityParser<MessageBody, MultipartContext> {
         @Override
-        MultipartParser parse(MultipartContext ctx);
+        MultipartParser parse(final MultipartContext ctx);
     }
 
     static class DefaultMultipartContext extends AbstractParseContext<MessageBody, MultipartContext> implements MultipartContext {
@@ -395,6 +394,7 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
             if (headerStartIdx == -1) {
                 // need more data
                 ctx.stopParsing();
+                LOG.debug("headerParser: can't find header start {}, need more data", new String(_boundaryCRLF, Charsets.UTF_8));
                 return this;
             }
 
@@ -408,6 +408,7 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
             if (bodyStartIdx == -1) {
                 // need more data
                 ctx.stopParsing();
+                LOG.debug("headerParser: can't find body start CRLFCRLF, need more data");
                 return this;
             }
 
@@ -422,6 +423,7 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
             parseHeaders(headers, bufin);
 
             // switch state to recv body
+            LOG.debug("headerParser: find body start CRLFCRLF, change to BodyParser with headers: {}", headers);
             return new BodyParser(headers);
         }
 
@@ -554,6 +556,7 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
                 } catch (final Exception e) {
                 }
 
+                LOG.debug("BodyParser: find body end {}, change to endParser", new String(_CRLFBoundary, Charsets.UTF_8));
                 return _endParser;
             }
             else {
@@ -597,6 +600,7 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
                     }
                 }
                 ctx.stopParsing();
+                LOG.debug("BodyParser: can't find body end {}, need more data", new String(_CRLFBoundary, Charsets.UTF_8));
                 return this;
             }
         }
@@ -615,14 +619,17 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
                 if (ctx.in().forEachByte(ByteProcessors.indexOfBytes(_endBoundary)) == _endBoundary.length - 1) {
                     // if meet end of multipart flag: (_multipartDataBoundary + "--\r\n")
                     //  meet end of multipart body
+                    LOG.debug("endParser: meet end of multipart body");
                     return null;
                 }
                 else {
+                    LOG.debug("endParser: start next multipart body, change to headerParser");
                     return _headerParser;
                 }
             }
             else {
                 ctx.stopParsing();
+                LOG.debug("endParser: need more data");
                 return this;
             }
         }
