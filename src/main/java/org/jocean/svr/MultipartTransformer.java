@@ -398,12 +398,6 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
                 return this;
             }
 
-            try {
-                // skip _boundaryCRLF bytes
-                ctx.in().skip(headerStartIdx + 1);
-            } catch (final IOException e1) {
-            }
-
             final int bodyStartIdx = ctx.in().forEachByte(ByteProcessors.indexOfBytes(TAG_CRLFCRLF));
             if (bodyStartIdx == -1) {
                 // need more data
@@ -412,10 +406,100 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
                 return this;
             }
 
-//          ctx.in().skip(bodyStartIdx + 1);
             final HttpHeaders headers = new DefaultHttpHeaders();
             final BufsInputStream<DisposableWrapper<? extends ByteBuf>> bufin =
                   new BufsInputStream<>(dwb -> dwb.unwrap(), dwb -> dwb.dispose());
+
+            // transfer bytes from _boundaryCRLF(exclude) ==> TAG_CRLFCRLF(include) to bufin
+            // then try to parse headers within one part
+            // NOTE: after meet valid bodyStartIdx, it's time for skip _boundaryCRLF prefix
+            // SEE above case:
+            /*
+            +-------------------------------------------------+
+            |  0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f |
+            +--------+-------------------------------------------------+----------------+
+            |00000000| 50 4f 53 54 20 2f 65 61 73 79 2d 61 72 2f 64 65 |POST /easy-ar/de|
+            |00000010| 74 65 63 74 4f 62 6a 65 63 74 3f 73 69 7a 65 3d |tectObject?size=|
+            |00000020| 38 33 32 35 26 6d 64 35 3d 33 31 31 63 33 65 37 |8325&md5=311c3e7|
+            |00000030| 32 63 31 63 30 34 64 36 35 61 31 32 65 37 38 64 |2c1c04d65a12e78d|
+            |00000040| 33 34 39 38 36 37 61 63 33 20 48 54 54 50 2f 31 |349867ac3 HTTP/1|
+            |00000050| 2e 31 0d 0a 52 65 6d 6f 74 65 49 70 3a 20 31 32 |.1..RemoteIp: 12|
+            |00000060| 33 2e 31 35 37 2e 32 31 39 2e 32 0d 0a 48 6f 73 |3.157.219.2..Hos|
+            |00000070| 74 3a 20 61 70 69 2e 32 67 64 74 2e 63 6f 6d 0d |t: api.2gdt.com.|
+            |00000080| 0a 58 2d 46 6f 72 77 61 72 64 65 64 2d 46 6f 72 |.X-Forwarded-For|
+            |00000090| 3a 20 31 32 33 2e 31 35 37 2e 32 31 39 2e 32 0d |: 123.157.219.2.|
+            |000000a0| 0a 43 6f 6e 74 65 6e 74 2d 4c 65 6e 67 74 68 3a |.Content-Length:|
+            |000000b0| 20 38 36 31 39 0d 0a 78 2d 61 70 70 62 75 69 6c | 8619..x-appbuil|
+            |000000c0| 64 3a 20 31 0d 0a 78 2d 73 69 64 3a 20 37 32 38 |d: 1..x-sid: 728|
+            |000000d0| 61 35 65 65 35 61 34 65 32 34 31 30 64 38 61 61 |a5ee5a4e2410d8aa|
+            |000000e0| 65 38 61 33 64 66 63 63 35 35 66 63 33 0d 0a 52 |e8a3dfcc55fc3..R|
+            |000000f0| 65 66 65 72 65 72 3a 20 68 74 74 70 73 3a 2f 2f |eferer: https://|
+            |00000100| 73 65 72 76 69 63 65 77 65 63 68 61 74 2e 63 6f |servicewechat.co|
+            |00000110| 6d 2f 77 78 61 30 63 34 37 62 65 39 66 64 31 34 |m/wxa0c47be9fd14|
+            |00000120| 31 63 32 39 2f 64 65 76 74 6f 6f 6c 73 2f 70 61 |1c29/devtools/pa|
+            |00000130| 67 65 2d 66 72 61 6d 65 2e 68 74 6d 6c 0d 0a 55 |ge-frame.html..U|
+            |00000140| 73 65 72 2d 41 67 65 6e 74 3a 20 4d 6f 7a 69 6c |ser-Agent: Mozil|
+            |00000150| 6c 61 2f 35 2e 30 20 28 69 50 68 6f 6e 65 3b 20 |la/5.0 (iPhone; |
+            |00000160| 43 50 55 20 69 50 68 6f 6e 65 20 4f 53 20 31 30 |CPU iPhone OS 10|
+            |00000170| 5f 32 20 6c 69 6b 65 20 4d 61 63 20 4f 53 20 58 |_2 like Mac OS X|
+            |00000180| 29 20 41 70 70 6c 65 57 65 62 4b 69 74 2f 36 30 |) AppleWebKit/60|
+            |00000190| 32 2e 33 2e 31 32 20 28 4b 48 54 4d 4c 2c 20 6c |2.3.12 (KHTML, l|
+            |000001a0| 69 6b 65 20 47 65 63 6b 6f 29 20 4d 6f 62 69 6c |ike Gecko) Mobil|
+            |000001b0| 65 2f 31 34 43 39 32 20 53 61 66 61 72 69 2f 36 |e/14C92 Safari/6|
+            |000001c0| 30 31 2e 31 20 77 65 63 68 61 74 64 65 76 74 6f |01.1 wechatdevto|
+            |000001d0| 6f 6c 73 2f 31 2e 30 32 2e 31 39 30 37 31 36 30 |ols/1.02.1907160|
+            |000001e0| 20 4d 69 63 72 6f 4d 65 73 73 65 6e 67 65 72 2f | MicroMessenger/|
+            |000001f0| 37 2e 30 2e 34 20 4c 61 6e 67 75 61 67 65 2f 7a |7.0.4 Language/z|
+            |00000200| 68 5f 43 4e 20 77 65 62 76 69 65 77 2f 0d 0a 63 |h_CN webview/..c|
+            |00000210| 6f 6e 74 65 6e 74 2d 74 79 70 65 3a 20 6d 75 6c |ontent-type: mul|
+            |00000220| 74 69 70 61 72 74 2f 66 6f 72 6d 2d 64 61 74 61 |tipart/form-data|
+            |00000230| 3b 20 62 6f 75 6e 64 61 72 79 3d 2d 2d 2d 2d 2d |; boundary=-----|
+            |00000240| 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d |----------------|
+            |00000250| 2d 2d 2d 2d 2d 31 37 30 35 30 33 33 30 30 31 35 |-----17050330015|
+            |00000260| 35 37 30 35 38 38 33 36 39 34 33 38 35 0d 0a 58 |5705883694385..X|
+            |00000270| 2d 46 6f 72 77 61 72 64 65 64 2d 50 72 6f 74 6f |-Forwarded-Proto|
+            |00000280| 3a 20 68 74 74 70 73 0d 0a 53 4c 42 2d 49 50 3a |: https..SLB-IP:|
+            |00000290| 20 34 37 2e 39 34 2e 37 32 2e 35 39 0d 0a 53 4c | 47.94.72.59..SL|
+            |000002a0| 42 2d 49 44 3a 20 6c 62 2d 32 7a 65 76 77 30 6d |B-ID: lb-2zevw0m|
+            |000002b0| 6a 36 78 6a 74 33 37 61 30 78 79 63 38 6c 0d 0a |j6xjt37a0xyc8l..|
+            |000002c0| 63 6f 6e 6e 65 63 74 69 6f 6e 3a 20 6b 65 65 70 |connection: keep|
+            |000002d0| 2d 61 6c 69 76 65 0d 0a 75 62 65 72 2d 74 72 61 |-alive..uber-tra|
+            |000002e0| 63 65 2d 69 64 3a 20 62 63 63 38 64 64 38 66 31 |ce-id: bcc8dd8f1|
+            |000002f0| 38 33 62 62 32 32 65 25 33 41 66 34 35 37 63 38 |83bb22e%3Af457c8|
+            |00000300| 66 63 35 34 39 39 31 34 65 30 25 33 41 62 63 63 |fc549914e0%3Abcc|
+            |00000310| 38 64 64 38 66 31 38 33 62 62 32 32 65 25 33 41 |8dd8f183bb22e%3A|
+            |00000320| 31 0d 0a 0d 0a 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d |1....-----------|
+            |00000330| 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d 2d |----------------|
+            |00000340| 2d 31 37 30 35 30 33 33 30 30 31 35 35 37 30 35 |-170503300155705|
+            |00000350| 38 38 33 36 39 34 33 38 35 0d 0a 43 6f 6e 74 65 |883694385..Conte|
+            |00000360| 6e 74 2d 44 69 73 70 6f 73 69 74 69 6f 6e 3a 20 |nt-Disposition: |
+            |00000370| 66 6f 72 6d 2d 64 61 74 61 3b 20 6e 61 6d 65 3d |form-data; name=|
+            |00000380| 22 66 69 6c 65 22 3b 20 66 69 6c 65 6e 61 6d 65 |"file"; filename|
+            |00000390| 3d 22 77 78 61 30 63 34 37 62 65 39 66 64 31 34 |="wxa0c47be9fd14|
+            |000003a0| 31 63 32 39 2e 6f 36 7a 41 4a 73 32 45 36 57 52 |1c29.o6zAJs2E6WR|
+            |000003b0| 56 38 39 53 70 76 38 68 50 64 6b 5f 54 44 4f 42 |V89Spv8hPdk_TDOB|
+            |000003c0| 4d 2e 5a 78 4a 45 78 56 36 70 51 71 34 7a 38 34 |M.ZxJExV6pQq4z84|
+            |000003d0| 31 66 63 34 31 64 39 63 63 38 36 36 63 35 61 34 |1fc41d9cc866c5a4|
+            |000003e0| 65 36 32 37 65 61 35 30 66 33 65 39 35 39 2e 6a |e627ea50f3e959.j|
+            |000003f0| 70 67 22 0d 0a 43 6f 6e 74 65 6e 74 2d 54 79 70 |pg"..Content-Typ|
+            +--------+-------------------------------------------------+----------------+
+
+            multipart split inside header
+
+                     +-------------------------------------------------+
+                     |  0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f |
+            +--------+-------------------------------------------------+----------------+
+            |00000000| 65 3a 20 69 6d 61 67 65 2f 6a 70 65 67 0d 0a 0d |e: image/jpeg...|
+            |00000010| 0a ff d8 ff e0 00 10 4a 46 49 46 00 01 01 00 00 |.......JFIF.....|
+            |00000020| 01 00 01 00 00 ff db 00 43 00 1b 12 14 17 14 11 |........C.......|
+
+             */
+
+            try {
+                // skip _boundaryCRLF bytes
+                ctx.in().skip(headerStartIdx + 1);
+            } catch (final IOException e1) {
+            }
 
             bufin.appendIterable(ctx.in2dwbs(bodyStartIdx + 1));
             bufin.markEOS();
