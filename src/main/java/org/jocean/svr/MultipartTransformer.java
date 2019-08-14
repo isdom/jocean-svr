@@ -501,7 +501,7 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
             } catch (final IOException e1) {
             }
 
-            bufin.appendIterable(ctx.in2dwbs(bodyStartIdx + 1));
+            bufin.appendIterable(ctx.in2dwbs(bodyStartIdx - headerStartIdx));
             bufin.markEOS();
 
             parseHeaders(headers, bufin);
