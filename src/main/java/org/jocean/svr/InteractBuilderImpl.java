@@ -104,6 +104,7 @@ public class InteractBuilderImpl implements InteractBuilder {
         final AtomicBoolean _isSSLEnabled = new AtomicBoolean(false);
         final AtomicReference<Observable<Object>> _obsreqRef = new AtomicReference<>(
                 MessageUtil.fullRequestWithoutBody(HttpVersion.HTTP_1_1, HttpMethod.GET));
+        final AtomicReference<Action1<Object>> _onsendingRef = new AtomicReference<>();
 
         final AtomicReference<URI> _uriRef = new AtomicReference<>();
         final AtomicReference<String> _nameRef = new AtomicReference<>();
@@ -226,6 +227,29 @@ public class InteractBuilderImpl implements InteractBuilder {
             }
 
             @Override
+            public Interact onsending(final Action1<Object> action) {
+                final Action1<Object> prev = _onsendingRef.get();
+                if (null != prev) {
+                    _onsendingRef.set(obj -> {
+                            try {
+                                prev.call(obj);
+                            } catch (final Exception e) {
+                                LOG.warn("exception when invoke prev Action1:{}, detail:{}", prev, ExceptionUtils.exception2detail(e));
+                            }
+                            try {
+                                action.call(obj);
+                            } catch (final Exception e) {
+                                LOG.warn("exception when invoke next Action1:{}, detail:{}", action, ExceptionUtils.exception2detail(e));
+                            }
+                        });
+                }
+                else {
+                    _onsendingRef.set(action);
+                }
+                return this;
+            }
+
+            @Override
             public Interact feature(final Feature... features) {
                 _initiatorBuilder.feature(features);
                 if (isSSLEnabled(features)) {
@@ -249,6 +273,8 @@ public class InteractBuilderImpl implements InteractBuilder {
                             if ( null != _haltable) {
                                 _haltable.doOnHalt(initiator.closer());
                             }
+
+                            hookOnSending(initiator);
 
                             final AtomicReference<String> operationRef = new AtomicReference<>();
                             final AtomicReference<Long> startRef = new AtomicReference<Long>();
@@ -304,6 +330,8 @@ public class InteractBuilderImpl implements InteractBuilder {
                                 _haltable.doOnHalt(initiator.closer());
                             }
 
+                            hookOnSending(initiator);
+
                             final AtomicReference<String> operationRef = new AtomicReference<>();
                             final AtomicReference<Long> startRef = new AtomicReference<Long>();
 
@@ -343,6 +371,12 @@ public class InteractBuilderImpl implements InteractBuilder {
                                 });
                         }
                     );
+            }
+
+            private void hookOnSending(final HttpInitiator initiator) {
+                if (null != _onsendingRef.get()) {
+                    initiator.writeCtrl().sending().subscribe(_onsendingRef.get());
+                }
             }
         };
     }
