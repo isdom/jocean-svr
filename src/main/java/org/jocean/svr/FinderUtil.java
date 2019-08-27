@@ -60,7 +60,7 @@ public class FinderUtil {
     }
 
     public static Transformer<Interact, Interact> endpoint(final BeanFinder finder, final TypedSPI spi) {
-        return interacts -> finder.find(EndpointSet.class).flatMap(eps -> interacts.compose(eps.of(spi)));
+        return interacts -> finder.find(EndpointSet.class).flatMap(eps -> interacts.map(eps.of(spi)));
     }
 
     public static Observable<Interact> interacts(final BeanFinder finder, final InteractBuilder ib) {
