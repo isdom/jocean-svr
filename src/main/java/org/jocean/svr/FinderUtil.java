@@ -1,5 +1,7 @@
 package org.jocean.svr;
 
+import java.util.concurrent.atomic.AtomicReference;
+
 import org.jocean.http.Interact;
 import org.jocean.http.InteractBuilder;
 import org.jocean.http.MessageUtil;
@@ -13,6 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import rx.Observable;
 import rx.Observable.Transformer;
+import rx.functions.Action1;
 import rx.functions.Func1;
 
 public class FinderUtil {
@@ -59,8 +62,8 @@ public class FinderUtil {
         };
     }
 
-    static Transformer<Interact, Interact> endpoint(final BeanFinder finder, final TypedSPI spi) {
-        return interacts -> finder.find(EndpointSet.class).flatMap(eps -> interacts.map(eps.of(spi)));
+    static Func1<Interact, Observable<Interact>> endpoint(final BeanFinder finder, final TypedSPI spi) {
+        return interact -> finder.find(EndpointSet.class).map(eps -> eps.of(spi).call(interact));
     }
 
     public static Observable<Interact> interacts(final BeanFinder finder, final InteractBuilder ib) {
@@ -142,70 +145,33 @@ public class FinderUtil {
     private static RpcRunner buildRunner(final Observable<? extends Interact> interacts,
             final BeanFinder finder,
             final CallerContext ctx) {
+        final AtomicReference<TypedSPI> spiRef = new AtomicReference<>();
+        final AtomicReference<String> nameRef = new AtomicReference<>();
+
         return new RpcRunner() {
             @Override
             public RpcRunner spi(final TypedSPI spi) {
-                return new RpcRunner() {
-                    @Override
-                    public RpcRunner spi(final TypedSPI otherSpi) {
-                        throw new RuntimeException("spi has already set to " + spi.type());
-                    }
-                    @Override
-                    public RpcRunner name(final String name) {
-                        return finalRunner(interacts, finder, ctx, spi, name);
-                    }
-                    @Override
-                    public <T> Observable<T> execute(final Func1<Interact, Observable<T>> invoker) {
-                        return doExecute(interacts, finder, ctx, spi, null, invoker);
-                    }};
+                spiRef.set(spi);
+                return this;
             }
 
             @Override
             public RpcRunner name(final String name) {
-                return new RpcRunner() {
-                    @Override
-                    public RpcRunner spi(final TypedSPI spi) {
-                        return finalRunner(interacts, finder, ctx, spi, name);
-                    }
-                    @Override
-                    public RpcRunner name(final String otherName) {
-                        throw new RuntimeException("name has already set to " + name);
-                    }
-                    @Override
-                    public <T> Observable<T> execute(final Func1<Interact, Observable<T>> invoker) {
-                        return doExecute(interacts, finder, ctx, null, name, invoker);
-                    }};
+                nameRef.set(name);
+                return this;
+            }
+
+            @Override
+            public RpcRunner oninteract(final Action1<Interact> oninteract) {
+                // TODO Auto-generated method stub
+                return null;
             }
 
             @Override
             public <T> Observable<T> execute(final Func1<Interact, Observable<T>> invoker) {
-                return doExecute(interacts, finder, ctx, null, null, invoker);
+                return doExecute(interacts, finder, ctx, spiRef.get(), nameRef.get(), invoker);
             }
         };
-    }
-
-    private static RpcRunner finalRunner(
-            final Observable<? extends Interact> interacts,
-            final BeanFinder finder,
-            final CallerContext ctx,
-            final TypedSPI spi,
-            final String name) {
-        return new RpcRunner() {
-
-            @Override
-            public RpcRunner spi(final TypedSPI otherSpi) {
-                throw new RuntimeException("spi has already set to " + spi.type());
-            }
-
-            @Override
-            public RpcRunner name(final String otherName) {
-                throw new RuntimeException("name has already set to " + name);
-            }
-
-            @Override
-            public <T> Observable<T> execute(final Func1<Interact, Observable<T>> invoker) {
-                return doExecute(interacts, finder, ctx, spi, name, invoker);
-            }};
     }
 
     private static <T> Observable<T> doExecute(
@@ -222,7 +188,7 @@ public class FinderUtil {
 
         Observable<? extends Interact> inters = interacts;
         if (null != spi) {
-            inters = inters.compose(FinderUtil.endpoint(finder, spi));
+            inters = inters.flatMap(endpoint(finder, spi));
         }
         return inters.flatMap(invoker).compose(withAfter(finder, ctx));
         /*
