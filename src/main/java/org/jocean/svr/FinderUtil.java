@@ -10,6 +10,7 @@ import org.jocean.http.TypedSPI;
 import org.jocean.http.client.HttpClient;
 import org.jocean.http.endpoint.EndpointSet;
 import org.jocean.idiom.BeanFinder;
+import org.jocean.idiom.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -147,6 +148,7 @@ public class FinderUtil {
             final CallerContext ctx) {
         final AtomicReference<TypedSPI> spiRef = new AtomicReference<>();
         final AtomicReference<String> nameRef = new AtomicReference<>();
+        final AtomicReference<Action1<Interact>> oninteractRef = new AtomicReference<>();
 
         return new RpcRunner() {
             @Override
@@ -163,13 +165,30 @@ public class FinderUtil {
 
             @Override
             public RpcRunner oninteract(final Action1<Interact> oninteract) {
-                // TODO Auto-generated method stub
-                return null;
+                final Action1<Interact> prev = oninteractRef.get();
+                if (prev != null) {
+                    oninteractRef.set(interact -> {
+                        try {
+                            prev.call(interact);
+                        } catch (final Exception e) {
+                            LOG.warn("exception when oninteract:{}, detail: {}", prev, ExceptionUtils.exception2detail(e));
+                        }
+                        try {
+                            oninteract.call(interact);
+                        } catch (final Exception e) {
+                            LOG.warn("exception when oninteract:{}, detail: {}", oninteract, ExceptionUtils.exception2detail(e));
+                        }
+                    });
+                }
+                else {
+                    oninteractRef.set(oninteract);
+                }
+                return this;
             }
 
             @Override
             public <T> Observable<T> execute(final Func1<Interact, Observable<T>> invoker) {
-                return doExecute(interacts, finder, ctx, spiRef.get(), nameRef.get(), invoker);
+                return doExecute(interacts, finder, ctx, spiRef.get(), nameRef.get(), oninteractRef.get(), invoker);
             }
         };
     }
@@ -180,6 +199,7 @@ public class FinderUtil {
             final CallerContext ctx,
             final TypedSPI spi,
             final String name,
+            final Action1<Interact> oninteract,
             final Func1<Interact, Observable<T>> invoker) {
 
         final String group = getSimpleClassName(ctx.className()) + "." + ctx.methodName();
@@ -189,6 +209,9 @@ public class FinderUtil {
         Observable<? extends Interact> inters = interacts;
         if (null != spi) {
             inters = inters.flatMap(endpoint(finder, spi));
+        }
+        if (null != oninteract) {
+            inters = inters.doOnNext(oninteract);
         }
         return inters.flatMap(invoker).compose(withAfter(finder, ctx));
         /*
