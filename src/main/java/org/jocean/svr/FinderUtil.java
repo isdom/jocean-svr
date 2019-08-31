@@ -100,18 +100,94 @@ public class FinderUtil {
 
                     @Override
                     public Observable<RpcRunner> runner() {
-                        return finder.find(HttpClient.class).flatMap(client-> ib.interact(client))
-                                .compose(findAndApplyRpcConfig(finder, ctx))
-                                .compose(interacts-> Observable.just(buildRunner(interacts, finder, ctx)));
+                        return Observable.defer(() -> Observable.just(buildRunner(ib, finder, ctx)));
+//                        return finder.find(HttpClient.class).flatMap(client-> ib.interact(client))
+//                                .compose(findAndApplyRpcConfig(finder, ctx))
+//                                .compose(interacts-> Observable.just(buildRunner(interacts, finder, ctx)));
                     }};
             }
 
             @Override
             public Observable<RpcRunner> runner() {
-                return finder.find(HttpClient.class).map(client-> MessageUtil.interact(client))
-                        .compose(findAndApplyRpcConfig(finder, ctx))
-                        .compose(interacts-> Observable.just(buildRunner(interacts, finder, ctx)));
+                return Observable.defer(() -> Observable.just(buildRunner(null, finder, ctx)));
+//                return finder.find(HttpClient.class).map(client-> MessageUtil.interact(client))
+//                        .compose(findAndApplyRpcConfig(finder, ctx))
+//                        .compose(interacts-> Observable.just(buildRunner(interacts, finder, ctx)));
             }};
+    }
+
+    private static RpcRunner buildRunner(final InteractBuilder ib, final BeanFinder finder, final CallerContext ctx) {
+        final AtomicReference<TypedSPI> spiRef = new AtomicReference<>();
+        final AtomicReference<String> nameRef = new AtomicReference<>();
+        final AtomicReference<Action1<Interact>> oninteractRef = new AtomicReference<>();
+
+        return new RpcRunner() {
+            @Override
+            public RpcRunner spi(final TypedSPI spi) {
+                spiRef.set(spi);
+                return this;
+            }
+
+            @Override
+            public RpcRunner name(final String name) {
+                nameRef.set(name);
+                return this;
+            }
+
+            @Override
+            public RpcRunner oninteract(final Action1<Interact> oninteract) {
+                final Action1<Interact> prev = oninteractRef.get();
+                if (prev != null) {
+                    oninteractRef.set(interact -> {
+                        try {
+                            prev.call(interact);
+                        } catch (final Exception e) {
+                            LOG.warn("exception when oninteract:{}, detail: {}", prev, ExceptionUtils.exception2detail(e));
+                        }
+                        try {
+                            oninteract.call(interact);
+                        } catch (final Exception e) {
+                            LOG.warn("exception when oninteract:{}, detail: {}", oninteract, ExceptionUtils.exception2detail(e));
+                        }
+                    });
+                }
+                else {
+                    oninteractRef.set(oninteract);
+                }
+                return this;
+            }
+
+            @Override
+            public <T> Observable<T> execute(final Func1<Interact, Observable<T>> invoker) {
+                return doExecute(ib, finder, ctx, spiRef.get(), nameRef.get(), oninteractRef.get(), invoker);
+            }
+        };
+    }
+
+    private static <T> Observable<T> doExecute(
+            final InteractBuilder ib,
+            final BeanFinder finder,
+            final CallerContext ctx,
+            final TypedSPI spi,
+            final String name,
+            final Action1<Interact> oninteract,
+            final Func1<Interact, Observable<T>> invoker) {
+        Observable<? extends Interact> interacts = null;
+        if (null != ib) {
+            interacts = finder.find(HttpClient.class).flatMap(client-> ib.interact(client))
+                .compose(findAndApplyRpcConfig(finder, ctx));
+        }
+        else {
+            interacts = finder.find(HttpClient.class).map(client-> MessageUtil.interact(client))
+                .compose(findAndApplyRpcConfig(finder, ctx));
+        }
+        if (null != spi) {
+            interacts = interacts.flatMap(endpoint(finder, spi));
+        }
+        if (null != oninteract) {
+            interacts = interacts.doOnNext(oninteract);
+        }
+        return interacts.flatMap(invoker).compose(withAfter(finder, ctx));
     }
 
     private static Transformer<? super Interact, ? extends Interact> findAndApplyRpcConfig(
@@ -143,7 +219,8 @@ public class FinderUtil {
         };
     }
 
-    private static RpcRunner buildRunner(final Observable<? extends Interact> interacts,
+    /*
+    private static RpcRunner buildRunner_old(final Observable<? extends Interact> interacts,
             final BeanFinder finder,
             final CallerContext ctx) {
         final AtomicReference<TypedSPI> spiRef = new AtomicReference<>();
@@ -214,25 +291,8 @@ public class FinderUtil {
             inters = inters.doOnNext(oninteract);
         }
         return inters.flatMap(invoker).compose(withAfter(finder, ctx));
-        /*
-        return new HystrixObservableCommand<T>(
-                HystrixObservableCommand.Setter.withGroupKey(HystrixCommandGroupKey.Factory.asKey(group))
-                        .andCommandKey(HystrixCommandKey.Factory.asKey(key))
-                        .andCommandPropertiesDefaults(HystrixCommandProperties.Setter()
-                                // .withExecutionTimeoutEnabled(false)
-                                .withExecutionTimeoutInMilliseconds(30 * 1000)
-                                .withExecutionIsolationSemaphoreMaxConcurrentRequests(1000))) {
-            @Override
-            protected Observable<T> construct() {
-                Observable<? extends Interact> inters = interacts;
-                if (null != spi) {
-                    inters = inters.compose(FinderUtil.endpoint(finder, spi));
-                }
-                return inters.flatMap(invoker).compose(withAfter(finder, ctx));
-            }
-        }.toObservable();
-        */
     }
+    */
 
     private static String getSimpleClassName(final String className) {
         final int idx = className.lastIndexOf('.');
