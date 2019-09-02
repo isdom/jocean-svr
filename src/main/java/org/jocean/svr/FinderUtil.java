@@ -63,7 +63,7 @@ public class FinderUtil {
         };
     }
 
-    static Func1<Interact, Observable<Interact>> endpoint(final BeanFinder finder, final TypedSPI spi) {
+    public static Func1<Interact, Observable<Interact>> endpoint(final BeanFinder finder, final TypedSPI spi) {
         return interact -> finder.find(EndpointSet.class).map(eps -> eps.of(spi).call(interact));
     }
 
