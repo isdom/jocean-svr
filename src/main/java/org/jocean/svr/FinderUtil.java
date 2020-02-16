@@ -154,6 +154,12 @@ public class FinderUtil {
 
             @Override
             public <T> Observable<T> execute(final Func1<Interact, Observable<T>> invoker) {
+                return doExecute(ib, finder, ctx, spiRef.get(), nameRef.get(), oninteractRef.get(),
+                        (Transformer<Interact, T>)interacts -> interacts.flatMap(invoker));
+            }
+
+            @Override
+            public <T> Observable<T> execute(final Transformer<Interact, T> invoker) {
                 return doExecute(ib, finder, ctx, spiRef.get(), nameRef.get(), oninteractRef.get(), invoker);
             }
         };
@@ -166,10 +172,10 @@ public class FinderUtil {
             final TypedSPI spi,
             final String name,
             final Action1<Interact> oninteract,
-            final Func1<Interact, Observable<T>> invoker) {
-        final String group = getSimpleClassName(ctx.className()) + "." + ctx.methodName();
-
-        final String key = (null != spi ? spi.type() : "(api)") + "." + (null != name ? name : "(unname)");
+            final Transformer<Interact, T> invoker) {
+//        final String group = getSimpleClassName(ctx.className()) + "." + ctx.methodName();
+//
+//        final String key = (null != spi ? spi.type() : "(api)") + "." + (null != name ? name : "(unname)");
 
         Observable<? extends Interact> interacts =
             finder.find(HttpClient.class).flatMap(client-> ib.interact(client))
@@ -180,7 +186,7 @@ public class FinderUtil {
         if (null != oninteract) {
             interacts = interacts.doOnNext(oninteract);
         }
-        return interacts.flatMap(invoker).compose(withAfter(finder, ctx));
+        return interacts.compose(invoker).compose(withAfter(finder, ctx));
     }
 
     private static Transformer<? super Interact, ? extends Interact> findAndApplyRpcConfig(
