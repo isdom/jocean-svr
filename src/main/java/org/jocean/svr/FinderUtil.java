@@ -159,7 +159,7 @@ public class FinderUtil {
             }
 
             @Override
-            public <T> Observable<T> execute(final Transformer<Interact, T> invoker) {
+            public <T> Observable<T> submit(final Transformer<Interact, T> invoker) {
                 return doExecute(ib, finder, ctx, spiRef.get(), nameRef.get(), oninteractRef.get(), invoker);
             }
         };
