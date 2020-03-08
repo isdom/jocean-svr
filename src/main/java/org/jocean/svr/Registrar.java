@@ -7,8 +7,10 @@ import static com.google.common.base.Preconditions.checkNotNull;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Proxy;
 import java.lang.reflect.Type;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -49,11 +51,13 @@ import org.jocean.http.ContentDecoder;
 import org.jocean.http.ContentEncoder;
 import org.jocean.http.ContentUtil;
 import org.jocean.http.FullMessage;
+import org.jocean.http.Interact;
 import org.jocean.http.InteractBuilder;
 import org.jocean.http.MessageBody;
 import org.jocean.http.MessageUtil;
 import org.jocean.http.RpcExecutor;
 import org.jocean.http.WriteCtrl;
+import org.jocean.http.endpoint.EndpointSet;
 import org.jocean.http.internal.DefaultRpcExecutor;
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
 import org.jocean.http.util.RxNettys;
@@ -80,11 +84,14 @@ import org.jocean.j2se.util.BeanHolders;
 import org.jocean.netty.util.BufsOutputStream;
 import org.jocean.opentracing.DurationRecorder;
 import org.jocean.opentracing.TracingUtil;
+import org.jocean.rpc.RpcBuilder;
+import org.jocean.rpc.RpcDelegater;
 import org.jocean.svr.FinderUtil.CallerContext;
 import org.jocean.svr.ZipUtil.Unzipper;
 import org.jocean.svr.ZipUtil.ZipBuilder;
 import org.jocean.svr.ZipUtil.Zipper;
 import org.jocean.svr.annotation.PathSample;
+import org.jocean.svr.annotation.SPIType;
 import org.jocean.svr.mbean.RestinIndicator;
 import org.jocean.svr.mbean.RestinIndicatorMXBean;
 import org.jocean.svr.tracing.TraceUtil;
@@ -133,6 +140,7 @@ import io.opentracing.Tracer;
 import io.opentracing.tag.Tags;
 import rx.Completable;
 import rx.Observable;
+import rx.Observable.Transformer;
 import rx.Scheduler;
 import rx.functions.Actions;
 import rx.functions.Func0;
@@ -1243,6 +1251,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return buildTracing(tradeCtx, tradeCtx._span);
         } else if (argType.equals(Branch.Builder.class)) {
             return buildBranchBuilder(tradeCtx, processor);
+        } else if (argType.equals(RpcBuilder.class)) {
+            return buildRpcBuilder(tradeCtx);
         } else {
             for (final MethodInterceptor interceptor : interceptors) {
                 if (interceptor instanceof ArgumentBuilder) {
@@ -1255,6 +1265,57 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
 
         return null;
+    }
+
+    private String selectURI(final String[] uris) {
+        return uris[(int)Math.floor(Math.random() * uris.length)];
+    }
+
+    private Transformer<Interact, Interact> selectURI4SPI(final Class<?> rpcType) {
+        final SPIType spitype = rpcType.getAnnotation(SPIType.class);
+        if (null != spitype) {
+            return interacts -> _finder.find(EndpointSet.class).map(eps -> eps.uris(spitype.value()))
+                    .flatMap(uris -> interacts.doOnNext(interact ->interact.uri(selectURI(uris))));
+        } else {
+            return null;
+        }
+    }
+
+    private RpcBuilder buildRpcBuilder(final DefaultTradeContext tradeCtx) {
+        return new RpcBuilder() {
+            @SuppressWarnings("unchecked")
+            @Override
+            public <RPC> RPC build(final Class<RPC> rpcType) {
+                final Transformer<Interact, Interact> prefix = selectURI4SPI(rpcType);
+
+                return (RPC) Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { rpcType },
+                        new InvocationHandler() {
+                            @Override
+                            public Object invoke(final Object proxy, final Method method, final Object[] args)
+                                    throws Throwable {
+                                if (null == args || args.length == 0) {
+                                    final InvocationHandler handler = RpcDelegater.invocationHandler(rpcType, method.getReturnType());
+                                    return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { method.getReturnType() },
+                                            new InvocationHandler() {
+                                                @Override
+                                                public Object invoke(final Object proxyBuilder, final Method methodBuilder, final Object[] argsBuilder)
+                                                        throws Throwable {
+                                                    if (null == argsBuilder || argsBuilder.length == 0) {
+                                                        final Transformer<Interact, ? extends Object> inter2resp =
+                                                                (Transformer<Interact, ? extends Object>)handler.invoke(proxyBuilder, methodBuilder, argsBuilder);
+                                                        return null != prefix
+                                                                ? (Transformer<Interact, ? extends Object>)(interacts -> interacts.compose(prefix).compose(inter2resp))
+                                                                : inter2resp;
+                                                    } else {
+                                                        return handler.invoke(proxyBuilder, methodBuilder, argsBuilder);
+                                                    }
+                                                }});
+                                } else {
+                                    return null;
+                                }
+                            }
+                        });
+            }};
     }
 
     private Branch.Builder buildBranchBuilder(final DefaultTradeContext tradeCtx, final Method processor) {
