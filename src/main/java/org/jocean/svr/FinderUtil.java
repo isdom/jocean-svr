@@ -10,7 +10,6 @@ import org.jocean.http.TypedSPI;
 import org.jocean.http.client.HttpClient;
 import org.jocean.http.endpoint.EndpointSet;
 import org.jocean.idiom.BeanFinder;
-import org.jocean.idiom.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -129,28 +128,28 @@ public class FinderUtil {
                 return this;
             }
 
-            @Override
-            public RpcRunner oninteract(final Action1<Interact> oninteract) {
-                final Action1<Interact> prev = oninteractRef.get();
-                if (prev != null) {
-                    oninteractRef.set(interact -> {
-                        try {
-                            prev.call(interact);
-                        } catch (final Exception e) {
-                            LOG.warn("exception when oninteract:{}, detail: {}", prev, ExceptionUtils.exception2detail(e));
-                        }
-                        try {
-                            oninteract.call(interact);
-                        } catch (final Exception e) {
-                            LOG.warn("exception when oninteract:{}, detail: {}", oninteract, ExceptionUtils.exception2detail(e));
-                        }
-                    });
-                }
-                else {
-                    oninteractRef.set(oninteract);
-                }
-                return this;
-            }
+//            @Override
+//            public RpcRunner oninteract(final Action1<Interact> oninteract) {
+//                final Action1<Interact> prev = oninteractRef.get();
+//                if (prev != null) {
+//                    oninteractRef.set(interact -> {
+//                        try {
+//                            prev.call(interact);
+//                        } catch (final Exception e) {
+//                            LOG.warn("exception when oninteract:{}, detail: {}", prev, ExceptionUtils.exception2detail(e));
+//                        }
+//                        try {
+//                            oninteract.call(interact);
+//                        } catch (final Exception e) {
+//                            LOG.warn("exception when oninteract:{}, detail: {}", oninteract, ExceptionUtils.exception2detail(e));
+//                        }
+//                    });
+//                }
+//                else {
+//                    oninteractRef.set(oninteract);
+//                }
+//                return this;
+//            }
 
             @Override
             public <T> Observable<T> execute(final Func1<Interact, Observable<T>> invoker) {
