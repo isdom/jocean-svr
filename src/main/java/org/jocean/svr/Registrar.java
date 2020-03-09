@@ -1275,6 +1275,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         final SPIType spitype = rpcType.getAnnotation(SPIType.class);
         if (null != spitype) {
             return interacts -> _finder.find(EndpointSet.class).map(eps -> eps.uris(spitype.value()))
+                    .doOnNext(uris -> {
+                        if (uris.length == 0) {
+                            LOG.warn("no valid endpoint for service [{}]", spitype.value());
+                            throw new RuntimeException("no valid endpoint for service [" + spitype.value() + "]");
+                        }})
                     .flatMap(uris -> interacts.doOnNext(interact ->interact.uri(selectURI(uris))));
         } else {
             return null;
