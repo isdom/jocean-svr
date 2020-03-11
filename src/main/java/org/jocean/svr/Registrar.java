@@ -91,6 +91,7 @@ import org.jocean.svr.ZipUtil.Unzipper;
 import org.jocean.svr.ZipUtil.ZipBuilder;
 import org.jocean.svr.ZipUtil.Zipper;
 import org.jocean.svr.annotation.PathSample;
+import org.jocean.svr.annotation.RpcFacade;
 import org.jocean.svr.annotation.SPIType;
 import org.jocean.svr.mbean.RestinIndicator;
 import org.jocean.svr.mbean.RestinIndicatorMXBean;
@@ -1212,6 +1213,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (null != getAnnotation(argAnnotations, Autowired.class)) {
                 return BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Qualifier.class), resource);
             }
+            if (null != getAnnotation(argAnnotations, RpcFacade.class)) {
+                return buildRpcFacade(processor, tradeCtx, (Class<?>)argType);
+            }
         }
         if (argType instanceof ParameterizedType){
             //参数化类型
@@ -1252,7 +1256,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         } else if (argType.equals(Branch.Builder.class)) {
             return buildBranchBuilder(tradeCtx, processor);
         } else if (argType.equals(RpcBuilder.class)) {
-            return buildRpcBuilder(tradeCtx);
+            return buildRpcBuilder();
         } else {
             for (final MethodInterceptor interceptor : interceptors) {
                 if (interceptor instanceof ArgumentBuilder) {
@@ -1265,6 +1269,43 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
 
         return null;
+    }
+
+    private Object buildRpcFacade(final Method processor, final DefaultTradeContext tradeCtx, final Class<?> facadeType) {
+//        final Transformer<Interact, Interact> prefix = selectURI4SPI(facadeType);
+
+        return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { facadeType },
+                new InvocationHandler() {
+                    @Override
+                    public Object invoke(final Object proxy, final Method method, final Object[] args)
+                            throws Throwable {
+                        if (null == args || args.length == 0) {
+                            final RpcExecutor executor = buildRpcExecutor(processor, tradeCtx.interactBuilder());
+                            final InvocationHandler handler = RpcDelegater.invocationHandler(facadeType, method.getReturnType(),
+                                    inter2any -> executor.submit(inter2any) );
+                            return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { method.getReturnType() },
+                                    handler
+                                    /*
+                                    new InvocationHandler() {
+                                        @Override
+                                        public Object invoke(final Object builderProxy, final Method builderMethod, final Object[] builderArgs)
+                                                throws Throwable {
+                                            if (null == builderArgs || builderArgs.length == 0) {
+                                                final Transformer<Interact, ? extends Object> inter2resp =
+                                                        (Transformer<Interact, ? extends Object>)handler.invoke(builderProxy, builderMethod, builderArgs);
+                                                return null != prefix
+                                                        ? (Transformer<Interact, ? extends Object>)(interacts -> interacts.compose(prefix).compose(inter2resp))
+                                                        : inter2resp;
+                                            } else {
+                                                return handler.invoke(builderProxy, builderMethod, builderArgs);
+                                            }
+                                        }}*/
+                                    );
+                        } else {
+                            return null;
+                        }
+                    }
+                });
     }
 
     private String selectURI(final String[] uris) {
@@ -1286,7 +1327,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
-    private RpcBuilder buildRpcBuilder(final DefaultTradeContext tradeCtx) {
+    private RpcBuilder buildRpcBuilder() {
         return new RpcBuilder() {
             @SuppressWarnings("unchecked")
             @Override
