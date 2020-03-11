@@ -1299,7 +1299,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             public Object invoke(final Object proxy, final Method method, final Object[] args)
                                     throws Throwable {
                                 if (null == args || args.length == 0) {
-                                    final InvocationHandler handler = RpcDelegater.invocationHandler(rpcType, method.getReturnType());
+                                    final InvocationHandler handler = RpcDelegater.invocationHandler(rpcType, method.getReturnType(), null);
                                     return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { method.getReturnType() },
                                             new InvocationHandler() {
                                                 @Override
