@@ -1213,8 +1213,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (null != getAnnotation(argAnnotations, Autowired.class)) {
                 return BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Qualifier.class), resource);
             }
-            if (null != getAnnotation(argAnnotations, RpcFacade.class)) {
-                return buildRpcFacade(processor, tradeCtx, (Class<?>)argType);
+            final RpcFacade rpcFacade = getAnnotation(argAnnotations, RpcFacade.class);
+            if (null != rpcFacade) {
+                return buildRpcFacade(processor, tradeCtx, rpcFacade, (Class<?>)argType);
             }
         }
         if (argType instanceof ParameterizedType){
@@ -1271,7 +1272,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return null;
     }
 
-    private Object buildRpcFacade(final Method processor, final DefaultTradeContext tradeCtx, final Class<?> facadeType) {
+    private Object buildRpcFacade(final Method processor, final DefaultTradeContext tradeCtx, final RpcFacade rpcFacade, final Class<?> facadeType) {
 //        final Transformer<Interact, Interact> prefix = selectURI4SPI(facadeType);
 
         return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { facadeType },
@@ -1281,8 +1282,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             throws Throwable {
                         if (null == args || args.length == 0) {
                             final RpcExecutor executor = buildRpcExecutor(processor, tradeCtx.interactBuilder());
+                            final Transformer<Interact, Interact> processors = FinderUtil.processors(_finder, rpcFacade.value());
+
                             final InvocationHandler handler = RpcDelegater.invocationHandler(facadeType, method.getReturnType(),
-                                    inter2any -> executor.submit(inter2any) );
+                                    inter2any -> executor.submit( interacts -> interacts.compose(processors).compose(inter2any)) );
                             return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { method.getReturnType() },
                                     handler
                                     /*
