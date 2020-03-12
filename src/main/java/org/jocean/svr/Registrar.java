@@ -1364,6 +1364,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         if (uris.length == 0) {
                             LOG.warn("no valid endpoint for service [{}]", spitype.value());
                             throw new RuntimeException("no valid endpoint for service [" + spitype.value() + "]");
+                        } else {
+                            LOG.debug("found [{}] uris for {}", uris.length, spitype.value());
                         }})
                     .flatMap(uris -> interacts.doOnNext(interact ->interact.uri(selectURI(uris))));
         } else {
