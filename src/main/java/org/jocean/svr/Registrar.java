@@ -1215,7 +1215,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
             final RpcFacade rpcFacade = getAnnotation(argAnnotations, RpcFacade.class);
             if (null != rpcFacade) {
-                return buildRpcFacade(resource, processor, tradeCtx, rpcFacade, (Class<?>)argType);
+                return buildRpcFacade(resource, processor, tradeCtx, rpcFacade.value(), (Class<?>)argType);
             }
         }
         if (argType instanceof ParameterizedType){
@@ -1258,6 +1258,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return buildBranchBuilder(tradeCtx, processor);
         } else if (argType.equals(RpcBuilder.class)) {
             return buildRpcBuilder();
+        } else if (argType.equals(FacadeBuilder.class)) {
+            return buildFacadeBuilder(resource, processor, tradeCtx);
         } else {
             for (final MethodInterceptor interceptor : interceptors) {
                 if (interceptor instanceof ArgumentBuilder) {
@@ -1270,6 +1272,15 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
 
         return null;
+    }
+
+    private FacadeBuilder buildFacadeBuilder(final Object resource, final Method processor, final DefaultTradeContext tradeCtx) {
+        return new FacadeBuilder() {
+            @SuppressWarnings("unchecked")
+            @Override
+            public <F> F build(final Class<F> facadeType, final String... preprocessors) {
+                return (F)buildRpcFacade(resource, processor, tradeCtx, preprocessors, facadeType);
+            }};
     }
 
     private static Transformer<Interact, Interact> transformerByExpression(final Object owner, final String expression) {
@@ -1305,9 +1316,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
-    private Transformer<Interact, Interact> processorsOf(final Object resource, final RpcFacade rpcFacade) {
+    private Transformer<Interact, Interact> processorsOf(final Object resource, final String[] names) {
         return obs -> {
-            for (final String name : rpcFacade.value()) {
+            for (final String name : names) {
                 final Transformer<Interact, Interact> pipe = processorOf(resource, name);
                 if (null != pipe) {
                     obs = obs.compose(pipe);
@@ -1318,7 +1329,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Object buildRpcFacade(final Object resource, final Method processor,
-            final DefaultTradeContext tradeCtx, final RpcFacade rpcFacade, final Class<?> facadeType) {
+            final DefaultTradeContext tradeCtx, final String[] names, final Class<?> facadeType) {
         return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { facadeType },
                 new InvocationHandler() {
                     @Override
@@ -1326,7 +1337,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             throws Throwable {
                         if (null == args || args.length == 0) {
                             final RpcExecutor executor = buildRpcExecutor(processor, tradeCtx.interactBuilder());
-                            final Transformer<Interact, Interact> processors = union(processorsOf(resource, rpcFacade), selectURI4SPI(facadeType));
+                            final Transformer<Interact, Interact> processors = union(processorsOf(resource, names), selectURI4SPI(facadeType));
 
                             final InvocationHandler handler = RpcDelegater.invocationHandler(facadeType, method.getReturnType(),
                                     inter2any -> executor.submit( interacts -> interacts.compose(processors).compose(inter2any)) );
