@@ -1297,6 +1297,14 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
+    private Transformer<Interact, Interact> union(final Transformer<Interact, Interact> org, final Transformer<Interact, Interact> tounion) {
+        if (null == tounion) {
+            return org;
+        } else {
+            return interacts -> interacts.compose(org).compose(tounion);
+        }
+    }
+
     private Transformer<Interact, Interact> processorsOf(final Object resource, final RpcFacade rpcFacade) {
         return obs -> {
             for (final String name : rpcFacade.value()) {
@@ -1311,8 +1319,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     private Object buildRpcFacade(final Object resource, final Method processor,
             final DefaultTradeContext tradeCtx, final RpcFacade rpcFacade, final Class<?> facadeType) {
-//        final Transformer<Interact, Interact> prefix = selectURI4SPI(facadeType);
-
         return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { facadeType },
                 new InvocationHandler() {
                     @Override
@@ -1320,28 +1326,14 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             throws Throwable {
                         if (null == args || args.length == 0) {
                             final RpcExecutor executor = buildRpcExecutor(processor, tradeCtx.interactBuilder());
-                            final Transformer<Interact, Interact> processors = processorsOf(resource, rpcFacade);
+                            final Transformer<Interact, Interact> processors = union(processorsOf(resource, rpcFacade), selectURI4SPI(facadeType));
 
                             final InvocationHandler handler = RpcDelegater.invocationHandler(facadeType, method.getReturnType(),
                                     inter2any -> executor.submit( interacts -> interacts.compose(processors).compose(inter2any)) );
-                            return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { method.getReturnType() },
-                                    handler
-                                    /*
-                                    new InvocationHandler() {
-                                        @Override
-                                        public Object invoke(final Object builderProxy, final Method builderMethod, final Object[] builderArgs)
-                                                throws Throwable {
-                                            if (null == builderArgs || builderArgs.length == 0) {
-                                                final Transformer<Interact, ? extends Object> inter2resp =
-                                                        (Transformer<Interact, ? extends Object>)handler.invoke(builderProxy, builderMethod, builderArgs);
-                                                return null != prefix
-                                                        ? (Transformer<Interact, ? extends Object>)(interacts -> interacts.compose(prefix).compose(inter2resp))
-                                                        : inter2resp;
-                                            } else {
-                                                return handler.invoke(builderProxy, builderMethod, builderArgs);
-                                            }
-                                        }}*/
-                                    );
+
+                            return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(),
+                                    new Class<?>[] { method.getReturnType() },
+                                    handler );
                         } else {
                             return null;
                         }
