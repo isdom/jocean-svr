@@ -90,6 +90,7 @@ import org.jocean.svr.FinderUtil.CallerContext;
 import org.jocean.svr.ZipUtil.Unzipper;
 import org.jocean.svr.ZipUtil.ZipBuilder;
 import org.jocean.svr.ZipUtil.Zipper;
+import org.jocean.svr.annotation.JService;
 import org.jocean.svr.annotation.PathSample;
 import org.jocean.svr.annotation.RpcFacade;
 import org.jocean.svr.annotation.SPIType;
@@ -1218,6 +1219,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 return buildRpcFacade(resource, buildRpcExecutor(processor, tradeCtx.interactBuilder()),
                         rpcFacade.value(), (Class<?>)argType);
             }
+            if (null != getAnnotation(argAnnotations, JService.class)) {
+                return buildJService(resource, tradeCtx, argsCtx, (Class<?>)argType);
+            }
         }
         if (argType instanceof ParameterizedType){
             //参数化类型
@@ -1273,6 +1277,33 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
 
         return null;
+    }
+
+    private Object buildJService(final Object resource, final DefaultTradeContext tradeCtx, final ArgsCtx argsCtx,
+            final Class<?> serviceType) {
+        try {
+            final Object service = ReflectUtils.newInstance(serviceType);
+
+            // assign all fields
+            if (null != service) {
+                final Field[] fields = ReflectUtils.getAllFieldsOfClass(service.getClass());
+                for (final Field field : fields) {
+                    final Object value = buildArgByType(field.getGenericType(),
+                            resource,
+                            tradeCtx,
+                            argsCtx,
+                            field.getAnnotations());
+                    field.setAccessible(true);
+                    field.set(service, value);
+                }
+            } else {
+                LOG.warn("buildJService: failed to newInstance for type {}", serviceType);
+            }
+            return service;
+        } catch (final Exception e) {
+            LOG.warn("exception when buildJService for type {}, detail: {}", serviceType, ExceptionUtils.exception2detail(e));
+            throw new RuntimeException(e);
+        }
     }
 
     private FacadeBuilder buildFacadeBuilder(final Object resource, final RpcExecutor defaultExecutor) {
@@ -1556,7 +1587,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
             return bean;
         } catch (final Exception e) {
-            LOG.warn("exception when buildBeanParam for type {}, detail: {}", ExceptionUtils.exception2detail(e));
+            LOG.warn("exception when buildBeanParam for type {}, detail: {}", argType, ExceptionUtils.exception2detail(e));
             throw new RuntimeException(e);
         }
     }
