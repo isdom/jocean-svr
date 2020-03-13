@@ -1251,6 +1251,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return tradeCtx.interactBuilder();
         } else if (argType.equals(TradeContext.class)) {
             return tradeCtx;
+        } else if (argType.equals(Scheduler.class)) {
+            return tradeCtx.scheduler().scheduler();
         } else if (argType.equals(ZipBuilder.class)) {
             return buildZipBuilder(tradeCtx);
         } else if (argType.equals(BeanFinder.class)) {
