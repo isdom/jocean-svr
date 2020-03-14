@@ -1218,6 +1218,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (null != pathParam && null != pathParams) {
                 return buildPathParam(pathParams, pathParam.value(), (Class<?>)argType);
             }
+            if (null != getAnnotation(argAnnotations, Inject.class)) {
+                return BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Named.class), resource);
+            }
             if (null != getAnnotation(argAnnotations, Autowired.class)) {
                 return BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Qualifier.class), resource);
             }
