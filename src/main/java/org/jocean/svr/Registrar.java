@@ -145,7 +145,6 @@ import rx.Observable;
 import rx.Observable.Transformer;
 import rx.Scheduler;
 import rx.functions.Actions;
-import rx.functions.Func0;
 
 /**
  * @author isdom
@@ -156,35 +155,42 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     class DefaultTradeContext implements TradeContext {
 
-        DefaultTradeContext(final HttpTrade trade, final Tracer tracer, final Span span, final TradeScheduler ts,
-                final String operation, final RestinIndicator restin, final AsyncEntry asyncEntry) {
+        DefaultTradeContext(final HttpTrade trade,
+                final Haltable haltable,
+                final Tracer tracer,
+                final Span span,
+                final TradeScheduler ts,
+                final String operation,
+                final RestinIndicator restin,
+                final AsyncEntry asyncEntry) {
             this._trade = trade;
+            this._haltable = haltable;
             this._tracer = tracer;
             this._span = span;
             this._ts = ts;
-            this._restin = restin;
             this._operation = operation;
+            this._restin = restin;
             this._asyncEntry = asyncEntry;
         }
 
         @Override
         public WriteCtrl writeCtrl() {
-            return _trade.writeCtrl();
+            return this._trade.writeCtrl();
         }
 
         @Override
         public Haltable haltable() {
-            return _trade;
+            return this._haltable;
         }
 
         @Override
         public AllocatorBuilder allocatorBuilder() {
-            return buildAllocatorBuilder(_trade);
+            return buildAllocatorBuilder(this._haltable);
         }
 
         @Override
         public InteractBuilder interactBuilder() {
-            return new InteractBuilderImpl(_trade, _span, Observable.just(_tracer), _ts.scheduler(),
+            return new InteractBuilderImpl(this._haltable, _span, Observable.just(_tracer), _ts.scheduler(),
                     this._asyncEntry.getAsyncContext(),
                     (amount, unit, tags) -> recordDuration(amount, unit, tags),
                     (inboundBytes, outboundBytes, tags) -> recordTraffic(inboundBytes, outboundBytes, tags));
@@ -239,6 +245,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
 
         HttpTrade _trade;
+        final Haltable _haltable;
         final Tracer _tracer;
         final Span _span;
         final TradeScheduler _ts;
@@ -585,7 +592,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 } catch (final BlockException e) {
                     return Observable.error(e);
                 }
-                final DefaultTradeContext tctx = new DefaultTradeContext(trade, tracer, span, ts, operationName, restin, asyncEntry);
+                final DefaultTradeContext tctx = new DefaultTradeContext(trade, trade, tracer, span, ts, operationName, restin, asyncEntry);
 
                 final Deque<MethodInterceptor> interceptors = new LinkedList<>();
                 final MethodInterceptor.Context interceptorCtx = new MethodInterceptor.Context() {
@@ -1219,8 +1226,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 return buildRpcFacade(resource, buildRpcExecutor(processor, tradeCtx.interactBuilder()),
                         rpcFacade.value(), (Class<?>)argType);
             }
-            if (null != getAnnotation(argAnnotations, JService.class)) {
-                return buildJService(resource, tradeCtx, argsCtx, (Class<?>)argType);
+            final JService jService = getAnnotation(argAnnotations, JService.class);
+            if (null != jService) {
+                return buildJService(resource, tradeCtx, argsCtx, (Class<?>)argType, jService);
             }
         }
         if (argType instanceof ParameterizedType){
@@ -1263,6 +1271,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return buildTracing(tradeCtx, tradeCtx._span);
         } else if (argType.equals(Branch.Builder.class)) {
             return buildBranchBuilder(tradeCtx, processor);
+        } else if (argType.equals(Span.class)) {
+            return tradeCtx._span;
         } else if (argType.equals(RpcBuilder.class)) {
             return buildRpcBuilder();
         } else if (argType.equals(FacadeBuilder.class)) {
@@ -1281,8 +1291,25 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return null;
     }
 
-    private Object buildJService(final Object resource, final DefaultTradeContext tradeCtx, final ArgsCtx argsCtx,
-            final Class<?> serviceType) {
+    private Object buildJService(final Object resource, DefaultTradeContext tradeCtx, final ArgsCtx argsCtx,
+            final Class<?> serviceType, final JService jService) {
+        if (!jService.value().isEmpty()) {
+            final Span span = tradeCtx._tracer.buildSpan(jService.value())
+                    .addReference(References.FOLLOWS_FROM, tradeCtx._span.context()).start();
+
+            // TODO, replace wit JService's config
+            final Haltable haltable = HaltableUtil.delay(30, TimeUnit.SECONDS);
+
+            haltable.doOnHalt(() -> span.finish());
+            tradeCtx = new DefaultTradeContext(tradeCtx._trade,
+                    haltable,
+                    tradeCtx._tracer,
+                    span,
+                    tradeCtx._ts,
+                    tradeCtx._operation,
+                    tradeCtx._restin,
+                    null);
+        }
         try {
             final Object service = ReflectUtils.newInstance(serviceType);
 
@@ -1550,12 +1577,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }};
     }
 
-    private static AllocatorBuilder buildAllocatorBuilder(final HttpTrade trade) {
-        return new AllocatorBuilder() {
-            @Override
-            public Func0<DisposableWrapper<? extends ByteBuf>> build(final int pageSize) {
-                return MessageUtil.pooledAllocator(trade, pageSize);
-            }};
+    private static AllocatorBuilder buildAllocatorBuilder(final Haltable haltable) {
+        return (pageSize) -> MessageUtil.pooledAllocator(haltable, pageSize);
     }
 
     private Observable<MessageBody> buildMessageBody(final HttpTrade trade, final HttpRequest request) {
