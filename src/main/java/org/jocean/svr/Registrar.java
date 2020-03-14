@@ -9,6 +9,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Proxy;
 import java.lang.reflect.Type;
@@ -1320,13 +1321,15 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (null != service) {
                 final Field[] fields = ReflectUtils.getAllFieldsOfClass(service.getClass());
                 for (final Field field : fields) {
-                    final Object value = buildArgByType(field.getGenericType(),
-                            resource,
-                            tradeCtx,
-                            argsCtx,
-                            field.getAnnotations());
-                    field.setAccessible(true);
-                    field.set(service, value);
+                    if (!Modifier.isStatic(field.getModifiers())) {
+                        final Object value = buildArgByType(field.getGenericType(),
+                                resource,
+                                tradeCtx,
+                                argsCtx,
+                                field.getAnnotations());
+                        field.setAccessible(true);
+                        field.set(service, value);
+                    }
                 }
             } else {
                 LOG.warn("buildJService: failed to newInstance for type {}", serviceType);
