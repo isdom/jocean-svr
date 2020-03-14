@@ -191,7 +191,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         @Override
         public InteractBuilder interactBuilder() {
             return new InteractBuilderImpl(this._haltable, _span, Observable.just(_tracer), _ts.scheduler(),
-                    this._asyncEntry.getAsyncContext(),
+                    null != this._asyncEntry ? this._asyncEntry.getAsyncContext() : null,
                     (amount, unit, tags) -> recordDuration(amount, unit, tags),
                     (inboundBytes, outboundBytes, tags) -> recordTraffic(inboundBytes, outboundBytes, tags));
         }
