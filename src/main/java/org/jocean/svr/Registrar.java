@@ -1232,7 +1232,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
             final JService jService = getAnnotation(argAnnotations, JService.class);
             if (null != jService) {
-                return buildJService(resource, tradeCtx, argsCtx, (Class<?>)argType, jService);
+                return buildJService(resource, tradeCtx, argsCtx, (Class<?>)argType, jService.value());
             }
         }
         if (argType instanceof ParameterizedType){
@@ -1281,6 +1281,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return buildRpcBuilder();
         } else if (argType.equals(FacadeBuilder.class)) {
             return buildFacadeBuilder(resource, buildRpcExecutor(processor, tradeCtx.interactBuilder()));
+        } else if (argType.equals(JServiceBuilder.class)) {
+            return buildJServiceBuilder(resource, tradeCtx, argsCtx);
         } else {
             for (final MethodInterceptor interceptor : interceptors) {
                 if (interceptor instanceof ArgumentBuilder) {
@@ -1295,10 +1297,25 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return null;
     }
 
+    private JServiceBuilder buildJServiceBuilder(final Object resource, final DefaultTradeContext tradeCtx, final ArgsCtx argsCtx) {
+        return new JServiceBuilder() {
+            @SuppressWarnings("unchecked")
+            @Override
+            public <S> S build(final Class<S> serviceType) {
+                return (S)buildJService(resource, tradeCtx, argsCtx, serviceType, null);
+            }
+
+            @SuppressWarnings("unchecked")
+            @Override
+            public <S> S build(final Class<S> serviceType, final String forkName) {
+                return  (S)buildJService(resource, tradeCtx, argsCtx, serviceType, forkName);
+            }};
+    }
+
     private Object buildJService(final Object resource, DefaultTradeContext tradeCtx, final ArgsCtx argsCtx,
-            final Class<?> serviceType, final JService jService) {
-        if (!jService.value().isEmpty()) {
-            final Span span = tradeCtx._tracer.buildSpan(jService.value())
+            final Class<?> serviceType, final String forkName) {
+        if (null != forkName && !forkName.isEmpty()) {
+            final Span span = tradeCtx._tracer.buildSpan(forkName)
                     .addReference(References.FOLLOWS_FROM, tradeCtx._span.context()).start();
 
             // TODO, replace wit JService's config
