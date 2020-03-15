@@ -1347,12 +1347,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             @Override
             public <F> F build(final Class<F> facadeType, final String... preprocessors) {
                 return (F)buildRpcFacade(resource, defaultExecutor, preprocessors, facadeType);
-            }
-
-            @SuppressWarnings("unchecked")
-            @Override
-            public <F> F build(final Class<F> facadeType, final RpcExecutor executor, final String... preprocessors) {
-                return (F)buildRpcFacade(resource, executor, preprocessors, facadeType);
             }};
     }
 
