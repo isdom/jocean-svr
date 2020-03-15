@@ -1279,8 +1279,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return tradeCtx._span;
         } else if (argType.equals(RpcBuilder.class)) {
             return buildRpcBuilder();
-        } else if (argType.equals(FacadeBuilder.class)) {
-            return buildFacadeBuilder(resource, buildRpcExecutor(processor, tradeCtx.interactBuilder()));
         } else if (argType.equals(JServiceBuilder.class)) {
             return buildJServiceBuilder(resource, tradeCtx, argsCtx);
         } else {
@@ -1356,15 +1354,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             LOG.warn("exception when buildJService for type {}, detail: {}", serviceType, ExceptionUtils.exception2detail(e));
             throw new RuntimeException(e);
         }
-    }
-
-    private FacadeBuilder buildFacadeBuilder(final Object resource, final RpcExecutor defaultExecutor) {
-        return new FacadeBuilder() {
-            @SuppressWarnings("unchecked")
-            @Override
-            public <F> F build(final Class<F> facadeType, final String... preprocessors) {
-                return (F)buildRpcFacade(resource, defaultExecutor, preprocessors, facadeType);
-            }};
     }
 
     private static Transformer<Interact, Interact> transformerByExpression(final Object owner, final String expression) {
