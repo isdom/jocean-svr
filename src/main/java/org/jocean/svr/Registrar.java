@@ -102,6 +102,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -1225,6 +1226,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (null != getAnnotation(argAnnotations, Autowired.class)) {
                 return BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Qualifier.class), resource);
             }
+            final Value valueAnno = getAnnotation(argAnnotations, Value.class);
+            if (null != valueAnno) {
+                return getInjectValue(valueAnno.value(), resource);
+            }
             final RpcFacade rpcFacade = getAnnotation(argAnnotations, RpcFacade.class);
             if (null != rpcFacade) {
                 return buildRpcFacade(resource, buildRpcExecutor(processor, tradeCtx.interactBuilder()),
@@ -1295,6 +1300,31 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return null;
     }
 
+    private static Object getValueByExpression(final Object owner, final String expression) {
+        try {
+            final Field field = owner.getClass().getDeclaredField(expression);
+            if (null != field) {
+                field.setAccessible(true);
+                return field.get(owner);
+            }
+        } catch (final Exception e) {
+            LOG.warn("exception when getValueByExpression for ({}) with exp ({}), detail: {}",
+                    owner, expression, ExceptionUtils.exception2detail(e));
+        }
+        return null;
+    }
+
+    private Object getInjectValue(final String name, final Object resource) {
+        if (null != resource && name.startsWith("this.")) {
+            final Object value = getValueByExpression(resource, name.substring(5));
+            if (null == value) {
+                LOG.warn("invalid expression {}, can't found matched field or field is null", name);
+                return null;
+            }
+        }
+        return null;
+    }
+
     private JServiceBuilder buildJServiceBuilder(final Object resource, final DefaultTradeContext tradeCtx, final ArgsCtx argsCtx) {
         return new JServiceBuilder() {
             @SuppressWarnings("unchecked")
@@ -1342,8 +1372,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                                 tradeCtx,
                                 argsCtx,
                                 field.getAnnotations());
-                        field.setAccessible(true);
-                        field.set(service, value);
+                        if (null != value) {
+                            field.setAccessible(true);
+                            field.set(service, value);
+                        } else {
+                            LOG.warn("can't found/build value for field:{}, which is changed", field);
+                        }
                     }
                 }
             } else {
