@@ -1321,9 +1321,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             LOG.debug("getInjectValue from {}.{}, the value is {}", resource, name, value);
             if (null == value) {
                 LOG.warn("invalid expression {}, can't found matched field or field is null", name);
-                return null;
             }
+            return value;
         }
+        LOG.warn("resource({}) is null or invalid name({}), can't get value", resource, name);
         return null;
     }
 
@@ -1378,7 +1379,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             field.setAccessible(true);
                             field.set(service, value);
                         } else {
-                            LOG.warn("can't found/build value for field:{}, which is changed", field);
+                            LOG.warn("can't found/build value for field:{}, which is unchanged.", field);
                         }
                     }
                 }
