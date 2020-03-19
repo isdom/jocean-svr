@@ -1228,6 +1228,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
             final Value valueAnno = getAnnotation(argAnnotations, Value.class);
             if (null != valueAnno) {
+                LOG.debug("try inject value from {}.{}", resource, valueAnno.value());
                 return getInjectValue(valueAnno.value(), resource);
             }
             final RpcFacade rpcFacade = getAnnotation(argAnnotations, RpcFacade.class);
@@ -1317,6 +1318,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private Object getInjectValue(final String name, final Object resource) {
         if (null != resource && name.startsWith("this.")) {
             final Object value = getValueByExpression(resource, name.substring(5));
+            LOG.debug("getInjectValue from {}.{}, the value is {}", resource, name, value);
             if (null == value) {
                 LOG.warn("invalid expression {}, can't found matched field or field is null", name);
                 return null;
