@@ -1,5 +1,6 @@
 package org.jocean.svr.mbean;
 
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
@@ -16,6 +17,7 @@ import javax.management.NotificationFilter;
 import javax.management.NotificationListener;
 
 import org.jocean.http.server.mbean.InboundIndicator;
+import org.jocean.http.util.Nettys.AwaitChannelsAware;
 import org.jocean.http.util.Nettys.ServerChannelAware;
 import org.jocean.idiom.jmx.MBeanRegister;
 import org.jocean.idiom.jmx.MBeanRegisterAware;
@@ -24,13 +26,14 @@ import org.springframework.beans.factory.annotation.Value;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Metrics;
+import io.netty.channel.Channel;
 import io.netty.channel.ServerChannel;
 import rx.Observable;
 import rx.functions.Action0;
 import rx.functions.Action1;
 
 public class RestinIndicator extends InboundIndicator
-    implements RestinIndicatorMXBean, ServerChannelAware, MBeanRegisterAware, NotificationEmitter {
+    implements RestinIndicatorMXBean, ServerChannelAware, AwaitChannelsAware, MBeanRegisterAware, NotificationEmitter {
 
     @Override
     public String getPid() {
@@ -69,6 +72,11 @@ public class RestinIndicator extends InboundIndicator
     }
 
     @Override
+    public void setAwaitChannels(final List<Channel> awaitChannels) {
+        this._awaitChannels = awaitChannels;
+    }
+
+    @Override
     public void setMBeanRegister(final MBeanRegister register) {
         this._register = register;
     }
@@ -96,6 +104,11 @@ public class RestinIndicator extends InboundIndicator
     @Override
     public int getTradeCount() {
         return _tradeCount.get();
+    }
+
+    @Override
+    public int getAwaitChannelCount() {
+        return null != _awaitChannels ? _awaitChannels.size() : 0;
     }
 
     public void incTradeCount(final String operationName, final Action1<Action0> onHalt) {
@@ -179,6 +192,8 @@ public class RestinIndicator extends InboundIndicator
     private long _lastNotifyTimestamp = 0;
 
     private final AtomicInteger _tradeCount = new AtomicInteger(0);
+
+    private List<Channel> _awaitChannels;
 
     private final NotificationBroadcasterSupport _notificationBroadcasterSupport = new NotificationBroadcasterSupport();
 

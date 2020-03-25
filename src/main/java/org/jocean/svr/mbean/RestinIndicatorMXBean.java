@@ -15,4 +15,6 @@ public interface RestinIndicatorMXBean extends InboundMXBean {
     public String getPid();
 
     public int getTradeCount();
+
+    public int getAwaitChannelCount();
 }

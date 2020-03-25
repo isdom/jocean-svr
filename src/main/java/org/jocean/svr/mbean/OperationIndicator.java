@@ -156,6 +156,11 @@ public class OperationIndicator extends NotificationBroadcasterSupport implement
     }
 
     @Override
+    public int getAwaitChannelCount() {
+        return _restin.getAwaitChannelCount();
+    }
+
+    @Override
     public String getOperation() {
         return this._operationName;
     }
