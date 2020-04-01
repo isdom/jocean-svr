@@ -5,6 +5,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.jocean.http.ByteBufSlice;
 import org.jocean.idiom.DisposableWrapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.netty.buffer.ByteBuf;
 import rx.Observable;
@@ -15,6 +17,7 @@ import rx.subjects.PublishSubject;
 import rx.subscriptions.Subscriptions;
 
 public abstract class AbstractParseContext<E, CTX extends ParseContext<E>> implements ParseContext<E> {
+    private static final Logger LOG = LoggerFactory.getLogger(AbstractParseContext.class);
 
     protected AbstractParseContext(final EntityParser<E, CTX> initParser) {
         this._currentParser.set(initParser);
@@ -30,6 +33,7 @@ public abstract class AbstractParseContext<E, CTX extends ParseContext<E>> imple
         }
 
         if (!hasContent()) {
+            LOG.debug("parseEntity: !hasContent() case");
             // no downstream msgbody or slice generate, auto step updtgream
             dostep.call();
             return Observable.empty();
@@ -43,10 +47,12 @@ public abstract class AbstractParseContext<E, CTX extends ParseContext<E>> imple
             //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
             //  因此需要分别处理 body != null 及 body == null
             final E entity = buildEntity(() -> parseRemains(subject, dostep));
+            LOG.debug("parseEntity: canParsing() with entity({})", entity);
             return null == entity ? subject : Observable.just(entity).concatWith(subject);
         }
         else {
             final E entity = buildEntity(dostep);
+            LOG.debug("parseEntity: !canParsing() with entity({})", entity);
             return null == entity ? Observable.empty() : Observable.just(entity);
         }
     }
