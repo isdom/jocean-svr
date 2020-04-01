@@ -63,29 +63,36 @@ public abstract class AbstractParseContext<E, CTX extends ParseContext<E>> imple
 
     private void parseRemains(final PublishSubject<E> subject, final Action0 dostep) {
         while (!hasContent() && canParsing()) {
+            LOG.debug("parseRemains: do parse with current parse: {}", _currentParser.get());
             parse();
         }
 
+        LOG.debug("parseRemains: leave while parse() with current parse: {}", _currentParser.get());
         if (!hasContent()) {
+            LOG.debug("parseRemains: !hasContent() case");
             // this bbs has been consumed
             subject.onCompleted();
             // no downstream entity or slice generate, auto step upstream
             dostep.call();
         }
         else if (canParsing()) {
+            LOG.debug("parseRemains: begin canParsing() case");
             // can continue parsing
             // makeslices.size() == 1
             //  如果该 bbs 是上一个 part 的结尾部分，并附带了后续的1个或多个 part (部分内容)
             //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
             //  因此需要分别处理 body != null 及 body == null
             final E entity = buildEntity(() -> parseRemains(subject, dostep));
+            LOG.debug("parseRemains: endof canParsing() case with entity({})", entity);
             if (null != entity) {
                 subject.onNext(entity);
             }
         }
         else {
+            LOG.debug("parseRemains: begin !canParsing() case");
             final E entity = buildEntity(dostep);
 
+            LOG.debug("parseRemains: endof !canParsing() with entity({})", entity);
             if (null != entity) {
                 subject.onNext(entity);
             }
