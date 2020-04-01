@@ -732,7 +732,7 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
         final DefaultMultipartContext mctx = new DefaultMultipartContext(bufin, bufout, 512, _headerParser, _scheduler);
         bufin.markEOS();
 
-        return content.flatMap(bbs -> {
+        return content.observeOn(_scheduler).flatMap(bbs -> {
             bufin.appendIterable(bbs.element());
             mctx.resetParsing();
 
