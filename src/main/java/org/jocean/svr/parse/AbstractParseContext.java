@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import io.netty.buffer.ByteBuf;
 import rx.Observable;
+import rx.Scheduler;
 import rx.Subscription;
 import rx.functions.Action0;
 import rx.functions.Func1;
@@ -19,8 +20,9 @@ import rx.subscriptions.Subscriptions;
 public abstract class AbstractParseContext<E, CTX extends ParseContext<E>> implements ParseContext<E> {
     private static final Logger LOG = LoggerFactory.getLogger(AbstractParseContext.class);
 
-    protected AbstractParseContext(final EntityParser<E, CTX> initParser) {
+    protected AbstractParseContext(final EntityParser<E, CTX> initParser, final Scheduler scheduler) {
         this._currentParser.set(initParser);
+        this._scheduler = scheduler;
     }
 
     public void resetParsing() {
@@ -49,7 +51,7 @@ public abstract class AbstractParseContext<E, CTX extends ParseContext<E>> imple
             //  如果该 bbs 是上一个 part 的结尾部分，并附带了后续的1个或多个 part (部分内容)
             //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
             //  因此需要分别处理 body != null 及 body == null
-            final E entity = buildEntity(() -> parseRemains(subject, dostep));
+            final E entity = buildEntity(() -> _scheduler.createWorker().schedule(() -> parseRemains(subject, dostep)));
             LOG.debug("parseEntity: endof canParsing() case with entity({})", entity);
             return null == entity ? subject : Observable.just(entity).concatWith(subject);
         }
@@ -82,7 +84,7 @@ public abstract class AbstractParseContext<E, CTX extends ParseContext<E>> imple
             //  如果该 bbs 是上一个 part 的结尾部分，并附带了后续的1个或多个 part (部分内容)
             //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
             //  因此需要分别处理 body != null 及 body == null
-            final E entity = buildEntity(() -> parseRemains(subject, dostep));
+            final E entity = buildEntity(() -> _scheduler.createWorker().schedule(() -> parseRemains(subject, dostep)));
             LOG.debug("parseRemains: endof canParsing() case with entity({})", entity);
             if (null != entity) {
                 subject.onNext(entity);
@@ -148,4 +150,5 @@ public abstract class AbstractParseContext<E, CTX extends ParseContext<E>> imple
     protected final AtomicBoolean _parsing = new AtomicBoolean(true);
     protected final AtomicReference<Func1<Action0, E>> _content2entityRef = new AtomicReference<>();
     protected final AtomicReference<EntityParser<E, CTX>> _currentParser = new AtomicReference<>(null);
+    protected final Scheduler _scheduler;
 }
