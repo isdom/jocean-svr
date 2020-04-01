@@ -29,9 +29,10 @@ public abstract class AbstractParseContext<E, CTX extends ParseContext<E>> imple
 
     public Observable<? extends E> parseEntity(final Action0 dostep) {
         while (!hasContent() && canParsing()) {
-            LOG.debug("parseEntity: do parse with {}", _currentParser.get());
+            LOG.debug("parseEntity: do parse with current parse: {}", _currentParser.get());
             parse();
         }
+        LOG.debug("parseEntity: leave while parse() with current parse: {}", _currentParser.get());
 
         if (!hasContent()) {
             LOG.debug("parseEntity: !hasContent() case");
@@ -40,6 +41,7 @@ public abstract class AbstractParseContext<E, CTX extends ParseContext<E>> imple
             return Observable.empty();
         }
         else if (canParsing()) {
+            LOG.debug("parseEntity: begin canParsing() case");
             // can continue parsing
             // makeslices.size() == 1
             final PublishSubject<E> subject = PublishSubject.create();
@@ -48,12 +50,13 @@ public abstract class AbstractParseContext<E, CTX extends ParseContext<E>> imple
             //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
             //  因此需要分别处理 body != null 及 body == null
             final E entity = buildEntity(() -> parseRemains(subject, dostep));
-            LOG.debug("parseEntity: canParsing() with entity({})", entity);
+            LOG.debug("parseEntity: endof canParsing() case with entity({})", entity);
             return null == entity ? subject : Observable.just(entity).concatWith(subject);
         }
         else {
+            LOG.debug("parseEntity: begin !canParsing() case");
             final E entity = buildEntity(dostep);
-            LOG.debug("parseEntity: !canParsing() with entity({})", entity);
+            LOG.debug("parseEntity: endof !canParsing() with entity({})", entity);
             return null == entity ? Observable.empty() : Observable.just(entity);
         }
     }
