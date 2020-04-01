@@ -29,6 +29,7 @@ public abstract class AbstractParseContext<E, CTX extends ParseContext<E>> imple
 
     public Observable<? extends E> parseEntity(final Action0 dostep) {
         while (!hasContent() && canParsing()) {
+            LOG.debug("parseEntity: do parse with {}", _currentParser.get());
             parse();
         }
 
