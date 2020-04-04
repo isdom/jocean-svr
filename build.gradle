@@ -24,7 +24,8 @@ dependencies {
     compile "org.springframework:spring-context:${springVersion}"
     compile "com.google.guava:guava:${guavaVersion}"
     
-    compile 'io.jaegertracing:jaeger-client:0.32.0'
+    compile "io.jaegertracing:jaeger-client:${jaegerVersion}"
+    compile "io.opentracing:opentracing-util:${opentracingVersion}"
     compile 'org.jocean:jocean-opentracing-jdbc:0.0.1-SNAPSHOT'
     
     compile 'commons-beanutils:commons-beanutils:1.9.3'
