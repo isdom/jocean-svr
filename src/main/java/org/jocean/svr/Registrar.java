@@ -161,7 +161,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 final Haltable haltable,
                 final Tracer tracer,
                 final Span span,
-                final Scheduler sc,
+                final TradeScheduler ts,
                 final String operation,
                 final RestinIndicator restin,
                 final AsyncEntry asyncEntry) {
@@ -169,7 +169,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             this._haltable = haltable;
             this._tracer = tracer;
             this._span = span;
-            this._sc = sc;
+            this._ts = ts;
             this._operation = operation;
             this._restin = restin;
             this._asyncEntry = asyncEntry;
@@ -192,7 +192,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
         @Override
         public InteractBuilder interactBuilder() {
-            return new InteractBuilderImpl(this._haltable, _span, Observable.just(_tracer), _sc,
+            return new InteractBuilderImpl(this._haltable, _span, Observable.just(_tracer), _ts.scheduler(),
                     null != this._asyncEntry ? this._asyncEntry.getAsyncContext() : null,
                     (amount, unit, tags) -> recordDuration(amount, unit, tags),
                     (inboundBytes, outboundBytes, tags) -> recordTraffic(inboundBytes, outboundBytes, tags));
@@ -200,7 +200,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
         public InteractBuilder interactBuilderOutofTrade(final Span parentSpan, final int delayInSeconds) {
             return new InteractBuilderImpl(HaltableUtil.delay(delayInSeconds, TimeUnit.SECONDS), parentSpan,
-                    Observable.just(_tracer), _sc,
+                    Observable.just(_tracer), _ts.scheduler(),
                     null,   // 分支产生的 interact 暂不作为 trade 的子 interact
 //                    this._asyncEntry.getAsyncContext(),
                     (amount, unit, tags) -> recordDuration(amount, unit, tags),
@@ -227,17 +227,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
         @Override
         public TradeScheduler scheduler() {
-            return new TradeScheduler() {
-
-                @Override
-                public Scheduler scheduler() {
-                    return _sc;
-                }
-
-                @Override
-                public int workerCount() {
-                    return 1;
-                }};
+            return _ts;
         }
 
         public DurationRecorder durationRecorder(final String location) {
@@ -260,7 +250,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         final Haltable _haltable;
         final Tracer _tracer;
         final Span _span;
-        final Scheduler _sc;
+        final TradeScheduler _ts;
         final String _operation;
         final RestinIndicator _restin;
         final AsyncEntry _asyncEntry;
@@ -573,7 +563,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final HttpTrade trade,
             final Tracer tracer,
             final Span span,
-            final Scheduler sc,
+            final TradeScheduler ts,
             final RestinIndicator restin) throws Exception {
 
         // try direct path match
@@ -604,7 +594,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 } catch (final BlockException e) {
                     return Observable.error(e);
                 }
-                final DefaultTradeContext tctx = new DefaultTradeContext(trade, trade, tracer, span, sc, operationName, restin, asyncEntry);
+                final DefaultTradeContext tctx = new DefaultTradeContext(trade, trade, tracer, span, ts, operationName, restin, asyncEntry);
 
                 final Deque<MethodInterceptor> interceptors = new LinkedList<>();
                 final MethodInterceptor.Context interceptorCtx = new MethodInterceptor.Context() {
@@ -1280,7 +1270,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         } else if (argType.equals(TradeContext.class)) {
             return tradeCtx;
         } else if (argType.equals(Scheduler.class)) {
-            return tradeCtx._sc;
+            return tradeCtx.scheduler().scheduler();
         } else if (argType.equals(ZipBuilder.class)) {
             return buildZipBuilder(tradeCtx);
         } else if (argType.equals(BeanFinder.class)) {
@@ -1367,7 +1357,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     haltable,
                     tradeCtx._tracer,
                     span,
-                    tradeCtx._sc,
+                    tradeCtx._ts,
                     tradeCtx._operation,
                     tradeCtx._restin,
                     null);
