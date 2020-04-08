@@ -60,8 +60,8 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
     @Override
     public void onNext(final HttpTrade trade) {
         trade.inbound().first().flatMap(fullreq ->
-            getTradeScheduler().flatMap(ts ->
-                getTracer().subscribeOn(ts.scheduler()).map(tracer -> {
+            getTradeScheduler().flatMap(scheduler ->
+                getTracer().subscribeOn(scheduler).map(tracer -> {
                     Tracer.SpanBuilder spanBuilder;
                     try {
                         final SpanContext parentSpanCtx = tracer.extract(Format.Builtin.HTTP_HEADERS,
@@ -76,17 +76,17 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
                     }
                     final HttpRequest request = fullreq.message();
 
-                    return Tuple.of(ts, fullreq, tracer, spanBuilder.withTag(Tags.COMPONENT.getKey(), "jocean-http")
+                    return Tuple.of(scheduler, fullreq, tracer, spanBuilder.withTag(Tags.COMPONENT.getKey(), "jocean-http")
                         .withTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_SERVER)
                         .withTag(Tags.HTTP_URL.getKey(), request.uri())
                         .withTag(Tags.HTTP_METHOD.getKey(), request.method().name())
 //                        .withTag(Tags.PEER_HOST_IPV4.getKey(), )
                         .start());
-            }))).subscribe( ts_req_tracer_span -> {
-                final TradeScheduler ts = ts_req_tracer_span.getAt(0);
-                final FullMessage<HttpRequest> fullreq = ts_req_tracer_span.getAt(1);
-                final Tracer tracer = ts_req_tracer_span.getAt(2);
-                final Span span = ts_req_tracer_span.getAt(3);
+            }))).subscribe( sc_req_tracer_span -> {
+                final Scheduler sc = sc_req_tracer_span.getAt(0);
+                final FullMessage<HttpRequest> fullreq = sc_req_tracer_span.getAt(1);
+                final Tracer tracer = sc_req_tracer_span.getAt(2);
+                final Span span = sc_req_tracer_span.getAt(3);
 
                 TraceUtil.hook4serversend(trade.writeCtrl(), span);
                 TraceUtil.logoutmsg(trade.writeCtrl(), span, "http.resp", 1024);
@@ -96,15 +96,15 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
 
                 if ( this._maxContentLengthForAutoread <= 0) {
                     LOG.debug("disable autoread full request, handle raw {}.", trade);
-                    handleTrade(fullreq, trade, tracer, span, ts);
+                    handleTrade(fullreq, trade, tracer, span, sc);
                 } else {
-                    tryHandleTradeWithAutoread(fullreq, trade, tracer, span, ts);
+                    tryHandleTradeWithAutoread(fullreq, trade, tracer, span, sc);
                 }
             }, e -> LOG.warn("SOURCE_CANCELED\nfor cause:[{}]", ExceptionUtils.exception2detail(e)));
     }
 
-    private Observable<TradeScheduler> getTradeScheduler() {
-        return _finder.find(this._schedulerName, TradeScheduler.class).onErrorReturn(e -> _DEFAULT_TS);
+    private Observable<Scheduler> getTradeScheduler() {
+        return _finder.find(this._schedulerName, SchedulerPool.class).map(sp -> sp.selectScheduler()).onErrorReturn(e -> _DEFAULT_SC);
     }
 
     private Observable<Tracer> getTracer() {
@@ -116,35 +116,35 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
             final HttpTrade trade,
             final Tracer tracer,
             final Span span,
-            final TradeScheduler ts) {
+            final Scheduler sc) {
         if (HttpUtil.isTransferEncodingChunked(fullreq.message())) {
             // chunked
             // output log and using raw trade
             LOG.info("chunked request, handle raw {}.", trade);
-            handleTrade(fullreq, trade, tracer, span, ts);
+            handleTrade(fullreq, trade, tracer, span, sc);
         } else if (!HttpUtil.isContentLengthSet(fullreq.message())) {
             LOG.debug("content-length not set, handle raw {}.", trade);
             // not set content-length and not chunked
-            handleTrade(fullreq, trade, tracer, span, ts);
+            handleTrade(fullreq, trade, tracer, span, sc);
         } else {
             final long contentLength = HttpUtil.getContentLength(fullreq.message());
             if (contentLength <= this._maxContentLengthForAutoread) {
                 LOG.debug("content-length is {} <= {}, enable autoread full request for {}.",
                         contentLength, this._maxContentLengthForAutoread, trade);
                 // auto read all request
-                handleTrade(fullreq, AutoreadTrade.enableAutoread(trade), tracer, span, ts);
+                handleTrade(fullreq, AutoreadTrade.enableAutoread(trade), tracer, span, sc);
             } else {
                 // content-length > max content-length
                 LOG.debug("content-length is {} > {}, handle raw {}.",
                         contentLength, this._maxContentLengthForAutoread, trade);
-                handleTrade(fullreq, trade, tracer, span, ts);
+                handleTrade(fullreq, trade, tracer, span, sc);
             }
         }
     }
 
-    private void handleTrade(final FullMessage<HttpRequest> fullreq, final HttpTrade trade, final Tracer tracer, final Span span, final TradeScheduler ts) {
+    private void handleTrade(final FullMessage<HttpRequest> fullreq, final HttpTrade trade, final Tracer tracer, final Span span, final Scheduler sc) {
         try {
-            final Observable<? extends Object> outbound = this._registrar.buildResource(fullreq.message(), trade, tracer, span, ts, this._restin);
+            final Observable<? extends Object> outbound = this._registrar.buildResource(fullreq.message(), trade, tracer, span, sc, this._restin);
             trade.outbound(outbound.doOnNext(DisposableWrapperUtil.disposeOnForAny(trade)).doOnError(error -> {
                 span.setTag(Tags.ERROR.getKey(), true);
                 span.log(Collections.singletonMap("error.detail", ExceptionUtils.exception2detail(error)));
@@ -173,20 +173,8 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
     @Value("${autoread.maxContentLength}")
     int _maxContentLengthForAutoread = 8192;
 
-    private final static TradeScheduler _DEFAULT_TS = new TradeScheduler() {
-        @Override
-        public String toString() {
-            return "immediate-TradeScheduler";
-        }
+    private final static Scheduler _DEFAULT_SC = Schedulers.immediate();
 
-        @Override
-        public Scheduler scheduler() {
-            return Schedulers.immediate();
-        }
-        @Override
-        public int workerCount() {
-            return 1;
-        }};
     @Override
     public void setMBeanRegister(final MBeanRegister register) {
 //        register.registerMBean("name=tradeProcessor", this);

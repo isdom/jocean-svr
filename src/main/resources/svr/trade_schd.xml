@@ -4,9 +4,9 @@
        xsi:schemaLocation="http://www.springframework.org/schema/beans
         http://www.springframework.org/schema/beans/spring-beans.xsd">
     
-    <bean id="ts" class="org.jocean.svr.scheduler.DefaultTradeScheduler" 
+    <bean id="sp" class="org.jocean.svr.scheduler.DefaultSchedulerPool" 
         init-method="start" destroy-method="stop" />
         
-    <alias name="ts" alias="${scheduler.name:scheduler_default}"/>
+    <alias name="sp" alias="${scheduler.name:scheduler_default}"/>
 
 </beans>
