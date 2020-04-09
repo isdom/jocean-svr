@@ -47,13 +47,21 @@ public abstract class AbstractParseContext<E, CTX extends ParseContext<E>> imple
             // can continue parsing
             // makeslices.size() == 1
             final PublishSubject<E> subject = PublishSubject.create();
+            final Observable<E> cacheObservable = subject.cache();
+
+            // REF: http://reactivex.io/documentation/operators/replay.html
+            // an Observable that, when first subscribed to, caches all of its items and notifications for the
+            //         benefit of subsequent subscribers
+
+            // force cacheObservable start cache all incoming notification(onNext, onError, onCompleted)
+            cacheObservable.subscribe(v -> {}, e -> {}, () -> {});
 
             //  如果该 bbs 是上一个 part 的结尾部分，并附带了后续的1个或多个 part (部分内容)
             //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
             //  因此需要分别处理 body != null 及 body == null
             final E entity = buildEntity(() -> /*_scheduler.createWorker().schedule(() ->*/ parseRemains(subject, dostep));
             LOG.debug("parseEntity: endof canParsing() case with entity({})", entity);
-            return null == entity ? subject : Observable.just(entity).concatWith(subject);
+            return null == entity ? cacheObservable : Observable.just(entity).concatWith(cacheObservable);
         }
         else {
             LOG.debug("parseEntity: begin !canParsing() case");
