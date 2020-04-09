@@ -51,7 +51,7 @@ public abstract class AbstractParseContext<E, CTX extends ParseContext<E>> imple
             //  如果该 bbs 是上一个 part 的结尾部分，并附带了后续的1个或多个 part (部分内容)
             //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
             //  因此需要分别处理 body != null 及 body == null
-            final E entity = buildEntity(() -> _scheduler.createWorker().schedule(() -> parseRemains(subject, dostep)));
+            final E entity = buildEntity(() -> /*_scheduler.createWorker().schedule(() ->*/ parseRemains(subject, dostep));
             LOG.debug("parseEntity: endof canParsing() case with entity({})", entity);
             return null == entity ? subject : Observable.just(entity).concatWith(subject);
         }
@@ -84,7 +84,7 @@ public abstract class AbstractParseContext<E, CTX extends ParseContext<E>> imple
             //  如果该 bbs 是上一个 part 的结尾部分，并附带了后续的1个或多个 part (部分内容)
             //  均可能出现 makeslices.size() == 1，但 bodys.size() == 0 的情况
             //  因此需要分别处理 body != null 及 body == null
-            final E entity = buildEntity(() -> _scheduler.createWorker().schedule(() -> parseRemains(subject, dostep)));
+            final E entity = buildEntity(() -> /*_scheduler.createWorker().schedule(() -> */ parseRemains(subject, dostep));
             LOG.debug("parseRemains: endof canParsing() case with entity({})", entity);
             if (null != entity) {
                 subject.onNext(entity);

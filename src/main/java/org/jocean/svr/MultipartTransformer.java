@@ -626,6 +626,10 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
                     // begin of MessageBody
                     ctx.appendContent(dwbs, content -> new MessageBody() {
                             @Override
+                            public String toString() {
+                                return "Subpart with full content: " + _headers;
+                            }
+                            @Override
                             public HttpHeaders headers() {
                                 return _headers;
                             }
@@ -670,6 +674,11 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
                     if (null == _subject) {
                         _subject = PublishSubject.create();
                         ctx.appendContent( dwbs, content -> new MessageBody() {
+                                @Override
+                                public String toString() {
+                                    return "Subpart with part content: " + _headers;
+                                }
+
                                 @Override
                                 public HttpHeaders headers() {
                                     return _headers;
@@ -747,7 +756,7 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
         final DefaultMultipartContext mctx = new DefaultMultipartContext(bufin, bufout, 512, _headerParser, _scheduler);
         bufin.markEOS();
 
-        return content.observeOn(_scheduler).flatMap(bbs -> {
+        return content/*.observeOn(_scheduler)*/.flatMap(bbs -> {
             bufin.appendIterable(bbs.element());
             mctx.resetParsing();
 
