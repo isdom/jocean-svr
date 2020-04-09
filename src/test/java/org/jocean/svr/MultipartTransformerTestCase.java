@@ -22,7 +22,6 @@ import io.netty.util.CharsetUtil;
 import rx.Observable;
 import rx.functions.Action1;
 import rx.observers.TestSubscriber;
-import rx.schedulers.Schedulers;
 
 public class MultipartTransformerTestCase {
 
@@ -106,7 +105,7 @@ public class MultipartTransformerTestCase {
     public final void testMultipartParser1() {
         final DisposableWrapper<? extends ByteBuf> dwb = DisposableWrapperUtil.wrap(Unpooled.wrappedBuffer(body), (Action1<ByteBuf>)null);
 
-        final MultipartTransformer parser = new MultipartTransformer(Schedulers.immediate(), MessageUtil.pooledAllocator(null, 128),
+        final MultipartTransformer parser = new MultipartTransformer(MessageUtil.pooledAllocator(null, 128),
                 "--" + "--------------------------471184645406406420474399");
 
         final TestSubscriber<MessageBody> bodySubscriber = new TestSubscriber<>();

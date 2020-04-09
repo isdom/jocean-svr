@@ -34,7 +34,6 @@ import rx.Observable.Transformer;
 import rx.functions.Action1;
 import rx.functions.Func0;
 import rx.functions.Func1;
-import rx.schedulers.Schedulers;
 import rx.subjects.PublishSubject;
 
 public class ZipUtil {
@@ -85,7 +84,7 @@ public class ZipUtil {
                 final int bufsize,
                 final UnzipParser initParser) {
             // TBD: provide outside
-            super(initParser, Schedulers.io());
+            super(initParser);
             this._zipin = zipin;
             this._bufout = bufout;
             this._buf = new byte[bufsize];
