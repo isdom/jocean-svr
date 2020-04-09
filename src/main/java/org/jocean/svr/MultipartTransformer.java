@@ -32,7 +32,6 @@ import io.netty.util.internal.AppendableCharSequence;
 import io.netty.util.internal.StringUtil;
 import rx.Observable;
 import rx.Observable.Transformer;
-import rx.Scheduler;
 import rx.functions.Func0;
 import rx.subjects.PublishSubject;
 
@@ -237,16 +236,14 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
         return result;
     }
 
-    public MultipartTransformer(final Scheduler scheduler, final Func0<DisposableWrapper<? extends ByteBuf>> allocator, final String multipartDataBoundary) {
-        this(scheduler, allocator, multipartDataBoundary, 8192, 128);
+    public MultipartTransformer(final Func0<DisposableWrapper<? extends ByteBuf>> allocator, final String multipartDataBoundary) {
+        this(allocator, multipartDataBoundary, 8192, 128);
     }
 
     public MultipartTransformer(
-            final Scheduler scheduler,
             final Func0<DisposableWrapper<? extends ByteBuf>> allocator, final String multipartDataBoundary,
             final int maxHeaderSize,
             final int initialBufferSize) {
-        this._scheduler = scheduler;
         this._allocator = allocator;
         this._CRLFBoundary = ("\r\n" + multipartDataBoundary).getBytes(Charsets.UTF_8);
         this._boundaryCRLF = (multipartDataBoundary + "\r\n").getBytes(Charsets.UTF_8);
@@ -272,9 +269,8 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
         DefaultMultipartContext(final BufsInputStream<?> bufin,
                 final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout,
                 final int bufsize,
-                final MultipartParser initParser,
-                final Scheduler scheduler) {
-            super(initParser, scheduler);
+                final MultipartParser initParser) {
+            super(initParser);
             this._bufin = bufin;
             this._bufout = bufout;
             this._buf = new byte[bufsize];
@@ -753,10 +749,10 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
         final BufsInputStream<DisposableWrapper<? extends ByteBuf>> bufin = new BufsInputStream<>(dwb -> dwb.unwrap(), dwb -> dwb.dispose());
         final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout = new BufsOutputStream<>(_allocator, dwb->dwb.unwrap());
 
-        final DefaultMultipartContext mctx = new DefaultMultipartContext(bufin, bufout, 512, _headerParser, _scheduler);
+        final DefaultMultipartContext mctx = new DefaultMultipartContext(bufin, bufout, 512, _headerParser);
         bufin.markEOS();
 
-        return content/*.observeOn(_scheduler)*/.flatMap(bbs -> {
+        return content.flatMap(bbs -> {
             bufin.appendIterable(bbs.element());
             mctx.resetParsing();
 
@@ -767,7 +763,6 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
     private final AppendableCharSequence _seq;
     private final LineParser _lineParser;
 
-    private final Scheduler _scheduler;
     private final Func0<DisposableWrapper<? extends ByteBuf>> _allocator;
     private final byte[] _CRLFBoundary;
     private final byte[] _boundaryCRLF;
