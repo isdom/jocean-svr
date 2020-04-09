@@ -394,6 +394,11 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
 
     private final MultipartParser _headerParser = new MultipartParser() {
         @Override
+        public String toString() {
+            return "headerParser";
+        }
+
+        @Override
         public MultipartParser parse(final MultipartContext ctx) {
             final int headerStartIdx = ctx.in().forEachByte(ByteProcessors.indexOfBytes(_boundaryCRLF));
             if (headerStartIdx == -1) {
@@ -601,6 +606,11 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
     };
 
     class BodyParser implements MultipartParser {
+        @Override
+        public String toString() {
+            return "BodyParser";
+        }
+
         public BodyParser(final HttpHeaders headers) {
             this._headers = headers;
         }
@@ -699,6 +709,11 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
     }
 
     private final MultipartParser _endParser = new MultipartParser() {
+        @Override
+        public String toString() {
+            return "endParser";
+        }
+
         @Override
         public MultipartParser parse(final MultipartContext ctx) {
             //     Boundary + CRLF: next part
