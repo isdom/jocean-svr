@@ -1363,23 +1363,28 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     null);
         }
         try {
-            final Object service = ReflectUtils.newInstance(serviceType);
+//            final Object service = ReflectUtils.newInstance(serviceType);
+            final Object service = this._beanHolder.getBean(serviceType);
 
             // assign all fields
             if (null != service) {
                 final Field[] fields = ReflectUtils.getAllFieldsOfClass(service.getClass());
                 for (final Field field : fields) {
                     if (!Modifier.isStatic(field.getModifiers())) {
-                        final Object value = buildArgByType(field.getGenericType(),
-                                resource,
-                                tradeCtx,
-                                argsCtx,
-                                field.getAnnotations());
-                        if (null != value) {
-                            field.setAccessible(true);
-                            field.set(service, value);
+                        field.setAccessible(true);
+                        if (null == field.get(service)) {
+                            final Object value = buildArgByType(field.getGenericType(),
+                                    resource,
+                                    tradeCtx,
+                                    argsCtx,
+                                    field.getAnnotations());
+                            if (null != value) {
+                                field.set(service, value);
+                            } else {
+                                LOG.warn("can't found/build value for field:{}, which is unchanged.", field);
+                            }
                         } else {
-                            LOG.warn("can't found/build value for field:{}, which is unchanged.", field);
+                            LOG.debug("@JService {}'s field:{} already has value, ignored.", serviceType, field);
                         }
                     }
                 }
