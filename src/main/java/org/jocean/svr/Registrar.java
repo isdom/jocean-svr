@@ -1221,10 +1221,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 return buildPathParam(pathParams, pathParam.value(), (Class<?>)argType);
             }
             if (null != getAnnotation(argAnnotations, Inject.class)) {
-                return BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Named.class), resource);
+                return BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Named.class), resource, null);
             }
             if (null != getAnnotation(argAnnotations, Autowired.class)) {
-                return BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Qualifier.class), resource);
+                return BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Qualifier.class), resource, null);
             }
             final Value valueAnno = getAnnotation(argAnnotations, Value.class);
             if (null != valueAnno) {
