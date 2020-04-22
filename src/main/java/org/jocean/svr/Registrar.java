@@ -1463,7 +1463,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         if (null == args || args.length == 0) {
                             final Transformer<Interact, Interact> processors = union(processorsOf(resource, names), selectURI4SPI(facadeType));
 
-                            final InvocationHandler handler = RpcDelegater.invocationHandler(facadeType, method.getReturnType(),
+                            final InvocationHandler handler = RpcDelegater.invocationHandler(facadeType, method, method.getReturnType(),
                                     inter2any -> executor.submit( interacts -> interacts.compose(processors).compose(inter2any)) );
 
                             return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(),
@@ -1510,7 +1510,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             public Object invoke(final Object proxy, final Method method, final Object[] args)
                                     throws Throwable {
                                 if (null == args || args.length == 0) {
-                                    final InvocationHandler handler = RpcDelegater.invocationHandler(rpcType, method.getReturnType(), null);
+                                    final InvocationHandler handler = RpcDelegater.invocationHandler(rpcType, method, method.getReturnType(), null);
                                     return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { method.getReturnType() },
                                             new InvocationHandler() {
                                                 @Override
