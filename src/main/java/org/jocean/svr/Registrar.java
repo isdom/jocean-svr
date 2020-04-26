@@ -1233,8 +1233,13 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
             final RpcFacade rpcFacade = getAnnotation(argAnnotations, RpcFacade.class);
             if (null != rpcFacade) {
-                return buildRpcFacade(resource, buildRpcExecutor(processor, tradeCtx.interactBuilder()),
-                        rpcFacade.value(), (Class<?>)argType);
+                RpcExecutor executor;
+                if (rpcFacade.delay() <= 0) {
+                    executor = buildRpcExecutor(processor, tradeCtx.interactBuilder());
+                } else {
+                    executor = buildRpcExecutor(processor, tradeCtx.interactBuilderOutofTrade(tradeCtx._span, rpcFacade.delay()));
+                }
+                return buildRpcFacade(resource, executor,  rpcFacade.value(), (Class<?>)argType);
             }
             final JService jService = getAnnotation(argAnnotations, JService.class);
             if (null != jService) {
