@@ -1465,6 +1465,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     @Override
                     public Object invoke(final Object proxy, final Method method, final Object[] args)
                             throws Throwable {
+                        // TBD: hook for hashCode && equals && etc
+                        if (method.getName().equals("toString") && method.getReturnType().equals(String.class)) {
+                            return "RpcFacade for (" + facadeType + ")";
+                        }
                         if (null == args || args.length == 0) {
                             final Transformer<Interact, Interact> processors = union(processorsOf(resource, names), selectURI4SPI(facadeType));
 
