@@ -1337,14 +1337,14 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return new JServiceBuilder() {
             @SuppressWarnings("unchecked")
             @Override
-            public <S> S build(final Class<S> serviceType) {
-                return (S)buildJService(tradeCtx, argsCtx, serviceType, null);
+            public <S> S build(final Class<S> serviceType, final Object... args) {
+                return (S)buildJService(tradeCtx, argsCtx, serviceType, null, args);
             }
 
             @SuppressWarnings("unchecked")
             @Override
-            public <S> S build(final Class<S> serviceType, final String forkName) {
-                return  (S)buildJService(tradeCtx, argsCtx, serviceType, forkName);
+            public <S> S buildFork(final Class<S> serviceType, final String forkName, final Object... args) {
+                return  (S)buildJService(tradeCtx, argsCtx, serviceType, forkName, args);
             }};
     }
 
@@ -1352,7 +1352,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             DefaultTradeContext tradeCtx,
             final ArgsCtx argsCtx,
             final Class<?> serviceType,
-            final String forkName) {
+            final String forkName,
+            final Object... args) {
         if (null != forkName && !forkName.isEmpty()) {
             final Span span = tradeCtx._tracer.buildSpan(forkName)
                     .addReference(References.FOLLOWS_FROM, tradeCtx._span.context()).start();
