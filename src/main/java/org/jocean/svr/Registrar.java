@@ -1372,7 +1372,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     null);
         }
         try {
-            final Object service = this._beanHolder.getBean(serviceType);
+            final Object service = this._beanHolder.getBean(serviceType, args);
             if (null == service) {
                 // service = ReflectUtils.newInstance(serviceType);
                 LOG.warn("can't found bean by type {}", serviceType);
