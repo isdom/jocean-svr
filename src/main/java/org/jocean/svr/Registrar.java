@@ -1343,7 +1343,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
             @SuppressWarnings("unchecked")
             @Override
-            public <S> S buildFork(final Class<S> serviceType, final String forkName, final Object... args) {
+            public <S> S buildFork(final String forkName, final Class<S> serviceType, final Object... args) {
                 return  (S)buildJService(tradeCtx, argsCtx, serviceType, forkName, args);
             }};
     }

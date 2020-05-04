@@ -4,5 +4,5 @@ public interface JServiceBuilder {
 
     <S> S build(final Class<S> serviceType, final Object... args);
 
-    <S> S buildFork(final Class<S> serviceType, final String forkName, final Object... args);
+    <S> S buildFork(final String forkName, final Class<S> serviceType, final Object... args);
 }
