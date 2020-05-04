@@ -1372,7 +1372,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     null);
         }
         try {
-            final Object service = createJServiceBean(serviceType, args);
+            final Object service = this._beanHolder.getBean(serviceType, args); //createJServiceBean(serviceType, args);
             if (null == service) {
                 // service = ReflectUtils.newInstance(serviceType);
                 LOG.warn("can't found bean by type {}", serviceType);
@@ -1412,13 +1412,13 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
-    private Object createJServiceBean(final Class<?> serviceType, final Object... args) {
-        if (null != args && args.length > 0) {
-            return this._beanHolder.getBean(serviceType, args);
-        } else {
-            return this._beanHolder.getBean(serviceType);
-        }
-    }
+//    private Object createJServiceBean(final Class<?> serviceType, final Object... args) {
+//        if (null != args && args.length > 0) {
+//            return this._beanHolder.getBean(serviceType, args);
+//        } else {
+//            return this._beanHolder.getBean(serviceType);
+//        }
+//    }
 
     private static Transformer<Interact, Interact> transformerByExpression(final Object owner, final String expression) {
         try {
