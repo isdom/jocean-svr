@@ -1372,7 +1372,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     null);
         }
         try {
-            final Object service = this._beanHolder.getBean(serviceType, args);
+            final Object service = createJServiceBean(serviceType, args);
             if (null == service) {
                 // service = ReflectUtils.newInstance(serviceType);
                 LOG.warn("can't found bean by type {}", serviceType);
@@ -1409,6 +1409,14 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         } catch (final Exception e) {
             LOG.warn("exception when buildJService for type {}, detail: {}", serviceType, ExceptionUtils.exception2detail(e));
             throw new RuntimeException(e);
+        }
+    }
+
+    private Object createJServiceBean(final Class<?> serviceType, final Object... args) {
+        if (null != args && args.length > 0) {
+            return this._beanHolder.getBean(serviceType, args);
+        } else {
+            return this._beanHolder.getBean(serviceType);
         }
     }
 
