@@ -635,6 +635,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             request,
                             pair.second,
                             interceptors.toArray(new MethodInterceptor[0]));
+                    fillServiceFields(resource, resource.getClass(), tctx, argctx);
                     final Observable<? extends Object> obsResponse = invokeProcessor(
                             tctx,
                             request,
@@ -1381,26 +1382,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
             // assign all fields
             if (null != service) {
-                final Field[] fields = ReflectUtils.getAllFieldsOfClass(service.getClass());
-                for (final Field field : fields) {
-                    if (!Modifier.isStatic(field.getModifiers())) {
-                        field.setAccessible(true);
-                        if (null == field.get(service)) {
-                            final Object value = buildArgByType(field.getGenericType(),
-                                    service,
-                                    tradeCtx,
-                                    argsCtx,
-                                    field.getAnnotations());
-                            if (null != value) {
-                                field.set(service, value);
-                            } else {
-                                LOG.warn("can't found/build value for field:{}, which is unchanged.", field);
-                            }
-                        } else {
-                            LOG.debug("@JService {}'s field:{} already has value, ignored.", serviceType, field);
-                        }
-                    }
-                }
+                fillServiceFields(service, serviceType, tradeCtx, argsCtx);
             }
 //            else {
 //                LOG.warn("buildJService: failed to newInstance for type {}", serviceType);
@@ -1412,13 +1394,31 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
-//    private Object createJServiceBean(final Class<?> serviceType, final Object... args) {
-//        if (null != args && args.length > 0) {
-//            return this._beanHolder.getBean(serviceType, args);
-//        } else {
-//            return this._beanHolder.getBean(serviceType);
-//        }
-//    }
+    private void fillServiceFields(final Object service,
+            final Class<?> serviceType,
+            final DefaultTradeContext tradeCtx,
+            final ArgsCtx argsCtx) throws IllegalAccessException {
+        final Field[] fields = ReflectUtils.getAllFieldsOfClass(service.getClass());
+        for (final Field field : fields) {
+            if (!Modifier.isStatic(field.getModifiers())) {
+                field.setAccessible(true);
+                if (null == field.get(service)) {
+                    final Object value = buildArgByType(field.getGenericType(),
+                            service,
+                            tradeCtx,
+                            argsCtx,
+                            field.getAnnotations());
+                    if (null != value) {
+                        field.set(service, value);
+                    } else {
+                        LOG.warn("can't found/build value for field:{}, which is unchanged.", field);
+                    }
+                } else {
+                    LOG.debug("@JService {}'s field:{} already has value, ignored.", serviceType, field);
+                }
+            }
+        }
+    }
 
     private static Transformer<Interact, Interact> transformerByExpression(final Object owner, final String expression) {
         try {
