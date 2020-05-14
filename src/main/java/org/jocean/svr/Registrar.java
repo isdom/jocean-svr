@@ -1355,7 +1355,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final ArgsCtx argsCtx,
             final Class<?> serviceType,
             final String forkName,
-            final Object... args) {
+            final Object... ctorArgs) {
         final DefaultTradeContext serviceTradeCtx = wrapTradeCtx(tradeCtx, forkName);
         LOG.debug("buildJService: @JService for {}", serviceType);
         if (serviceType.isInterface() ) {
@@ -1371,7 +1371,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                                     impl = implRef.get();
                                     if (null == impl) {
                                         LOG.debug("begin to create impl for {}.", serviceType);
-                                        impl = createAndFillJService(serviceType, serviceTradeCtx, argsCtx, args);
+                                        impl = createAndFillJService(serviceType, serviceTradeCtx, argsCtx, ctorArgs);
                                         implRef.set(impl);
                                         LOG.debug("impl for {} created.", serviceType);
                                     }
@@ -1382,7 +1382,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             LOG.debug("try to generate lazy init proxy for {} succeed.", serviceType);
             return serviceProxy;
         } else {
-            return createAndFillJService(serviceType, serviceTradeCtx, argsCtx, args);
+            return createAndFillJService(serviceType, serviceTradeCtx, argsCtx, ctorArgs);
         }
     }
 
@@ -1414,7 +1414,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final ArgsCtx argsCtx,
             final Object... args) {
         try {
-            final Object service = getBeanFromHolder(serviceType, args);
+            final Object service = this._beanHolder.getBean(serviceType, args); // getBeanFromHolder(serviceType, args);
             if (null == service) {
                 // service = ReflectUtils.newInstance(serviceType);
                 LOG.warn("can't found bean by type {}", serviceType);
@@ -1432,15 +1432,15 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
-    private Object getBeanFromHolder(final Class<?> serviceType, final Object... args) {
-        if (null != args && args.length > 0) {
-            LOG.debug("getBeanFromHolder for {} with args:{}", serviceType, args);
-            return this._beanHolder.getBean(serviceType, args);
-        } else {
-            LOG.debug("getBeanFromHolder for {} without args", serviceType);
-            return this._beanHolder.getBean(serviceType);
-        }
-    }
+//    private Object getBeanFromHolder(final Class<?> serviceType, final Object... args) {
+//        if (null != args && args.length > 0) {
+//            LOG.debug("getBeanFromHolder for {} with args:{}", serviceType, args);
+//            return this._beanHolder.getBean(serviceType, args);
+//        } else {
+//            LOG.debug("getBeanFromHolder for {} without args", serviceType);
+//            return this._beanHolder.getBean(serviceType);
+//        }
+//    }
 
     private void fillServiceFields(final Object service,
             final Class<?> serviceType,
