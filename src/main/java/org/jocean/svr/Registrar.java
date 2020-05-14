@@ -28,6 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
 import javax.inject.Inject;
@@ -1350,11 +1351,39 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Object buildJService(
-            DefaultTradeContext tradeCtx,
+            final DefaultTradeContext tradeCtx,
             final ArgsCtx argsCtx,
             final Class<?> serviceType,
             final String forkName,
             final Object... args) {
+        final DefaultTradeContext serviceTradeCtx = wrapTradeCtx(tradeCtx, forkName);
+        if (serviceType.isInterface() ) {
+            LOG.debug("try to generate lazy init proxy for {}", serviceType);
+            final AtomicReference<Object> implRef = new AtomicReference<Object>();
+            final Object serviceProxy = Proxy.newProxyInstance(serviceType.getClassLoader(), new Class<?>[]{serviceType},
+                    new InvocationHandler() {
+                        @Override
+                        public Object invoke(final Object proxy, final Method method, final Object[] args) throws Throwable {
+                            Object impl = implRef.get();
+                            if (null == impl) {
+                                synchronized(implRef) {
+                                    impl = implRef.get();
+                                    if (null == impl) {
+                                        impl = createAndFillJService(serviceType, serviceTradeCtx, argsCtx, args);
+                                        implRef.set(impl);
+                                        LOG.debug("impl for {} created.", serviceType);
+                                    }
+                                }
+                            }
+                            return method.invoke(impl, args);
+                        }});
+            return serviceProxy;
+        } else {
+            return createAndFillJService(serviceType, serviceTradeCtx, argsCtx, args);
+        }
+    }
+
+    private DefaultTradeContext wrapTradeCtx(final DefaultTradeContext tradeCtx, final String forkName) {
         if (null != forkName && !forkName.isEmpty()) {
             final Span span = tradeCtx._tracer.buildSpan(forkName)
                     .addReference(References.FOLLOWS_FROM, tradeCtx._span.context()).start();
@@ -1363,7 +1392,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final Haltable haltable = HaltableUtil.delay(30, TimeUnit.SECONDS);
 
             haltable.doOnHalt(() -> span.finish());
-            tradeCtx = new DefaultTradeContext(tradeCtx._trade,
+            return new DefaultTradeContext(tradeCtx._trade,
                     haltable,
                     tradeCtx._tracer,
                     span,
@@ -1371,9 +1400,18 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     tradeCtx._operation,
                     tradeCtx._restin,
                     null);
+        } else {
+            return tradeCtx;
         }
+    }
+
+    private Object createAndFillJService(
+            final Class<?> serviceType,
+            final DefaultTradeContext tradeCtx,
+            final ArgsCtx argsCtx,
+            final Object... args) {
         try {
-            final Object service = this._beanHolder.getBean(serviceType, args); //createJServiceBean(serviceType, args);
+            final Object service = this._beanHolder.getBean(serviceType, args);
             if (null == service) {
                 // service = ReflectUtils.newInstance(serviceType);
                 LOG.warn("can't found bean by type {}", serviceType);
@@ -1384,9 +1422,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (null != service) {
                 fillServiceFields(service, serviceType, tradeCtx, argsCtx);
             }
-//            else {
-//                LOG.warn("buildJService: failed to newInstance for type {}", serviceType);
-//            }
             return service;
         } catch (final Exception e) {
             LOG.warn("exception when buildJService for type {}, detail: {}", serviceType, ExceptionUtils.exception2detail(e));
