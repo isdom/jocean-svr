@@ -1377,7 +1377,13 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                                     }
                                 }
                             }
-                            return method.invoke(impl, args);
+                            if (null != impl) {
+                                final Method implMethod = impl.getClass().getDeclaredMethod(method.getName(), method.getParameterTypes());
+                                if (null != implMethod) {
+                                    return implMethod.invoke(impl, args);
+                                }
+                            }
+                            throw new RuntimeException("can't instance impl or method for " + serviceType + "." + method.getName());
                         }});
             LOG.debug("try to generate lazy init proxy for {} succeed.", serviceType);
             return serviceProxy;
