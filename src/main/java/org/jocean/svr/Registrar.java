@@ -1434,8 +1434,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     private Object getBeanFromHolder(final Class<?> serviceType, final Object... args) {
         if (null != args && args.length > 0) {
+            LOG.debug("getBeanFromHolder for {} with args:{}", serviceType, args);
             return this._beanHolder.getBean(serviceType, args);
         } else {
+            LOG.debug("getBeanFromHolder for {} without args", serviceType);
             return this._beanHolder.getBean(serviceType);
         }
     }
