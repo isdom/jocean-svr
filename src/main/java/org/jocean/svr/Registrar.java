@@ -1357,6 +1357,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final String forkName,
             final Object... args) {
         final DefaultTradeContext serviceTradeCtx = wrapTradeCtx(tradeCtx, forkName);
+        LOG.debug("buildJService: @JService for {}", serviceType);
         if (serviceType.isInterface() ) {
             LOG.debug("try to generate lazy init proxy for {}", serviceType);
             final AtomicReference<Object> implRef = new AtomicReference<Object>();
