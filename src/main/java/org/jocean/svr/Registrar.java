@@ -1385,6 +1385,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 //                                }
                                 method.setAccessible(true);
                                 return method.invoke(impl, args);
+                            } else {
+                                LOG.warn("generate impl for {} FAILED.", serviceType);
                             }
                             throw new RuntimeException("can't instance impl or method for " + serviceType + "." + method.getName());
                         }});
