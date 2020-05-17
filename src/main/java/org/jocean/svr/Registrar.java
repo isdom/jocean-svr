@@ -148,6 +148,7 @@ import rx.Observable;
 import rx.Observable.Transformer;
 import rx.Scheduler;
 import rx.functions.Actions;
+import rx.functions.Func0;
 
 /**
  * @author isdom
@@ -1355,46 +1356,50 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final ArgsCtx argsCtx,
             final Class<?> serviceType,
             final String forkName,
-            final Object... ctorArgs) {
-        final DefaultTradeContext serviceTradeCtx = wrapTradeCtx(tradeCtx, forkName);
+            final Object... args) {
+        final Func0<Object> builder = () -> createAndFillJService(serviceType, wrapTradeCtx(tradeCtx, forkName), argsCtx, args);
         LOG.debug("buildJService: @JService for {}", serviceType);
         if (serviceType.isInterface() ) {
             LOG.debug("try to generate lazy init proxy for {}", serviceType);
-            final AtomicReference<Object> implRef = new AtomicReference<Object>();
             final Object serviceProxy = Proxy.newProxyInstance(serviceType.getClassLoader(), new Class<?>[]{serviceType},
-                    new InvocationHandler() {
-                        @Override
-                        public Object invoke(final Object proxy, final Method method, final Object[] args) throws Throwable {
-                            Object impl = implRef.get();
-                            if (null == impl) {
-                                synchronized(implRef) {
-                                    impl = implRef.get();
-                                    if (null == impl) {
-                                        LOG.debug("begin to create impl for {}.", serviceType);
-                                        impl = createAndFillJService(serviceType, serviceTradeCtx, argsCtx, ctorArgs);
-                                        implRef.set(impl);
-                                        LOG.debug("impl for {} created.", serviceType);
-                                    }
-                                }
-                            }
-                            if (null != impl) {
-//                                final Method implMethod = impl.getClass().getDeclaredMethod(method.getName(), method.getParameterTypes());
-//                                if (null != implMethod) {
-//                                    implMethod.setAccessible(true);
-//                                    return implMethod.invoke(impl, args);
-//                                }
-                                method.setAccessible(true);
-                                return method.invoke(impl, args);
-                            } else {
-                                LOG.warn("generate impl for {} FAILED.", serviceType);
-                            }
-                            throw new RuntimeException("can't instance impl or method for " + serviceType + "." + method.getName());
-                        }});
+                    proxyHandler(serviceType, builder));
             LOG.debug("try to generate lazy init proxy for {} succeed.", serviceType);
             return serviceProxy;
         } else {
-            return createAndFillJService(serviceType, serviceTradeCtx, argsCtx, ctorArgs);
+            return builder.call();
         }
+    }
+
+    private InvocationHandler proxyHandler(final Class<?> serviceType, final Func0<Object> builder) {
+        final AtomicReference<Object> implRef = new AtomicReference<Object>();
+        return new InvocationHandler() {
+            @Override
+            public Object invoke(final Object proxy, final Method method, final Object[] args) throws Throwable {
+                Object impl = implRef.get();
+                if (null == impl) {
+                    synchronized(implRef) {
+                        impl = implRef.get();
+                        if (null == impl) {
+                            LOG.debug("begin to create impl for {}.", serviceType);
+                            impl = builder.call();
+                            implRef.set(impl);
+                            LOG.debug("impl for {} created.", serviceType);
+                        }
+                    }
+                }
+                if (null != impl) {
+//                    final Method implMethod = impl.getClass().getDeclaredMethod(method.getName(), method.getParameterTypes());
+//                    if (null != implMethod) {
+//                        implMethod.setAccessible(true);
+//                        return implMethod.invoke(impl, args);
+//                    }
+                    method.setAccessible(true);
+                    return method.invoke(impl, args);
+                } else {
+                    LOG.warn("generate impl for {} FAILED.", serviceType);
+                }
+                throw new RuntimeException("can't instance impl or method for " + serviceType + "." + method.getName());
+            }};
     }
 
     private DefaultTradeContext wrapTradeCtx(final DefaultTradeContext tradeCtx, final String forkName) {
@@ -1479,6 +1484,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
+    @SuppressWarnings("unchecked")
     private static Transformer<Interact, Interact> transformerByExpression(final Object owner, final String expression) {
         try {
             final Method method = owner.getClass().getDeclaredMethod(expression);
