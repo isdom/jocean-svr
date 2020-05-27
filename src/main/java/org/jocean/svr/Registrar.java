@@ -8,6 +8,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
@@ -1394,7 +1395,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 //                        return implMethod.invoke(impl, args);
 //                    }
                     method.setAccessible(true);
-                    return method.invoke(impl, args);
+                    try {
+                        return method.invoke(impl, args);
+                    } catch (final InvocationTargetException e) {
+                        throw e.getCause();
+                    }
                 } else {
                     LOG.warn("generate impl for {} FAILED.", serviceType);
                 }
