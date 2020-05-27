@@ -1389,11 +1389,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     }
                 }
                 if (null != impl) {
-//                    final Method implMethod = impl.getClass().getDeclaredMethod(method.getName(), method.getParameterTypes());
-//                    if (null != implMethod) {
-//                        implMethod.setAccessible(true);
-//                        return implMethod.invoke(impl, args);
-//                    }
                     method.setAccessible(true);
                     try {
                         return method.invoke(impl, args);
