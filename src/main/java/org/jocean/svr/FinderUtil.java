@@ -128,29 +128,6 @@ public class FinderUtil {
                 return this;
             }
 
-//            @Override
-//            public RpcRunner oninteract(final Action1<Interact> oninteract) {
-//                final Action1<Interact> prev = oninteractRef.get();
-//                if (prev != null) {
-//                    oninteractRef.set(interact -> {
-//                        try {
-//                            prev.call(interact);
-//                        } catch (final Exception e) {
-//                            LOG.warn("exception when oninteract:{}, detail: {}", prev, ExceptionUtils.exception2detail(e));
-//                        }
-//                        try {
-//                            oninteract.call(interact);
-//                        } catch (final Exception e) {
-//                            LOG.warn("exception when oninteract:{}, detail: {}", oninteract, ExceptionUtils.exception2detail(e));
-//                        }
-//                    });
-//                }
-//                else {
-//                    oninteractRef.set(oninteract);
-//                }
-//                return this;
-//            }
-
             @Override
             public <T> Observable<T> execute(final Func1<Interact, Observable<T>> invoker) {
                 return doExecute(ib, finder, ctx, spiRef.get(), nameRef.get(), oninteractRef.get(),
