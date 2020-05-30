@@ -7,5 +7,5 @@ import java.lang.annotation.RetentionPolicy;
 public @interface RpcFacade {
     // pre processors
     String[] value();
-    int delay() default 0;
+//    int delay() default 0;
 }
