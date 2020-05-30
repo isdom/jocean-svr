@@ -1548,7 +1548,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private Object buildRpcFacade(
             final Object resource,
             final Func1<Haltable, RpcExecutor> getexecutor,
-//            final RpcExecutor executor,
             final String[] names,
             final Class<?> facadeType) {
         return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { facadeType },
@@ -1564,9 +1563,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             final Transformer<Interact, Interact> processors = union(processorsOf(resource, names), selectURI4SPI(facadeType));
 
                             final InvocationHandler handler = RpcDelegater.invocationHandler(facadeType, method, method.getReturnType(),
-                                    inter2any -> {
-                                        return getexecutor.call(null).submit( interacts -> interacts.compose(processors).compose(inter2any));
-                                    } );
+                                    (haltable, inter2any) ->
+                                        getexecutor.call(haltable).submit( interacts -> interacts.compose(processors).compose(inter2any))
+                                    );
 
                             return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(),
                                     new Class<?>[] { method.getReturnType() },
