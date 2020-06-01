@@ -1246,16 +1246,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
             final RpcFacade rpcFacade = getAnnotation(argAnnotations, RpcFacade.class);
             if (null != rpcFacade) {
-//                RpcExecutor executor;
-//                if (rpcFacade.delay() <= 0) {
-//                    executor = buildRpcExecutor(processor, tradeCtx.interactBuilder());
-//                } else {
-//                    executor = buildRpcExecutor(processor, tradeCtx.interactBuilderOutofTrade(tradeCtx._span, rpcFacade.delay()));
-//                }
                 return buildRpcFacade(resource, haltable -> {
                     if (null == haltable) {
                         return buildRpcExecutor(processor, tradeCtx.interactBuilder());
                     } else {
+                        LOG.debug("interactBuilderByHaltable: {}/{}/{}", resource, argType, haltable);
                         return buildRpcExecutor(processor, tradeCtx.interactBuilderByHaltable(haltable));
                     }
                 },  rpcFacade.value(), (Class<?>)argType);
