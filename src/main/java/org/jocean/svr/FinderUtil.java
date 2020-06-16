@@ -18,7 +18,7 @@ import rx.Observable.Transformer;
 import rx.functions.Action1;
 import rx.functions.Func1;
 
-public class FinderUtil {
+class FinderUtil {
     private static final Logger LOG = LoggerFactory.getLogger(FinderUtil.class);
 
     private FinderUtil() {
@@ -87,7 +87,7 @@ public class FinderUtil {
         return rpc(finder, from(Thread.currentThread().getStackTrace()[2]));
     }
 
-    public static RpcRunnerBuilder rpc(final BeanFinder finder, final CallerContext ctx) {
+    static RpcRunnerBuilder rpc(final BeanFinder finder, final CallerContext ctx) {
         return new RpcRunnerBuilder() {
             @Override
             public RpcRunnerBuilder ib(final InteractBuilder ib) {
