@@ -59,7 +59,7 @@ import rx.Scheduler;
 import rx.functions.Action1;
 import rx.functions.Func1;
 
-public class InteractBuilderImpl implements InteractBuilder {
+class InteractBuilderImpl implements InteractBuilder {
 
     private static final Logger LOG = LoggerFactory.getLogger(InteractBuilderImpl.class);
 
