@@ -16,7 +16,7 @@ import rx.Subscription;
 import rx.functions.Action0;
 import rx.functions.Action1;
 
-public class AutoreadTrade implements HttpTrade {
+class AutoreadTrade implements HttpTrade {
 
     public static HttpTrade enableAutoread(final HttpTrade trade) {
         if (trade instanceof AutoreadTrade) {
