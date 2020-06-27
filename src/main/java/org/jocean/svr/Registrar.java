@@ -1257,7 +1257,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
             final JService jService = getAnnotation(argAnnotations, JService.class);
             if (null != jService) {
-                return buildJService(tradeCtx, argsCtx, (Class<?>)argType, jService.value());
+                return buildJService(tradeCtx, argsCtx, (Class<?>)argType/*, jService.value()*/);
             }
         }
         if (argType instanceof ParameterizedType){
@@ -1352,13 +1352,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             @SuppressWarnings("unchecked")
             @Override
             public <S> S build(final Class<S> serviceType, final Object... args) {
-                return (S)buildJService(tradeCtx, argsCtx, serviceType, null, args);
-            }
-
-            @SuppressWarnings("unchecked")
-            @Override
-            public <S> S buildFork(final String forkName, final Class<S> serviceType, final Object... args) {
-                return  (S)buildJService(tradeCtx, argsCtx, serviceType, forkName, args);
+                return (S)buildJService(tradeCtx, argsCtx, serviceType, args);
             }};
     }
 
@@ -1366,9 +1360,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final DefaultTradeContext tradeCtx,
             final ArgsCtx argsCtx,
             final Class<?> serviceType,
-            final String forkName,
+//            final String forkName,
             final Object... args) {
-        final Func0<Object> builder = () -> createAndFillJService(serviceType, wrapTradeCtx(tradeCtx, forkName), argsCtx, args);
+        final Func0<Object> builder = () -> createAndFillJService(serviceType, tradeCtx/* wrapTradeCtx(tradeCtx, forkName)*/, argsCtx, args);
         LOG.debug("buildJService: @JService for {}", serviceType);
         if (serviceType.isInterface() ) {
             LOG.debug("try to generate lazy init proxy for {}", serviceType);
@@ -1412,8 +1406,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }};
     }
 
+    /*
     private DefaultTradeContext wrapTradeCtx(final DefaultTradeContext tradeCtx, final String forkName) {
-        /*
         if (null != forkName && !forkName.isEmpty()) {
             final Span span = tradeCtx._tracer.buildSpan(forkName)
                     .addReference(References.FOLLOWS_FROM, tradeCtx._span.context()).start();
@@ -1431,12 +1425,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     tradeCtx._restin,
                     null);
         } else {
-        */
             return tradeCtx;
-        /*
         }
-        */
     }
+     */
 
     private Object createAndFillJService(
             final Class<?> serviceType,
