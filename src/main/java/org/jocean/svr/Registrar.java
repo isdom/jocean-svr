@@ -1413,6 +1413,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private DefaultTradeContext wrapTradeCtx(final DefaultTradeContext tradeCtx, final String forkName) {
+        /*
         if (null != forkName && !forkName.isEmpty()) {
             final Span span = tradeCtx._tracer.buildSpan(forkName)
                     .addReference(References.FOLLOWS_FROM, tradeCtx._span.context()).start();
@@ -1430,8 +1431,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     tradeCtx._restin,
                     null);
         } else {
+        */
             return tradeCtx;
+        /*
         }
+        */
     }
 
     private Object createAndFillJService(
