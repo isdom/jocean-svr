@@ -1257,7 +1257,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
             final JService jService = getAnnotation(argAnnotations, JService.class);
             if (null != jService) {
-                return buildJService(tradeCtx, argsCtx, (Class<?>)argType/*, jService.value()*/);
+                return buildJService(tradeCtx, argsCtx, (Class<?>)argType);
             }
         }
         if (argType instanceof ParameterizedType){
@@ -1360,9 +1360,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final DefaultTradeContext tradeCtx,
             final ArgsCtx argsCtx,
             final Class<?> serviceType,
-//            final String forkName,
             final Object... args) {
-        final Func0<Object> builder = () -> createAndFillJService(serviceType, tradeCtx/* wrapTradeCtx(tradeCtx, forkName)*/, argsCtx, args);
+        final Func0<Object> builder = () -> createAndFillJService(serviceType, tradeCtx, argsCtx, args);
         LOG.debug("buildJService: @JService for {}", serviceType);
         if (serviceType.isInterface() ) {
             LOG.debug("try to generate lazy init proxy for {}", serviceType);
@@ -1405,30 +1404,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 throw new RuntimeException("can't instance impl or method for " + serviceType + "." + method.getName());
             }};
     }
-
-    /*
-    private DefaultTradeContext wrapTradeCtx(final DefaultTradeContext tradeCtx, final String forkName) {
-        if (null != forkName && !forkName.isEmpty()) {
-            final Span span = tradeCtx._tracer.buildSpan(forkName)
-                    .addReference(References.FOLLOWS_FROM, tradeCtx._span.context()).start();
-
-            // TODO, replace wit JService's config
-            final Haltable haltable = HaltableUtil.delay(30, TimeUnit.SECONDS);
-
-            haltable.doOnHalt(() -> span.finish());
-            return new DefaultTradeContext(tradeCtx._trade,
-                    haltable,
-                    tradeCtx._tracer,
-                    span,
-                    tradeCtx._ts,
-                    tradeCtx._operation,
-                    tradeCtx._restin,
-                    null);
-        } else {
-            return tradeCtx;
-        }
-    }
-     */
 
     private Object createAndFillJService(
             final Class<?> serviceType,
