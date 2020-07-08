@@ -71,7 +71,7 @@ import org.jocean.idiom.Beans;
 import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.ExceptionUtils;
 import org.jocean.idiom.Haltable;
-import org.jocean.idiom.HaltableUtil;
+import org.jocean.idiom.Haltables;
 import org.jocean.idiom.Pair;
 import org.jocean.idiom.ReflectUtils;
 import org.jocean.idiom.Regexs;
@@ -203,7 +203,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
 
         public InteractBuilder interactBuilderOutofTrade(final Span parentSpan, final int delayInSeconds) {
-            return new InteractBuilderImpl(HaltableUtil.delay(delayInSeconds, TimeUnit.SECONDS), parentSpan,
+            return new InteractBuilderImpl(Haltables.delay(delayInSeconds, TimeUnit.SECONDS), parentSpan,
                     Observable.just(_tracer), _ts.scheduler(),
                     null,   // 分支产生的 interact 暂不作为 trade 的子 interact
 //                    this._asyncEntry.getAsyncContext(),
