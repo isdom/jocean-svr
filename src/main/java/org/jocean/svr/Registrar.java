@@ -1246,7 +1246,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
             final RpcFacade rpcFacade = getAnnotation(argAnnotations, RpcFacade.class);
             if (null != rpcFacade) {
-                return buildRpcFacade(resource, haltable -> {
+                return buildRpcFacade(resource, tradeCtx._haltable, haltable -> {
                     if (null == haltable) {
                         return buildRpcExecutor(processor, tradeCtx.interactBuilder());
                     } else {
@@ -1513,6 +1513,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     private Object buildRpcFacade(
             final Object resource,
+            final Haltable orgHaltable,
             final Func1<Haltable, RpcExecutor> getexecutor,
             final String[] names,
             final Class<?> facadeType) {
@@ -1528,7 +1529,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         if (null == args || args.length == 0) {
                             final Transformer<Interact, Interact> processors = union(processorsOf(resource, names), selectURI4SPI(facadeType));
 
-                            final InvocationHandler handler = RpcDelegater.invocationHandler(facadeType, method, method.getReturnType(),
+                            final InvocationHandler handler = RpcDelegater.invocationHandler(facadeType, method, method.getReturnType(), orgHaltable,
                                     (haltable, inter2any) ->
                                         getexecutor.call(haltable).submit( interacts -> interacts.compose(processors).compose(inter2any))
                                     );
@@ -1577,7 +1578,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             public Object invoke(final Object proxy, final Method method, final Object[] args)
                                     throws Throwable {
                                 if (null == args || args.length == 0) {
-                                    final InvocationHandler handler = RpcDelegater.invocationHandler(rpcType, method, method.getReturnType(), null);
+                                    final InvocationHandler handler = RpcDelegater.invocationHandler(rpcType, method, method.getReturnType(), null, null);
                                     return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { method.getReturnType() },
                                             new InvocationHandler() {
                                                 @Override
