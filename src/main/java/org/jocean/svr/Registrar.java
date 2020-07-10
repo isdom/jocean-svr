@@ -87,7 +87,6 @@ import org.jocean.j2se.util.BeanHolders;
 import org.jocean.netty.util.BufsOutputStream;
 import org.jocean.opentracing.DurationRecorder;
 import org.jocean.opentracing.TracingUtil;
-import org.jocean.rpc.RpcBuilder;
 import org.jocean.rpc.RpcDelegater;
 import org.jocean.svr.FinderUtil.CallerContext;
 import org.jocean.svr.ZipUtil.Unzipper;
@@ -1302,9 +1301,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return buildBranchBuilder(tradeCtx, processor);
         } else if (argType.equals(Span.class)) {
             return tradeCtx._span;
-        } else if (argType.equals(RpcBuilder.class)) {
+        } /* else if (argType.equals(RpcBuilder.class)) {
             return buildRpcBuilder();
-        } else if (argType.equals(JServiceBuilder.class)) {
+        } */ else if (argType.equals(JServiceBuilder.class)) {
             return buildJServiceBuilder(tradeCtx, argsCtx);
         } else {
             for (final MethodInterceptor interceptor : interceptors) {
@@ -1565,6 +1564,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
+    /*
     private RpcBuilder buildRpcBuilder() {
         return new RpcBuilder() {
             @SuppressWarnings("unchecked")
@@ -1601,6 +1601,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         });
             }};
     }
+    */
 
     private Branch.Builder buildBranchBuilder(final DefaultTradeContext tradeCtx, final Method processor) {
         return new Branch.Builder() {
