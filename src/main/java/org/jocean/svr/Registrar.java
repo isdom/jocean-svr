@@ -1301,9 +1301,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return buildBranchBuilder(tradeCtx, processor);
         } else if (argType.equals(Span.class)) {
             return tradeCtx._span;
-        } /* else if (argType.equals(RpcBuilder.class)) {
-            return buildRpcBuilder();
-        } */ else if (argType.equals(JServiceBuilder.class)) {
+        } else if (argType.equals(JServiceBuilder.class)) {
             return buildJServiceBuilder(tradeCtx, argsCtx);
         } else {
             for (final MethodInterceptor interceptor : interceptors) {
@@ -1563,45 +1561,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return null;
         }
     }
-
-    /*
-    private RpcBuilder buildRpcBuilder() {
-        return new RpcBuilder() {
-            @SuppressWarnings("unchecked")
-            @Override
-            public <RPC> RPC build(final Class<RPC> rpcType) {
-                final Transformer<Interact, Interact> prefix = selectURI4SPI(rpcType);
-
-                return (RPC) Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { rpcType },
-                        new InvocationHandler() {
-                            @Override
-                            public Object invoke(final Object proxy, final Method method, final Object[] args)
-                                    throws Throwable {
-                                if (null == args || args.length == 0) {
-                                    final InvocationHandler handler = RpcDelegater.invocationHandler(rpcType, method, method.getReturnType(), null, null);
-                                    return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { method.getReturnType() },
-                                            new InvocationHandler() {
-                                                @Override
-                                                public Object invoke(final Object proxyBuilder, final Method methodBuilder, final Object[] argsBuilder)
-                                                        throws Throwable {
-                                                    if (null == argsBuilder || argsBuilder.length == 0) {
-                                                        final Transformer<Interact, ? extends Object> inter2resp =
-                                                                (Transformer<Interact, ? extends Object>)handler.invoke(proxyBuilder, methodBuilder, argsBuilder);
-                                                        return null != prefix
-                                                                ? (Transformer<Interact, ? extends Object>)(interacts -> interacts.compose(prefix).compose(inter2resp))
-                                                                : inter2resp;
-                                                    } else {
-                                                        return handler.invoke(proxyBuilder, methodBuilder, argsBuilder);
-                                                    }
-                                                }});
-                                } else {
-                                    return null;
-                                }
-                            }
-                        });
-            }};
-    }
-    */
 
     private Branch.Builder buildBranchBuilder(final DefaultTradeContext tradeCtx, final Method processor) {
         return new Branch.Builder() {
