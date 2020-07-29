@@ -90,6 +90,7 @@ import org.jocean.netty.util.BufsOutputStream;
 import org.jocean.opentracing.DurationRecorder;
 import org.jocean.opentracing.TracingUtil;
 import org.jocean.rpc.RpcDelegater;
+import org.jocean.rpc.RpcDelegater.InvocationContext;
 import org.jocean.rpc.annotation.RpcScope;
 import org.jocean.svr.FinderUtil.CallerContext;
 import org.jocean.svr.ZipUtil.Unzipper;
@@ -1529,7 +1530,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         if (null == args || args.length == 0) {
                             final Transformer<Interact, Interact> processors = union(processorsOf(resource, names), selectURI4SPI(facadeType));
 
-                            final InvocationHandler handler = RpcDelegater.invocationHandler(facadeType, method, method.getReturnType(),
+                            final InvocationHandler handler = RpcDelegater.invocationHandler(new InvocationContext(facadeType, method, method.getReturnType()),
                                     inter2any -> getexecutor.call(
                                             searchHaltable(facadeType, method, orgHaltable, Thread.currentThread().getStackTrace()))
                                         .submit(interacts -> interacts.compose(processors).compose(inter2any))
