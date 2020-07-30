@@ -91,8 +91,8 @@ import org.jocean.opentracing.DurationRecorder;
 import org.jocean.opentracing.TracingUtil;
 import org.jocean.rpc.RpcDelegater;
 import org.jocean.rpc.RpcDelegater.InvocationContext;
+import org.jocean.rpc.annotation.RpcBuilder;
 import org.jocean.rpc.annotation.RpcScope;
-import org.jocean.rpc.annotation.RpcStub;
 import org.jocean.svr.FinderUtil.CallerContext;
 import org.jocean.svr.ZipUtil.Unzipper;
 import org.jocean.svr.ZipUtil.ZipBuilder;
@@ -1519,8 +1519,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final Func1<Haltable, RpcExecutor> getexecutor,
             final String[] names,
             final Class<?> facadeType) {
-        if (facadeType.getAnnotation(RpcStub.class) != null) {
-            // annotation by @RpcStub
+        if (facadeType.getAnnotation(RpcBuilder.class) != null) {
+            // annotation by @RpcBuilder
             final Transformer<Interact, Interact> processors = union(processorsOf(resource, names), selectURI4SPI(facadeType));
             final InvocationHandler handler = RpcDelegater.rpcStubHandler(new InvocationContext(null, null, facadeType),
                     inter2any -> getexecutor.call(
@@ -1529,7 +1529,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     );
             return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { facadeType },handler );
         } else {
-            // wrapper of RpcStub
+            // wrapper of RpcBuilder(s)
             return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { facadeType },
                     new InvocationHandler() {
                         @Override
