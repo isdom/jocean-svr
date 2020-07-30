@@ -92,6 +92,7 @@ import org.jocean.opentracing.TracingUtil;
 import org.jocean.rpc.RpcDelegater;
 import org.jocean.rpc.RpcDelegater.InvocationContext;
 import org.jocean.rpc.annotation.RpcScope;
+import org.jocean.rpc.annotation.RpcStub;
 import org.jocean.svr.FinderUtil.CallerContext;
 import org.jocean.svr.ZipUtil.Unzipper;
 import org.jocean.svr.ZipUtil.ZipBuilder;
@@ -1518,37 +1519,49 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final Func1<Haltable, RpcExecutor> getexecutor,
             final String[] names,
             final Class<?> facadeType) {
-        return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { facadeType },
-                new InvocationHandler() {
-                    @Override
-                    public Object invoke(final Object proxy, final Method method, final Object[] args)
-                            throws Throwable {
-                        // TBD: hook for hashCode && equals && etc
-                        if (method.getName().equals("toString") && method.getReturnType().equals(String.class)) {
-                            return "RpcFacade for (" + facadeType + ")";
-                        }
-                        if (null == args || args.length == 0) {
-                            final Transformer<Interact, Interact> processors = union(processorsOf(resource, names), selectURI4SPI(facadeType));
+        if (facadeType.getAnnotation(RpcStub.class) != null) {
+            // annotation by @RpcStub
+            final Transformer<Interact, Interact> processors = union(processorsOf(resource, names), selectURI4SPI(facadeType));
+            final InvocationHandler handler = RpcDelegater.rpcStubHandler(new InvocationContext(null, null, facadeType),
+                    inter2any -> getexecutor.call(
+                            searchHaltable(facadeType.getSimpleName(), orgHaltable, Thread.currentThread().getStackTrace()))
+                        .submit(interacts -> interacts.compose(processors).compose(inter2any))
+                    );
+            return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { facadeType },handler );
+        } else {
+            // wrapper of RpcStub
+            return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { facadeType },
+                    new InvocationHandler() {
+                        @Override
+                        public Object invoke(final Object proxy, final Method method, final Object[] args)
+                                throws Throwable {
+                            // TBD: hook for hashCode && equals && etc
+                            if (method.getName().equals("toString") && method.getReturnType().equals(String.class)) {
+                                return "RpcFacade for (" + facadeType + ")";
+                            }
+                            if (null == args || args.length == 0) {
+                                final Transformer<Interact, Interact> processors = union(processorsOf(resource, names), selectURI4SPI(facadeType));
 
-                            final InvocationHandler handler = RpcDelegater.invocationHandler(new InvocationContext(facadeType, method, method.getReturnType()),
-                                    inter2any -> getexecutor.call(
-                                            searchHaltable(facadeType, method, orgHaltable, Thread.currentThread().getStackTrace()))
-                                        .submit(interacts -> interacts.compose(processors).compose(inter2any))
-                                    );
+                                final InvocationHandler handler = RpcDelegater.rpcStubHandler(new InvocationContext(facadeType, method, method.getReturnType()),
+                                        inter2any -> getexecutor.call(
+                                                searchHaltable(facadeType.getSimpleName() + "." + method.getName(),
+                                                        orgHaltable, Thread.currentThread().getStackTrace()))
+                                            .submit(interacts -> interacts.compose(processors).compose(inter2any))
+                                        );
 
-                            return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(),
-                                    new Class<?>[] { method.getReturnType() },
-                                    handler );
-                        } else {
-                            return null;
+                                return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(),
+                                        new Class<?>[] { method.getReturnType() },
+                                        handler );
+                            } else {
+                                return null;
+                            }
                         }
-                    }
-                });
+                    });
+        }
     }
 
     private static Haltable searchHaltable(
-            final Class<?> apiType,
-            final Method apiMethod,
+            final String hints,
             final Haltable orgHaltable,
             final StackTraceElement[] stms) {
         for (int i=0; i < stms.length; i++) {
@@ -1596,7 +1609,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 LOG.warn("exception when get check RpcScope for {}.{}, detail: {}", className, rawMethodName,
                         ExceptionUtils.exception2detail(e));
             }
-            LOG.debug("{}.{} CallStack: [{}]: {}'s {}({}:{})", apiType.getSimpleName(), apiMethod.getName(), i,
+            LOG.debug("{} CallStack: [{}]: {}'s {}({}:{})", hints, i,
                     className, rawMethodName, stms[i].getFileName(), stms[i].getLineNumber());
         }
         return null;
