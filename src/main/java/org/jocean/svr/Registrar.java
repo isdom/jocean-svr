@@ -154,7 +154,6 @@ import rx.Observable.Transformer;
 import rx.Scheduler;
 import rx.functions.Actions;
 import rx.functions.Func0;
-import rx.functions.Func1;
 
 /**
  * @author isdom
@@ -1250,14 +1249,16 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
             final RpcFacade rpcFacade = getAnnotation(argAnnotations, RpcFacade.class);
             if (null != rpcFacade) {
-                return buildRpcFacade(resource, tradeCtx._haltable, haltable -> {
-                    if (null == haltable) {
-                        return buildRpcExecutor(processor, tradeCtx.interactBuilder());
-                    } else {
-                        LOG.debug("interactBuilderByHaltable: {}/{}/{}", resource, argType, haltable);
-                        return buildRpcExecutor(processor, tradeCtx.interactBuilderByHaltable(haltable));
-                    }
-                },  rpcFacade.value(), (Class<?>)argType);
+                return buildRpcFacade(resource,
+                        () -> {
+                            final Haltable haltable = searchHaltable( ((Class<?>)argType).getSimpleName(), tradeCtx._haltable, Thread.currentThread().getStackTrace());
+                            if (null == haltable) {
+                                return buildRpcExecutor(processor, tradeCtx.interactBuilder());
+                            } else {
+                                LOG.debug("interactBuilderByHaltable: {}/{}/{}", resource, argType, haltable);
+                                return buildRpcExecutor(processor, tradeCtx.interactBuilderByHaltable(haltable));
+                            }
+                        }, rpcFacade.value(), (Class<?>)argType);
             }
             final JService jService = getAnnotation(argAnnotations, JService.class);
             if (null != jService) {
@@ -1515,17 +1516,14 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     private Object buildRpcFacade(
             final Object resource,
-            final Haltable orgHaltable,
-            final Func1<Haltable, RpcExecutor> getexecutor,
+            final Func0<RpcExecutor> getexecutor,
             final String[] names,
             final Class<?> facadeType) {
         if (facadeType.getAnnotation(RpcBuilder.class) != null) {
             // annotation by @RpcBuilder
             final Transformer<Interact, Interact> processors = union(processorsOf(resource, names), selectURI4SPI(facadeType));
             final InvocationHandler handler = RpcDelegater.rpcBuilderHandler(new InvocationContext(null, null, facadeType),
-                    inter2any -> getexecutor.call(
-                            searchHaltable(facadeType.getSimpleName(), orgHaltable, Thread.currentThread().getStackTrace()))
-                        .submit(interacts -> interacts.compose(processors).compose(inter2any))
+                    inter2any -> getexecutor.call().submit(interacts -> interacts.compose(processors).compose(inter2any))
                     );
             return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { facadeType },handler );
         } else {
@@ -1543,10 +1541,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                                 final Transformer<Interact, Interact> processors = union(processorsOf(resource, names), selectURI4SPI(facadeType));
 
                                 final InvocationHandler handler = RpcDelegater.rpcBuilderHandler(new InvocationContext(facadeType, method, method.getReturnType()),
-                                        inter2any -> getexecutor.call(
-                                                searchHaltable(facadeType.getSimpleName() + "." + method.getName(),
-                                                        orgHaltable, Thread.currentThread().getStackTrace()))
-                                            .submit(interacts -> interacts.compose(processors).compose(inter2any))
+                                        inter2any -> getexecutor.call().submit(interacts -> interacts.compose(processors).compose(inter2any))
                                         );
 
                                 return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(),
