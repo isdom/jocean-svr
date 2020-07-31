@@ -1522,7 +1522,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         if (facadeType.getAnnotation(RpcBuilder.class) != null) {
             // annotation by @RpcBuilder
             final Transformer<Interact, Interact> processors = union(processorsOf(resource, names), selectURI4SPI(facadeType));
-            final InvocationHandler handler = RpcDelegater.rpcStubHandler(new InvocationContext(null, null, facadeType),
+            final InvocationHandler handler = RpcDelegater.rpcBuilderHandler(new InvocationContext(null, null, facadeType),
                     inter2any -> getexecutor.call(
                             searchHaltable(facadeType.getSimpleName(), orgHaltable, Thread.currentThread().getStackTrace()))
                         .submit(interacts -> interacts.compose(processors).compose(inter2any))
@@ -1542,7 +1542,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             if (null == args || args.length == 0) {
                                 final Transformer<Interact, Interact> processors = union(processorsOf(resource, names), selectURI4SPI(facadeType));
 
-                                final InvocationHandler handler = RpcDelegater.rpcStubHandler(new InvocationContext(facadeType, method, method.getReturnType()),
+                                final InvocationHandler handler = RpcDelegater.rpcBuilderHandler(new InvocationContext(facadeType, method, method.getReturnType()),
                                         inter2any -> getexecutor.call(
                                                 searchHaltable(facadeType.getSimpleName() + "." + method.getName(),
                                                         orgHaltable, Thread.currentThread().getStackTrace()))
