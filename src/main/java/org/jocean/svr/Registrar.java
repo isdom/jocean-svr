@@ -6,6 +6,7 @@ package org.jocean.svr;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
@@ -1534,7 +1535,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                                 return "RpcFacade for (" + facadeType + ")";
                             }
                             if (null == args || args.length == 0) {
-                                return RpcDelegater.proxyBuilder(new InvocationContext(facadeType, method, method.getReturnType()), invoker);
+                                final InvocationContext ictx = new InvocationContext(facadeType, method, method.getReturnType());
+                                ictx.constParamCarriers = new AnnotatedElement[] { facadeType };
+                                return RpcDelegater.proxyBuilder(ictx, invoker);
                             } else {
                                 return null;
                             }
