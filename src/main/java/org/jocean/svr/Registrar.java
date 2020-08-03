@@ -1537,6 +1537,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             if (null == args || args.length == 0) {
                                 final InvocationContext ictx = new InvocationContext(facadeType, method, method.getReturnType());
                                 ictx.constParamCarriers = new AnnotatedElement[] { facadeType };
+                                ictx.pathCarriers = new AnnotatedElement[] { method, facadeType };
+
                                 return RpcDelegater.proxyBuilder(ictx, invoker);
                             } else {
                                 return null;
