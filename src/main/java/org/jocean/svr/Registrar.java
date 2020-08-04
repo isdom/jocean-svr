@@ -1522,7 +1522,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private Object buildRpcFacade(final Class<?> facadeType,
             final Func1<Transformer<Interact, ? extends Object>, Observable<? extends Object>> invoker) {
         if (facadeType.getAnnotation(RpcBuilder.class) != null) {
-            return RpcDelegater.proxyBuilder(new InvocationContext(null, facadeType), invoker);
+            return RpcDelegater.proxyBuilder(new InvocationContext(facadeType), invoker);
         } else {
             // wrapper of RpcBuilder(s)
             return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { facadeType },
@@ -1535,7 +1535,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                                 return "RpcFacade for (" + facadeType + ")";
                             }
                             if (null == args || args.length == 0) {
-                                final InvocationContext ictx = new InvocationContext(facadeType, method.getReturnType());
+                                final InvocationContext ictx = new InvocationContext(method.getReturnType());
+                                ictx.builderOwner = facadeType;
                                 ictx.constParamCarriers = new AnnotatedElement[] { facadeType };
                                 ictx.pathCarriers = new AnnotatedElement[] { method, facadeType };
 
