@@ -6,7 +6,6 @@ package org.jocean.svr;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import java.lang.annotation.Annotation;
-import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
@@ -91,7 +90,6 @@ import org.jocean.netty.util.BufsOutputStream;
 import org.jocean.opentracing.DurationRecorder;
 import org.jocean.opentracing.TracingUtil;
 import org.jocean.rpc.RpcDelegater;
-import org.jocean.rpc.RpcDelegater.InvocationContext;
 import org.jocean.rpc.annotation.RpcBuilder;
 import org.jocean.rpc.annotation.RpcScope;
 import org.jocean.svr.FinderUtil.CallerContext;
@@ -1522,7 +1520,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private Object buildRpcFacade(final Class<?> facadeType,
             final Func1<Transformer<Interact, ? extends Object>, Observable<? extends Object>> invoker) {
         if (facadeType.getAnnotation(RpcBuilder.class) != null) {
-            return RpcDelegater.proxyBuilder(new InvocationContext(facadeType), invoker);
+            return RpcDelegater.rpc(facadeType).invoker(invoker).build();
         } else {
             // wrapper of RpcBuilder(s)
             return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { facadeType },
@@ -1535,12 +1533,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                                 return "RpcFacade for (" + facadeType + ")";
                             }
                             if (null == args || args.length == 0) {
-                                final InvocationContext ictx = new InvocationContext(method.getReturnType());
-                                ictx.builderOwner = facadeType;
-                                ictx.constParamCarriers = new AnnotatedElement[] { facadeType };
-                                ictx.pathCarriers = new AnnotatedElement[] { method, facadeType };
-
-                                return RpcDelegater.proxyBuilder(ictx, invoker);
+                                return RpcDelegater.rpc(method.getReturnType())
+                                    .owner(facadeType)
+                                    .constParamCarriers(facadeType)
+                                    .pathCarriers(method, facadeType)
+                                    .invoker(invoker)
+                                    .build();
                             } else {
                                 return null;
                             }
