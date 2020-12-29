@@ -48,6 +48,7 @@ import io.netty.handler.codec.http.HttpMessage;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
+import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.ssl.SslContextBuilder;
@@ -276,6 +277,7 @@ class InteractBuilderImpl implements InteractBuilder {
                             }
 
                             hookOnSending(initiator);
+                            checkAndSetContentLength(initiator);
 
                             final AtomicReference<String> operationRef = new AtomicReference<>();
                             final AtomicReference<Long> startRef = new AtomicReference<Long>();
@@ -336,6 +338,8 @@ class InteractBuilderImpl implements InteractBuilder {
                             }
 
                             hookOnSending(initiator);
+                            checkAndSetContentLength(initiator);
+
 
                             final AtomicReference<String> operationRef = new AtomicReference<>();
                             final AtomicReference<Long> startRef = new AtomicReference<Long>();
@@ -454,6 +458,17 @@ class InteractBuilderImpl implements InteractBuilder {
 
                 TraceUtil.addTagNotNull(span, "http.host", req.headers().get(HttpHeaderNames.HOST));
                 tracer.inject(span.context(), Format.Builtin.HTTP_HEADERS, TraceUtil.message2textmap(req));
+            }
+        });
+    }
+
+    private static void checkAndSetContentLength(final HttpInitiator initiator) {
+        initiator.writeCtrl().sending().subscribe(obj -> {
+            if (obj instanceof HttpRequest) {
+                final HttpRequest req = (HttpRequest)obj;
+                if (!HttpUtil.isContentLengthSet(req) && !HttpUtil.isTransferEncodingChunked(req)) {
+                    HttpUtil.setContentLength(req, 0);
+                }
             }
         });
     }
