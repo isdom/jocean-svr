@@ -1628,7 +1628,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         }})
                     .flatMap(uris -> interacts.doOnNext(interact ->interact.uri(selectURI(uris))));
         } else {
-            return null;
+            return interacts -> interacts;
         }
     }
 
