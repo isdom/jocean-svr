@@ -1257,7 +1257,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (null != rpcFacade) {
                 return buildRpcFacade((Class<?>)argType,
                         inter2any -> {
-                            final Transformer<Interact, Interact> processors = union(processorsOf(resource, rpcFacade.value()), selectURI4SPI( (Class<?>)argType));
+                            final Transformer<Interact, Interact> processors = selectURI4SPI( (Class<?>)argType);
+                            // union(processorsOf(resource, rpcFacade.value()), selectURI4SPI( (Class<?>)argType));
                             final Haltable haltable = searchHaltable( ((Class<?>)argType).getSimpleName(), tradeCtx._haltable, Thread.currentThread().getStackTrace());
                             RpcExecutor executor;
                             if (null == haltable) {
@@ -1477,6 +1478,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
+    /*
     @SuppressWarnings("unchecked")
     private static Transformer<Interact, Interact> transformerByExpression(final Object owner, final String expression) {
         try {
@@ -1522,6 +1524,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return obs;
         };
     }
+    */
 
     private Object buildRpcFacade(final Class<?> facadeType,
             final Func1<Transformer<Interact, ? extends Object>, Observable<? extends Object>> invoker) {
