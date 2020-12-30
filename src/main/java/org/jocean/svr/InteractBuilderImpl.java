@@ -277,7 +277,7 @@ class InteractBuilderImpl implements InteractBuilder {
                             }
 
                             hookOnSending(initiator);
-                            checkAndSetContentLength(initiator);
+                            checkAndFixContentLength(initiator);
 
                             final AtomicReference<String> operationRef = new AtomicReference<>();
                             final AtomicReference<Long> startRef = new AtomicReference<Long>();
@@ -338,7 +338,7 @@ class InteractBuilderImpl implements InteractBuilder {
                             }
 
                             hookOnSending(initiator);
-                            checkAndSetContentLength(initiator);
+                            checkAndFixContentLength(initiator);
 
 
                             final AtomicReference<String> operationRef = new AtomicReference<>();
@@ -462,7 +462,7 @@ class InteractBuilderImpl implements InteractBuilder {
         });
     }
 
-    private static void checkAndSetContentLength(final HttpInitiator initiator) {
+    private static void checkAndFixContentLength(final HttpInitiator initiator) {
         initiator.writeCtrl().sending().subscribe(obj -> {
             if (obj instanceof HttpRequest) {
                 final HttpRequest req = (HttpRequest)obj;
