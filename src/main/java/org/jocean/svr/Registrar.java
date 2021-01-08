@@ -1305,8 +1305,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (null != jService) {
                 return Observable.just(buildJService(tradeCtx, argsCtx, (Class<?>)argType));
             }
-            final DecodeTo decodeAs = getAnnotation(argAnnotations, DecodeTo.class);
-            if (null != decodeAs) {
+            final DecodeTo decodeTo = getAnnotation(argAnnotations, DecodeTo.class);
+            if (null != decodeTo) {
+                LOG.info("messagebody decodeTo {} and inject as param", argType);
                 return tradeCtx.decodeBodyAs((Class<Object>)argType);
             }
         }
