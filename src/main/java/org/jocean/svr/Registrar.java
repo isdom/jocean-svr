@@ -679,7 +679,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final Method processor,
             final ArgsCtx argsctx
             ) {
-        return buildArgs(resource, tctx, argsctx).map(args -> {
+        return buildArgs(resource, tctx, argsctx).flatMap(args -> {
             try {
                 final Object returnValue = processor.invoke(resource, args);
                 if (null!=returnValue) {
@@ -1307,7 +1307,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
             final DecodeTo decodeTo = getAnnotation(argAnnotations, DecodeTo.class);
             if (null != decodeTo) {
-                LOG.info("messagebody decodeTo {} and inject as param", argType);
+                LOG.info("{}'s messagebody decodeTo {} and inject as param", tradeCtx.restin().getPathPattern(), argType);
                 return tradeCtx.decodeBodyAs((Class<Object>)argType);
             }
         }
