@@ -1308,7 +1308,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final DecodeTo decodeTo = getAnnotation(argAnnotations, DecodeTo.class);
             if (null != decodeTo) {
                 LOG.info("{}'s messagebody decodeTo {} and inject as param", tradeCtx.restin().getPathPattern(), argType);
-                return tradeCtx.decodeBodyAs((Class<Object>)argType);
+                return tradeCtx.decodeBodyAs((Class<Object>)argType).doOnNext(arg -> {
+                    LOG.debug("@DecodeTo param: {}", arg);
+                });
             }
         }
         if (argType instanceof ParameterizedType){
