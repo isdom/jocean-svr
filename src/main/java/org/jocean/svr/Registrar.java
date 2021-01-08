@@ -95,7 +95,7 @@ import org.jocean.svr.FinderUtil.CallerContext;
 import org.jocean.svr.ZipUtil.Unzipper;
 import org.jocean.svr.ZipUtil.ZipBuilder;
 import org.jocean.svr.ZipUtil.Zipper;
-import org.jocean.svr.annotation.DecodeAs;
+import org.jocean.svr.annotation.DecodeTo;
 import org.jocean.svr.annotation.JService;
 import org.jocean.svr.annotation.PathSample;
 import org.jocean.svr.annotation.RpcFacade;
@@ -1305,7 +1305,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (null != jService) {
                 return Observable.just(buildJService(tradeCtx, argsCtx, (Class<?>)argType));
             }
-            final DecodeAs decodeAs = getAnnotation(argAnnotations, DecodeAs.class);
+            final DecodeTo decodeAs = getAnnotation(argAnnotations, DecodeTo.class);
             if (null != decodeAs) {
                 return tradeCtx.decodeBodyAs((Class<Object>)argType);
             }
