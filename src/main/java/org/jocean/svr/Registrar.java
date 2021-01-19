@@ -1303,7 +1303,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
             final JService jService = getAnnotation(argAnnotations, JService.class);
             if (null != jService) {
-                return Observable.just(buildJService(tradeCtx, argsCtx, (Class<?>)argType));
+                return Observable.just(buildJService(tradeCtx, argsCtx, jService.value(), (Class<?>)argType));
             }
             final DecodeTo decodeTo = getAnnotation(argAnnotations, DecodeTo.class);
             if (null != decodeTo) {
@@ -1403,16 +1403,23 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             @SuppressWarnings("unchecked")
             @Override
             public <S> S build(final Class<S> serviceType, final Object... args) {
-                return (S)buildJService(tradeCtx, argsCtx, serviceType, args);
+                return (S)buildJService(tradeCtx, argsCtx, null, serviceType, args);
+            }
+
+            @SuppressWarnings("unchecked")
+            @Override
+            public <S> S build(final String serviceName, final Class<S> serviceType, final Object... args) {
+                return (S)buildJService(tradeCtx, argsCtx, serviceName, serviceType, args);
             }};
     }
 
     private Object buildJService(
             final DefaultTradeContext tradeCtx,
             final ArgsCtx argsCtx,
+            final String serviceName,
             final Class<?> serviceType,
             final Object... args) {
-        final Func0<Object> builder = () -> createAndFillJService(serviceType, tradeCtx, argsCtx, args);
+        final Func0<Object> builder = () -> createAndFillJService(serviceName, serviceType, tradeCtx, argsCtx, args);
         LOG.debug("buildJService: @JService for {}", serviceType);
         if (serviceType.isInterface() ) {
             LOG.debug("try to generate lazy init proxy for {}", serviceType);
@@ -1457,12 +1464,16 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Object createAndFillJService(
+            final String serviceName,
             final Class<?> serviceType,
             final DefaultTradeContext tradeCtx,
             final ArgsCtx argsCtx,
             final Object... args) {
         try {
-            final Object service = this._beanHolder.getBean(serviceType, args); // getBeanFromHolder(serviceType, args);
+            final Object service = (null == serviceName || serviceName.isEmpty())
+                                ? this._beanHolder.getBean(serviceType, args)
+                                : this._beanHolder.getBean(serviceName, args);
+                                // getBeanFromHolder(serviceType, args);
             if (null == service) {
                 // service = ReflectUtils.newInstance(serviceType);
                 LOG.warn("can't found bean by type {}", serviceType);
