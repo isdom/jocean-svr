@@ -97,6 +97,7 @@ import org.jocean.svr.ZipUtil.ZipBuilder;
 import org.jocean.svr.ZipUtil.Zipper;
 import org.jocean.svr.annotation.DecodeTo;
 import org.jocean.svr.annotation.JService;
+import org.jocean.svr.annotation.OnError;
 import org.jocean.svr.annotation.PathSample;
 import org.jocean.svr.annotation.RpcFacade;
 import org.jocean.svr.mbean.RestinIndicator;
@@ -111,12 +112,6 @@ import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.stereotype.Controller;
-
-/*
-import com.alibaba.csp.sentinel.AsyncEntry;
-import com.alibaba.csp.sentinel.SphU;
-import com.alibaba.csp.sentinel.slots.block.BlockException;
-*/
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ImmutableSet;
@@ -173,7 +168,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 final TradeScheduler ts,
                 final String operation,
                 final RestinIndicator restin
-                /*,final AsyncEntry asyncEntry*/) {
+                ) {
             this._trade = trade;
             this._haltable = haltable;
             this._tracer = tracer;
@@ -181,7 +176,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             this._ts = ts;
             this._operation = operation;
             this._restin = restin;
-            // this._asyncEntry = asyncEntry;
         }
 
         @Override
@@ -202,7 +196,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         @Override
         public InteractBuilder interactBuilder() {
             return new InteractBuilderImpl(this._haltable, _span, Observable.just(_tracer), _ts.scheduler(),
-                    /*null != this._asyncEntry ? this._asyncEntry.getAsyncContext() : null,*/
                     (amount, unit, tags) -> recordDuration(amount, unit, tags),
                     (inboundBytes, outboundBytes, tags) -> recordTraffic(inboundBytes, outboundBytes, tags));
         }
@@ -210,16 +203,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         public InteractBuilder interactBuilderOutofTrade(final Span parentSpan, final int delayInSeconds) {
             return new InteractBuilderImpl(Haltables.delay(delayInSeconds, TimeUnit.SECONDS), parentSpan,
                     Observable.just(_tracer), _ts.scheduler(),
-                    //null,   // 分支产生的 interact 暂不作为 trade 的子 interact
-//                    this._asyncEntry.getAsyncContext(),
                     (amount, unit, tags) -> recordDuration(amount, unit, tags),
                     (inboundBytes, outboundBytes, tags) -> recordTraffic(inboundBytes, outboundBytes, tags));
         }
 
         public InteractBuilder interactBuilderByHaltable(final Haltable haltable) {
             return new InteractBuilderImpl(haltable, _span, Observable.just(_tracer), _ts.scheduler(),
-                    //null,   // 分支产生的 interact 暂不作为 trade 的子 interact
-//                    this._asyncEntry.getAsyncContext(),
                     (amount, unit, tags) -> recordDuration(amount, unit, tags),
                     (inboundBytes, outboundBytes, tags) -> recordTraffic(inboundBytes, outboundBytes, tags));
         }
@@ -270,7 +259,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         final TradeScheduler _ts;
         final String _operation;
         final RestinIndicator _restin;
-        // final AsyncEntry _asyncEntry;
     }
 
     private void recordDuration(final long amount, final TimeUnit unit, final String... tags) {
@@ -602,19 +590,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
                 span.setOperationName(operationName);
 
-                /*
-                AsyncEntry asyncEntry = null;
-                try {
-                    // First we call an asynchronous resource.
-                    final AsyncEntry entry = SphU.asyncEntry(operationName);
-                    trade.doOnHalt(() -> entry.exit());
-                    asyncEntry = entry;
-                } catch (final BlockException e) {
-                    return Observable.error(e);
-                }
-                */
-
-                final DefaultTradeContext tctx = new DefaultTradeContext(trade, trade, tracer, span, ts, operationName, restin/*, asyncEntry*/);
+                final DefaultTradeContext tctx = new DefaultTradeContext(trade, trade, tracer, span, ts, operationName, restin);
 
                 final Deque<MethodInterceptor> interceptors = new LinkedList<>();
                 final MethodInterceptor.Context interceptorCtx = new MethodInterceptor.Context() {
@@ -680,23 +656,25 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final ArgsCtx argsctx
             ) {
         return buildArgs(resource, tctx, argsctx).flatMap(args -> {
-            try {
-                final Object returnValue = processor.invoke(resource, args);
+                Object returnValue = null;
+                try {
+                    returnValue = processor.invoke(resource, args);
+                } catch (final Exception e) {
+                    LOG.warn("exception when invoke processor:{}, detail: {}",
+                            processor,
+                            ExceptionUtils.exception2detail(e));
+                    returnValue = Observable.error(e);
+                }
                 if (null!=returnValue) {
                     final Observable<? extends Object> obsResponse = returnValue2ObsResponse(
                             tctx,
                             request,
                             processor,
-                            returnValue);
+                            handleError(processor, returnValue));
                     if (null!=obsResponse) {
                         return obsResponse;
                     }
                 }
-            } catch (final Exception e) {
-                LOG.warn("exception when invoke process {}, detail: {}",
-                        processor,
-                        ExceptionUtils.exception2detail(e));
-            }
             return RxNettys.response404NOTFOUND(request.protocolVersion());
         });
         /* change to Rx
@@ -719,6 +697,48 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
         return RxNettys.response404NOTFOUND(request.protocolVersion());
         */
+    }
+
+    private Object handleError(final Method processor, final Object returnValue) {
+        if (returnValue instanceof Observable) {
+            final OnError onError = processor.getAnnotation(OnError.class);
+            if (null != onError) {
+                return handleErrors((Observable<Object>)returnValue, onError.value());
+            }
+        }
+        return returnValue;
+    }
+
+    private Observable<? extends Object> handleErrors(final Observable<Object> returnValue, final String[] values) {
+        return returnValue.onErrorResumeNext(e -> {
+            for (final String methodname : values) {
+                try {
+                    LOG.info("meet error {} , try handle by:{}", ExceptionUtils.exception2detail(e), methodname);
+                    final Method handler = ReflectUtils.getStaticMethodByName(methodname);
+                    final Class<?>[] ps = handler.getParameterTypes();
+                    if ((Modifier.isStatic(handler.getModifiers())) &&
+                        ps != null && ps.length == 1 && ps[0].isAssignableFrom(e.getClass())) {
+                        try {
+                            final Object converted = handler.invoke(null, e);
+                            if (null != converted) {
+                                LOG.info("error {} handled by {}", ExceptionUtils.exception2detail(e), methodname);
+                                if (converted instanceof Observable) {
+                                    return (Observable<? extends Object>) converted;
+                                } else {
+                                    return Observable.just(converted);
+                                }
+                            }
+                        } catch (final Exception e1) {
+                            // ignore this handler
+                        }
+                    }
+                } catch(final Exception e2) {
+                    // just ignore
+                }
+                LOG.info("error !NOT! handled by {}", methodname);
+            }
+            return Observable.error(e);
+        });
     }
 
     @SuppressWarnings("unchecked")
