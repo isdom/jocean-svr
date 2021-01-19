@@ -670,7 +670,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             tctx,
                             request,
                             processor,
-                            handleError(processor, returnValue));
+                            handleError(resource, processor, returnValue));
                     if (null!=obsResponse) {
                         return obsResponse;
                     }
@@ -699,37 +699,57 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         */
     }
 
-    private Object handleError(final Method processor, final Object returnValue) {
+    private Object handleError(final Object resource, final Method processor, final Object returnValue) {
         if (returnValue instanceof Observable) {
             final OnError onError = processor.getAnnotation(OnError.class);
             if (null != onError) {
-                return handleErrors((Observable<Object>)returnValue, onError.value());
+                return handleErrors((Observable<Object>)returnValue, resource, onError.value());
             }
         }
         return returnValue;
     }
 
-    private Observable<? extends Object> handleErrors(final Observable<Object> returnValue, final String[] values) {
+    private Observable<? extends Object> handleErrors(final Observable<Object> returnValue, final Object resource, final String[] values) {
         return returnValue.onErrorResumeNext(e -> {
             for (final String methodname : values) {
                 try {
                     LOG.info("meet error {} , try handle by:{}", ExceptionUtils.exception2detail(e), methodname);
-                    final Method handler = ReflectUtils.getStaticMethodByName(methodname);
-                    final Class<?>[] ps = handler.getParameterTypes();
-                    if ((Modifier.isStatic(handler.getModifiers())) &&
-                        ps != null && ps.length == 1 && ps[0].isAssignableFrom(e.getClass())) {
-                        try {
-                            final Object converted = handler.invoke(null, e);
-                            if (null != converted) {
-                                LOG.info("error {} handled by {}", ExceptionUtils.exception2detail(e), methodname);
-                                if (converted instanceof Observable) {
-                                    return (Observable<? extends Object>) converted;
-                                } else {
-                                    return Observable.just(converted);
+                    if (methodname.startsWith("this.")) {
+                        final Method handler = ReflectUtils.getMethodNamedDeep(resource.getClass(), methodname.substring(5));
+                        final Class<?>[] ps = handler.getParameterTypes();
+                        if (ps != null && ps.length == 1 && ps[0].isAssignableFrom(e.getClass())) {
+                            try {
+                                final Object converted = handler.invoke(resource, e);
+                                if (null != converted) {
+                                    LOG.info("error {} handled by {}", ExceptionUtils.exception2detail(e), methodname);
+                                    if (converted instanceof Observable) {
+                                        return (Observable<? extends Object>) converted;
+                                    } else {
+                                        return Observable.just(converted);
+                                    }
                                 }
+                            } catch (final Exception e1) {
+                                // ignore this handler
                             }
-                        } catch (final Exception e1) {
-                            // ignore this handler
+                        }
+                    } else {
+                        final Method handler = ReflectUtils.getStaticMethodByName(methodname);
+                        final Class<?>[] ps = handler.getParameterTypes();
+                        if ((Modifier.isStatic(handler.getModifiers())) &&
+                            ps != null && ps.length == 1 && ps[0].isAssignableFrom(e.getClass())) {
+                            try {
+                                final Object converted = handler.invoke(null, e);
+                                if (null != converted) {
+                                    LOG.info("error {} handled by {}", ExceptionUtils.exception2detail(e), methodname);
+                                    if (converted instanceof Observable) {
+                                        return (Observable<? extends Object>) converted;
+                                    } else {
+                                        return Observable.just(converted);
+                                    }
+                                }
+                            } catch (final Exception e1) {
+                                // ignore this handler
+                            }
                         }
                     }
                 } catch(final Exception e2) {
