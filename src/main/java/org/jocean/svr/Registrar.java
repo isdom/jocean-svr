@@ -23,6 +23,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
@@ -710,45 +711,35 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Observable<? extends Object> handleErrors(final Observable<Object> returnValue, final Object resource, final String[] values) {
-        return returnValue.onErrorResumeNext(e -> {
+        return returnValue.onErrorResumeNext(throwable -> {
             for (final String methodname : values) {
                 try {
-                    LOG.info("meet error {} , try handle by:{}", ExceptionUtils.exception2detail(e), methodname);
+                    LOG.info("meet error {} , try handle by:{}", ExceptionUtils.exception2detail(throwable), methodname);
                     if (methodname.startsWith("this.")) {
                         final Method handler = ReflectUtils.getMethodNamedDeep(resource.getClass(), methodname.substring(5));
-                        final Class<?>[] ps = handler.getParameterTypes();
-                        if (ps != null && ps.length == 1 && ps[0].isAssignableFrom(e.getClass())) {
-                            try {
-                                final Object converted = handler.invoke(resource, e);
-                                if (null != converted) {
-                                    LOG.info("error {} handled by {}", ExceptionUtils.exception2detail(e), methodname);
-                                    if (converted instanceof Observable) {
-                                        return (Observable<? extends Object>) converted;
-                                    } else {
-                                        return Observable.just(converted);
-                                    }
-                                }
-                            } catch (final Exception e1) {
-                                // ignore this handler
-                            }
+                        final Observable<? extends Object> converted = checkAndInvoke(handler.getParameterTypes(), throwable, () -> handler.invoke(resource, throwable));
+                        if (converted != null) {
+                            LOG.info("error {} handled by {}", ExceptionUtils.exception2detail(throwable), methodname);
+                            return converted;
                         }
                     } else {
-                        final Method handler = ReflectUtils.getStaticMethodByName(methodname);
-                        final Class<?>[] ps = handler.getParameterTypes();
-                        if ((Modifier.isStatic(handler.getModifiers())) &&
-                            ps != null && ps.length == 1 && ps[0].isAssignableFrom(e.getClass())) {
-                            try {
-                                final Object converted = handler.invoke(null, e);
-                                if (null != converted) {
-                                    LOG.info("error {} handled by {}", ExceptionUtils.exception2detail(e), methodname);
-                                    if (converted instanceof Observable) {
-                                        return (Observable<? extends Object>) converted;
-                                    } else {
-                                        return Observable.just(converted);
-                                    }
+                        final Method handler = ReflectUtils.getMethodByFullname(methodname);
+                        if (Modifier.isStatic(handler.getModifiers())) {
+                            final Observable<? extends Object> converted = checkAndInvoke(handler.getParameterTypes(), throwable, () -> handler.invoke(null, throwable));
+                            if (converted != null) {
+                                LOG.info("error {} handled by {}", ExceptionUtils.exception2detail(throwable), methodname);
+                                return converted;
+                            }
+                        } else {
+                            final Object bean = _beanHolder.getBean(handler.getDeclaringClass());
+                            if (null != bean) {
+                                final Observable<? extends Object> converted = checkAndInvoke(handler.getParameterTypes(), throwable, () -> handler.invoke(bean, throwable));
+                                if (converted != null) {
+                                    LOG.info("error {} handled by {}", ExceptionUtils.exception2detail(throwable), methodname);
+                                    return converted;
                                 }
-                            } catch (final Exception e1) {
-                                // ignore this handler
+                            } else {
+                                LOG.warn("can't found bean by type {}, ignore error handler {}", handler.getDeclaringClass(), methodname);
                             }
                         }
                     }
@@ -757,8 +748,26 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 }
                 LOG.info("error !NOT! handled by {}", methodname);
             }
-            return Observable.error(e);
+            return Observable.error(throwable);
         });
+    }
+
+    private Observable<? extends Object> checkAndInvoke(final Class<?>[] ps, final Throwable e, final Callable<Object> invoker) {
+        if (ps != null && ps.length == 1 && ps[0].isAssignableFrom(e.getClass())) {
+            try {
+                final Object converted = invoker.call();
+                if (null != converted) {
+                    if (converted instanceof Observable) {
+                        return (Observable<? extends Object>) converted;
+                    } else {
+                        return Observable.just(converted);
+                    }
+                }
+            } catch (final Exception ex) {
+                // ignore this handler
+            }
+        }
+        return null;
     }
 
     @SuppressWarnings("unchecked")
