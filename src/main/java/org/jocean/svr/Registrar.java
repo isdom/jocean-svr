@@ -710,46 +710,44 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return returnValue;
     }
 
-    private Observable<? extends Object> handleErrors(final Observable<Object> returnValue, final Object resource, final String[] values) {
+    private Observable<? extends Object> handleErrors(final Observable<Object> returnValue, final Object resource, final String[] handlerNames) {
         return returnValue.onErrorResumeNext(throwable -> {
-            for (final String methodname : values) {
+            for (final String handlerName : handlerNames) {
                 try {
-                    LOG.info("meet error {} , try handle by:{}", ExceptionUtils.exception2detail(throwable), methodname);
-                    if (methodname.startsWith("this.")) {
-                        final Method handler = ReflectUtils.getMethodNamedDeep(resource.getClass(), methodname.substring(5));
-                        final Observable<? extends Object> converted = checkAndInvoke(handler.getParameterTypes(), throwable, () -> handler.invoke(resource, throwable));
-                        if (converted != null) {
-                            LOG.info("error {} handled by {}", ExceptionUtils.exception2detail(throwable), methodname);
-                            return converted;
-                        }
-                    } else {
-                        final Method handler = ReflectUtils.getMethodByFullname(methodname);
-                        if (Modifier.isStatic(handler.getModifiers())) {
-                            final Observable<? extends Object> converted = checkAndInvoke(handler.getParameterTypes(), throwable, () -> handler.invoke(null, throwable));
-                            if (converted != null) {
-                                LOG.info("error {} handled by {}", ExceptionUtils.exception2detail(throwable), methodname);
-                                return converted;
-                            }
-                        } else {
-                            final Object bean = _beanHolder.getBean(handler.getDeclaringClass());
-                            if (null != bean) {
-                                final Observable<? extends Object> converted = checkAndInvoke(handler.getParameterTypes(), throwable, () -> handler.invoke(bean, throwable));
-                                if (converted != null) {
-                                    LOG.info("error {} handled by {}", ExceptionUtils.exception2detail(throwable), methodname);
-                                    return converted;
-                                }
-                            } else {
-                                LOG.warn("can't found bean by type {}, ignore error handler {}", handler.getDeclaringClass(), methodname);
-                            }
-                        }
+                    LOG.info("meet error {} , try handle by:{}", ExceptionUtils.exception2detail(throwable), handlerName);
+                    final Observable<? extends Object> converted = invokelErrorHandlerOf(handlerName, resource, throwable);
+                    if (converted != null) {
+                        LOG.info("error {} handled by {}", ExceptionUtils.exception2detail(throwable), handlerName);
+                        return converted;
                     }
                 } catch(final Exception e2) {
                     // just ignore
                 }
-                LOG.info("error !NOT! handled by {}", methodname);
+                LOG.info("error !NOT! handled by {}", handlerName);
             }
             return Observable.error(throwable);
         });
+    }
+
+    private Observable<? extends Object> invokelErrorHandlerOf(final String handlerName, final Object resource, final Throwable throwable)
+            throws NoSuchMethodException, ClassNotFoundException {
+        if (handlerName.startsWith("this.")) {
+            final Method handler = ReflectUtils.getMethodNamedDeep(resource.getClass(), handlerName.substring(5));
+            return checkAndInvoke(handler.getParameterTypes(), throwable, () -> handler.invoke(resource, throwable));
+        } else {
+            final Method handler = ReflectUtils.getMethodByFullname(handlerName);
+            if (Modifier.isStatic(handler.getModifiers())) {
+                return checkAndInvoke(handler.getParameterTypes(), throwable, () -> handler.invoke(null, throwable));
+            } else {
+                final Object bean = _beanHolder.getBean(handler.getDeclaringClass());
+                if (null != bean) {
+                    return checkAndInvoke(handler.getParameterTypes(), throwable, () -> handler.invoke(bean, throwable));
+                } else {
+                    LOG.warn("can't found bean by type {}, ignore error handler {}", handler.getDeclaringClass(), handlerName);
+                }
+            }
+        }
+        return null;
     }
 
     private Observable<? extends Object> checkAndInvoke(final Class<?>[] ps, final Throwable e, final Callable<Object> invoker) {
