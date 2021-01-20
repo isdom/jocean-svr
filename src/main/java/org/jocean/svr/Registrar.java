@@ -1283,7 +1283,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return Observable.zip(Observable.from(argCtx.genericParameterTypes),
                             Observable.from(argCtx.parameterAnnotations),
                             (argType, argAnnotations) -> Pair.of(argType, argAnnotations))
-                .flatMap(typeAndAnnotations -> buildArgByType(typeAndAnnotations.first,
+                // bug fix : flatMap 可能会导致参数序列乱序
+                .concatMap(typeAndAnnotations -> buildArgByType(typeAndAnnotations.first,
                         resource,
                         tradeCtx,
                         argCtx,
