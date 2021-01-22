@@ -1,6 +1,8 @@
 package org.jocean.svr;
 
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 
 import javax.ws.rs.core.MediaType;
@@ -26,6 +28,60 @@ public class ResponseUtil {
     private static class DefaultResponseBean implements MutableResponseBean {
 
         @Override
+        public String toString() {
+            final StringBuilder builder = new StringBuilder();
+            builder.append("DefaultResponseBean [withStatus=").append(_withStatus).append(", withHeader=")
+                    .append(_withHeader).append(", withBody=").append(_withBody).append("]");
+            return builder.toString();
+        }
+
+        @Override
+        public int hashCode() {
+            final int prime = 31;
+            int result = 1;
+            result = prime * result + ((_withBody == null) ? 0 : _withBody.hashCode());
+            result = prime * result + ((_withHeader == null) ? 0 : _withHeader.hashCode());
+            result = prime * result + ((_withStatus == null) ? 0 : _withStatus.hashCode());
+            return result;
+        }
+
+        @Override
+        public boolean equals(final Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (obj == null) {
+                return false;
+            }
+            if (getClass() != obj.getClass()) {
+                return false;
+            }
+            final DefaultResponseBean other = (DefaultResponseBean) obj;
+            if (_withBody == null) {
+                if (other._withBody != null) {
+                    return false;
+                }
+            } else if (!_withBody.equals(other._withBody)) {
+                return false;
+            }
+            if (_withHeader == null) {
+                if (other._withHeader != null) {
+                    return false;
+                }
+            } else if (!_withHeader.equals(other._withHeader)) {
+                return false;
+            }
+            if (_withStatus == null) {
+                if (other._withStatus != null) {
+                    return false;
+                }
+            } else if (!_withStatus.equals(other._withStatus)) {
+                return false;
+            }
+            return true;
+        }
+
+        @Override
         public WithStatus withStatus() {
             return this._withStatus;
         }
@@ -43,6 +99,32 @@ public class ResponseUtil {
         @Override
         public MutableResponseBean setStatus(final int status) {
             this._withStatus = new WithStatus() {
+                @Override
+                public String toString() {
+                    final StringBuilder builder = new StringBuilder();
+                    builder.append("WithStatus [status=").append(status).append("]");
+                    return builder.toString();
+                }
+
+                @Override
+                public int hashCode() {
+                    return status;
+                }
+
+                @Override
+                public boolean equals(final Object obj) {
+                    if (this == obj) {
+                        return true;
+                    }
+                    if (obj == null) {
+                        return false;
+                    }
+                    if (!(obj instanceof WithStatus)) {
+                        return false;
+                    }
+                    return status == ((WithStatus)obj).status();
+                }
+
                 @Override
                 public int status() {
                     return status;
@@ -68,6 +150,58 @@ public class ResponseUtil {
     }
 
     private static class WithHeaderSupport implements WithHeader {
+        @Override
+        public String toString() {
+            final int maxLen = 10;
+            final StringBuilder builder = new StringBuilder();
+            builder.append("WithHeaderSupport [headers=")
+                    .append(_headers != null ? toString(_headers.entrySet(), maxLen) : null).append("]");
+            return builder.toString();
+        }
+
+        private String toString(final Collection<?> collection, final int maxLen) {
+            final StringBuilder builder = new StringBuilder();
+            builder.append("[");
+            int i = 0;
+            for (final Iterator<?> iterator = collection.iterator(); iterator.hasNext() && i < maxLen; i++) {
+                if (i > 0)
+                    builder.append(", ");
+                builder.append(iterator.next());
+            }
+            builder.append("]");
+            return builder.toString();
+        }
+
+        @Override
+        public int hashCode() {
+            final int prime = 31;
+            int result = 1;
+            result = prime * result + ((_headers == null) ? 0 : _headers.hashCode());
+            return result;
+        }
+
+        @Override
+        public boolean equals(final Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (obj == null) {
+                return false;
+            }
+            if (getClass() != obj.getClass()) {
+                return false;
+            }
+            final WithHeaderSupport other = (WithHeaderSupport) obj;
+            if (_headers == null) {
+                if (other._headers != null) {
+                    return false;
+                }
+            } else if (!_headers.equals(other._headers)) {
+                return false;
+            }
+            return true;
+        }
+
         @Override
         public WithHeader setContentDisposition(final String value) {
             this._headers.put(HttpHeaderNames.CONTENT_DISPOSITION.toString(), value);
