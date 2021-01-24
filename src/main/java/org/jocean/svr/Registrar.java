@@ -23,7 +23,6 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
@@ -539,6 +538,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     interface BuildArgContext {
+        Object              resource();
         Method              processor();
         HttpRequest         httpRequest();
         Map<String, String> pathParams();
@@ -608,6 +608,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     return doPostInvoke(interceptors, copyCtxOverrideResponse(interceptorCtx, aheadObsResponse));
                 } else {
                     final BuildArgContext argctx = new BuildArgContext() {
+                        @Override
+                        public Object resource() {
+                            return resource;
+                        }
 
                         @Override
                         public Method processor() {
@@ -660,7 +664,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return buildArgs(
                     processor.getGenericParameterTypes(),
                     processor.getParameterAnnotations(),
-                    resource, tctx, argctx)
+                    tctx,
+                    argctx)
             .flatMap(args -> {
                 Object returnValue = null;
                 try {
@@ -685,6 +690,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             });
     }
 
+    @SuppressWarnings("unchecked")
     private Object handleError(final Object resource, final DefaultTradeContext tctx, final BuildArgContext argctx, final Method processor, final Object returnValue) {
         if (returnValue instanceof Observable) {
             final OnError onError = processor.getAnnotation(OnError.class);
@@ -719,77 +725,92 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         });
     }
 
-    private Observable<? extends Object> invokelErrorHandlerOf(final String handlerName,
+    interface HandlerInvocation {
+        Method handler();
+        Object invoke(Object... args) throws Throwable;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Observable<? extends Object> invokelErrorHandlerOf(
+            final String handlerName,
             final Object resource,
             final DefaultTradeContext tctx,
             final BuildArgContext argctx,
             final Throwable throwable)
             throws NoSuchMethodException, ClassNotFoundException {
+        final HandlerInvocation invocation = filterFor(throwable, invocationOf(handlerName, resource));
+        if (null == invocation) {
+            return null;
+        }
+        final Type[] gpts = invocation.handler().getGenericParameterTypes();
+        final Annotation[][] pas = invocation.handler().getParameterAnnotations();
+
+        return Observable.concat(Observable.just(throwable),
+                Observable.zip(Observable.from(Arrays.copyOfRange(gpts, 1, gpts.length)),
+                        Observable.from(Arrays.copyOfRange(pas, 1, pas.length)),
+                        (argType, argAnnotations) -> Pair.of(argType, argAnnotations))
+                .concatMap(t_as -> buildArgByType(t_as.first,
+                        tctx,
+                        argctx,
+                        t_as.second))
+                )
+                .toList()
+                .map(args -> args.toArray(new Object[0]))
+                .flatMap(args -> {
+                    try {
+                        final Object converted = invocation.invoke(args);
+                        if (null != converted) {
+                            if (converted instanceof Observable) {
+                                return (Observable<? extends Object>) converted;
+                            } else {
+                                return Observable.just(converted);
+                            }
+                        } else {
+                            return Observable.error(new NullPointerException());
+                        }
+                    } catch (final Throwable e) {
+                        // ignore this handler
+                        return Observable.error(e);
+                    }
+                });
+    }
+
+    private HandlerInvocation invocationOf(final String handlerName, final Object resource) throws NoSuchMethodException, ClassNotFoundException, SecurityException {
         if (handlerName.startsWith("this.")) {
             final Method handler = ReflectUtils.getMethodNamedDeep(resource.getClass(), handlerName.substring(5));
-            final Class<?>[] ps = handler.getParameterTypes();
-            if (ps != null && ps.length >= 1 && ps[0].isAssignableFrom(throwable.getClass())) {
-                final Type[] gpts = handler.getGenericParameterTypes();
-                final Annotation[][] pas = handler.getParameterAnnotations();
-                return Observable.concat(Observable.just(throwable),
-                        Observable.zip(Observable.from(Arrays.copyOfRange(gpts, 1, gpts.length)),
-                                Observable.from(Arrays.copyOfRange(pas, 1, pas.length)),
-                                (argType, argAnnotations) -> Pair.of(argType, argAnnotations))
-                        .concatMap(t_as -> buildArgByType(t_as.first,
-                                resource,
-                                tctx,
-                                argctx,
-                                t_as.second))
-                        )
-                        .toList()
-                        .map(args -> args.toArray(new Object[0]))
-                        .flatMap(args -> checkAndInvoke(() -> handler.invoke(resource, args)));
-            }
+            return new HandlerInvocation() {
+                @Override
+                public Method handler() {
+                    return handler;
+                }
+                @Override
+                public Object invoke(final Object... args) throws Throwable {
+                    return handler.invoke(resource, args);
+                }};
         } else {
-            // TODO 2021.01.23
             final Method handler = ReflectUtils.getMethodByFullname(handlerName);
             if (Modifier.isStatic(handler.getModifiers())) {
-                final Class<?>[] ps = handler.getParameterTypes();
-                if (ps != null && ps.length >= 1 && ps[0].isAssignableFrom(throwable.getClass())) {
-                    final Type[] gpts = handler.getGenericParameterTypes();
-                    final Annotation[][] pas = handler.getParameterAnnotations();
-                    return Observable.concat(Observable.just(throwable),
-                            Observable.zip(Observable.from(Arrays.copyOfRange(gpts, 1, gpts.length)),
-                                    Observable.from(Arrays.copyOfRange(pas, 1, pas.length)),
-                                    (argType, argAnnotations) -> Pair.of(argType, argAnnotations))
-                            .concatMap(t_as -> buildArgByType(t_as.first,
-                                    resource,
-                                    tctx,
-                                    argctx,
-                                    t_as.second))
-                            )
-                            .toList()
-                            .map(args -> args.toArray(new Object[0]))
-                            .flatMap(args -> checkAndInvoke(() -> handler.invoke(null, args)));
-                }
-//                return checkAndInvoke(handler.getParameterTypes(), throwable, () -> handler.invoke(null, throwable));
+                return new HandlerInvocation() {
+                    @Override
+                    public Method handler() {
+                        return handler;
+                    }
+                    @Override
+                    public Object invoke(final Object... args) throws Throwable {
+                        return handler.invoke(null, args);
+                    }};
             } else {
                 final Object bean = _beanHolder.getBean(handler.getDeclaringClass());
                 if (null != bean) {
-                    final Class<?>[] ps = handler.getParameterTypes();
-                    if (ps != null && ps.length >= 1 && ps[0].isAssignableFrom(throwable.getClass())) {
-                        final Type[] gpts = handler.getGenericParameterTypes();
-                        final Annotation[][] pas = handler.getParameterAnnotations();
-                        return Observable.concat(Observable.just(throwable),
-                                Observable.zip(Observable.from(Arrays.copyOfRange(gpts, 1, gpts.length)),
-                                        Observable.from(Arrays.copyOfRange(pas, 1, pas.length)),
-                                        (argType, argAnnotations) -> Pair.of(argType, argAnnotations))
-                                .concatMap(t_as -> buildArgByType(t_as.first,
-                                        resource,
-                                        tctx,
-                                        argctx,
-                                        t_as.second))
-                                )
-                                .toList()
-                                .map(args -> args.toArray(new Object[0]))
-                                .flatMap(args -> checkAndInvoke(() -> handler.invoke(bean, args)));
-                    }
-//                    return checkAndInvoke(handler.getParameterTypes(), throwable, () -> handler.invoke(bean, throwable));
+                    return new HandlerInvocation() {
+                        @Override
+                        public Method handler() {
+                            return handler;
+                        }
+                        @Override
+                        public Object invoke(final Object... args) throws Throwable {
+                            return handler.invoke(bean, args);
+                        }};
                 } else {
                     LOG.warn("can't found bean by type {}, ignore error handler {}", handler.getDeclaringClass(), handlerName);
                 }
@@ -798,24 +819,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return null;
     }
 
-    private Observable<? extends Object> checkAndInvoke(/*final Class<?>[] ps, final Throwable throwable, */  final Callable<Object> invoker) {
-//        if (ps != null && ps.length == 1 && ps[0].isAssignableFrom(e.getClass())) {
-            try {
-                final Object converted = invoker.call();
-                if (null != converted) {
-                    if (converted instanceof Observable) {
-                        return (Observable<? extends Object>) converted;
-                    } else {
-                        return Observable.just(converted);
-                    }
-                }
-            } catch (final Exception e) {
-                // ignore this handler
-                return Observable.error(e);
-            }
-//        }
-//        return null;
-        return Observable.error(new NullPointerException());
+    private HandlerInvocation filterFor(final Throwable throwable, final HandlerInvocation invocation) {
+        if (null == invocation)
+            return null;
+        final Class<?>[] ps = invocation.handler().getParameterTypes();
+        return (ps != null && ps.length >= 1 && ps[0].isAssignableFrom(throwable.getClass())) ? invocation : null;
     }
 
     @SuppressWarnings("unchecked")
@@ -1146,7 +1154,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
-    // TODO
     private ContentEncoder getEncoder(final String contentType, final String[] mimeTypes) {
         return encoderOf(Lists.asList(contentType, mimeTypes).toArray(new String[0]));
     }
@@ -1298,7 +1305,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private Observable<Object[]> buildArgs(
             final Type[] genericParameterTypes,
             final Annotation[][] parameterAnnotations,
-            final Object resource,
             final DefaultTradeContext tradeCtx,
             final BuildArgContext argctx) {
         return Observable.zip(Observable.from(genericParameterTypes),
@@ -1306,139 +1312,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             (argType, argAnnotations) -> Pair.of(argType, argAnnotations))
                 // bug fix : flatMap 可能会导致参数序列乱序
                 .concatMap(typeAndAnnotations -> buildArgByType(typeAndAnnotations.first,
-                        resource,
                         tradeCtx,
                         argctx,
                         typeAndAnnotations.second))
                 .toList()
                 .map(args -> args.toArray(new Object[0]));
-    }
-
-    //  TBD: 查表实现
-    private Observable<Object> buildArgByType(
-            final Type argType,
-            final Object resource,
-            final DefaultTradeContext tradeCtx,
-            final BuildArgContext argCtx,
-            final Annotation[] argAnnotations) {
-        final HttpRequest request = argCtx.httpRequest();
-        final Map<String, String> pathParams = argCtx.pathParams();
-        final HttpTrade trade = argCtx.trade();
-        final MethodInterceptor[] interceptors = argCtx.interceptors();
-        final Method processor = argCtx.processor();
-
-        if (argType instanceof Class<?>) {
-            if (null != getAnnotation(argAnnotations, BeanParam.class)) {
-                return Observable.just(buildBeanParam(request, (Class<?>)argType));
-            }
-            final HeaderParam headerParam = getAnnotation(argAnnotations, HeaderParam.class);
-            if (null != headerParam) {
-                return Observable.just(buildHeaderParam(request, headerParam.value(), (Class<?>)argType));
-            }
-            final QueryParam queryParam = getAnnotation(argAnnotations, QueryParam.class);
-            if (null != queryParam) {
-                return Observable.just(buildQueryParam(request, queryParam.value(), (Class<?>)argType));
-            }
-            final PathParam pathParam = getAnnotation(argAnnotations, PathParam.class);
-            if (null != pathParam && null != pathParams) {
-                return Observable.just(buildPathParam(pathParams, pathParam.value(), (Class<?>)argType));
-            }
-            if (null != getAnnotation(argAnnotations, Inject.class)) {
-                return Observable.just(BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Named.class), resource, null));
-            }
-            if (null != getAnnotation(argAnnotations, Autowired.class)) {
-                return Observable.just(BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Qualifier.class), resource, null));
-            }
-            final Value valueAnno = getAnnotation(argAnnotations, Value.class);
-            if (null != valueAnno) {
-                LOG.debug("try inject value from {}.{}", resource, valueAnno.value());
-                return Observable.just(getInjectValue(valueAnno.value(), resource));
-            }
-            final RpcFacade rpcFacade = getAnnotation(argAnnotations, RpcFacade.class);
-            if (null != rpcFacade) {
-                return Observable.just(buildRpcFacade((Class<?>)argType,
-                        inter2any -> {
-                            final Transformer<Interact, Interact> processors = selectURI4SPI( (Class<?>)argType);
-                            // union(processorsOf(resource, rpcFacade.value()), selectURI4SPI( (Class<?>)argType));
-                            final Haltable haltable = searchHaltable( ((Class<?>)argType).getSimpleName(), tradeCtx._haltable, Thread.currentThread().getStackTrace());
-                            RpcExecutor executor;
-                            if (null == haltable) {
-                                executor = buildRpcExecutor(processor, tradeCtx.interactBuilder());
-                            } else {
-                                LOG.debug("interactBuilderByHaltable: {}/{}/{}", resource, argType, haltable);
-                                executor = buildRpcExecutor(processor, tradeCtx.interactBuilderByHaltable(haltable));
-                            }
-                            return executor.submit(interacts -> interacts.compose(processors).compose(inter2any));
-                        }));
-            }
-            final JService jService = getAnnotation(argAnnotations, JService.class);
-            if (null != jService) {
-                return Observable.just(buildJService(tradeCtx, argCtx, jService.value(), (Class<?>)argType));
-            }
-            final DecodeTo decodeTo = getAnnotation(argAnnotations, DecodeTo.class);
-            if (null != decodeTo) {
-                LOG.info("{}'s messagebody decodeTo {} and inject as param", tradeCtx.restin().getPathPattern(), argType);
-                return tradeCtx.decodeBodyAs((Class<Object>)argType).doOnNext(arg -> {
-                    LOG.debug("@DecodeTo param: {}", arg);
-                });
-            }
-        }
-        if (argType instanceof ParameterizedType){
-            //参数化类型
-            if (isObservableType(argType)) {
-                final Type gt1st = getGenericTypeOf(argType, 0);
-                if (MessageBody.class.equals(gt1st)) {
-                    return Observable.just(buildMessageBody(trade, request));
-                }
-            } else if (UntilRequestCompleted.class.equals(getParameterizedRawType(argType))) {
-                return Observable.just(buildURC(trade.inboundCompleted()));
-            }
-        } else if (argType.equals(io.netty.handler.codec.http.HttpMethod.class)) {
-            return Observable.just(request.method());
-        } else if (argType.equals(HttpRequest.class)) {
-            return Observable.just(request);
-        } else if (argType.equals(HttpTrade.class)) {
-            return Observable.just(trade);
-        } else if (argType.equals(Haltable.class)) {
-            return Observable.just(trade);
-        } else if (argType.equals(BeanHolder.class)) {
-            return Observable.just(this._beanHolder);
-        } else if (argType.equals(WriteCtrl.class)) {
-            return Observable.just(trade.writeCtrl());
-        } else if (argType.equals(AllocatorBuilder.class)) {
-            return Observable.just(tradeCtx.allocatorBuilder());
-        } else if (argType.equals(InteractBuilder.class)) {
-            return Observable.just(tradeCtx.interactBuilder());
-        } else if (argType.equals(TradeContext.class)) {
-            return Observable.just(tradeCtx);
-        } else if (argType.equals(Scheduler.class)) {
-            return Observable.just(tradeCtx.scheduler().scheduler());
-        } else if (argType.equals(ZipBuilder.class)) {
-            return Observable.just(buildZipBuilder(tradeCtx));
-        } else if (argType.equals(BeanFinder.class)) {
-            return Observable.just(this._finder);
-        } else if (argType.equals(RpcExecutor.class)) {
-            return Observable.just(buildRpcExecutor(processor, tradeCtx.interactBuilder()));
-        } else if (argType.equals(Tracing.class)) {
-            return Observable.just(buildTracing(tradeCtx, tradeCtx._span));
-        } else if (argType.equals(Branch.Builder.class)) {
-            return Observable.just(buildBranchBuilder(tradeCtx, processor));
-        } else if (argType.equals(Span.class)) {
-            return Observable.just(tradeCtx._span);
-        } else if (argType.equals(JServiceBuilder.class)) {
-            return Observable.just(buildJServiceBuilder(tradeCtx, argCtx));
-        } else {
-            for (final MethodInterceptor interceptor : interceptors) {
-                if (interceptor instanceof ArgumentBuilder) {
-                    final Object arg = ((ArgumentBuilder)interceptor).buildArg(argType);
-                    if (null != arg) {
-                        return Observable.just(arg);
-                    }
-                }
-            }
-        }
-
-        return Observable.just(null);
     }
 
     private static Object getValueByExpression(final Object owner, final String expression) {
@@ -1552,7 +1430,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
             // assign all fields
             if (null != service) {
-                fillServiceFields(service, serviceType, tradeCtx, argCtx);
+                fillServiceFields(service, serviceType, tradeCtx, replaceResource(argCtx, service));
             }
             return service;
         } catch (final Exception e) {
@@ -1561,29 +1439,46 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
-//    private Object getBeanFromHolder(final Class<?> serviceType, final Object... args) {
-//        if (null != args && args.length > 0) {
-//            LOG.debug("getBeanFromHolder for {} with args:{}", serviceType, args);
-//            return this._beanHolder.getBean(serviceType, args);
-//        } else {
-//            LOG.debug("getBeanFromHolder for {} without args", serviceType);
-//            return this._beanHolder.getBean(serviceType);
-//        }
-//    }
+    private BuildArgContext replaceResource(final BuildArgContext argctx, final Object newResource) {
+        return new BuildArgContext() {
+            @Override
+            public Object resource() {
+                return newResource;
+            }
+            @Override
+            public Method processor() {
+                return argctx.processor();
+            }
+            @Override
+            public HttpRequest httpRequest() {
+                return argctx.httpRequest();
+            }
+            @Override
+            public Map<String, String> pathParams() {
+                return argctx.pathParams();
+            }
+            @Override
+            public HttpTrade trade() {
+                return argctx.trade();
+            }
+            @Override
+            public MethodInterceptor[] interceptors() {
+                return argctx.interceptors();
+            }};
+    }
 
     private void fillServiceFields(final Object service,
             final Class<?> serviceType,
             final DefaultTradeContext tradeCtx,
-            final BuildArgContext argCtx) throws IllegalAccessException {
+            final BuildArgContext argctx) throws IllegalAccessException {
         final Field[] fields = ReflectUtils.getAllFieldsOfClass(service.getClass());
         for (final Field field : fields) {
             if (!Modifier.isStatic(field.getModifiers())) {
                 field.setAccessible(true);
                 if (null == field.get(service)) {
                     final Object value = buildArgByType(field.getGenericType(),
-                            service,
                             tradeCtx,
-                            argCtx,
+                            argctx,
                             field.getAnnotations())
                             .toBlocking().single(); // TODO, change to Rx mode
                     if (null != value) {
@@ -1882,6 +1777,133 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         } else {
             return path;
         }
+    }
+
+    //  TBD: 查表实现
+    private Observable<Object> buildArgByType(
+            final Type argType,
+            final DefaultTradeContext tradeCtx,
+            final BuildArgContext argCtx,
+            final Annotation[] argAnnotations) {
+        final Object resource = argCtx.resource();
+        final HttpRequest request = argCtx.httpRequest();
+        final Map<String, String> pathParams = argCtx.pathParams();
+        final HttpTrade trade = argCtx.trade();
+        final MethodInterceptor[] interceptors = argCtx.interceptors();
+        final Method processor = argCtx.processor();
+
+        if (argType instanceof Class<?>) {
+            if (null != getAnnotation(argAnnotations, BeanParam.class)) {
+                return Observable.just(buildBeanParam(request, (Class<?>)argType));
+            }
+            final HeaderParam headerParam = getAnnotation(argAnnotations, HeaderParam.class);
+            if (null != headerParam) {
+                return Observable.just(buildHeaderParam(request, headerParam.value(), (Class<?>)argType));
+            }
+            final QueryParam queryParam = getAnnotation(argAnnotations, QueryParam.class);
+            if (null != queryParam) {
+                return Observable.just(buildQueryParam(request, queryParam.value(), (Class<?>)argType));
+            }
+            final PathParam pathParam = getAnnotation(argAnnotations, PathParam.class);
+            if (null != pathParam && null != pathParams) {
+                return Observable.just(buildPathParam(pathParams, pathParam.value(), (Class<?>)argType));
+            }
+            if (null != getAnnotation(argAnnotations, Inject.class)) {
+                return Observable.just(BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Named.class), resource, null));
+            }
+            if (null != getAnnotation(argAnnotations, Autowired.class)) {
+                return Observable.just(BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Qualifier.class), resource, null));
+            }
+            final Value valueAnno = getAnnotation(argAnnotations, Value.class);
+            if (null != valueAnno) {
+                LOG.debug("try inject value from {}.{}", resource, valueAnno.value());
+                return Observable.just(getInjectValue(valueAnno.value(), resource));
+            }
+            final RpcFacade rpcFacade = getAnnotation(argAnnotations, RpcFacade.class);
+            if (null != rpcFacade) {
+                return Observable.just(buildRpcFacade((Class<?>)argType,
+                        inter2any -> {
+                            final Transformer<Interact, Interact> processors = selectURI4SPI( (Class<?>)argType);
+                            // union(processorsOf(resource, rpcFacade.value()), selectURI4SPI( (Class<?>)argType));
+                            final Haltable haltable = searchHaltable( ((Class<?>)argType).getSimpleName(), tradeCtx._haltable, Thread.currentThread().getStackTrace());
+                            RpcExecutor executor;
+                            if (null == haltable) {
+                                executor = buildRpcExecutor(processor, tradeCtx.interactBuilder());
+                            } else {
+                                LOG.debug("interactBuilderByHaltable: {}/{}/{}", resource, argType, haltable);
+                                executor = buildRpcExecutor(processor, tradeCtx.interactBuilderByHaltable(haltable));
+                            }
+                            return executor.submit(interacts -> interacts.compose(processors).compose(inter2any));
+                        }));
+            }
+            final JService jService = getAnnotation(argAnnotations, JService.class);
+            if (null != jService) {
+                return Observable.just(buildJService(tradeCtx, argCtx, jService.value(), (Class<?>)argType));
+            }
+            final DecodeTo decodeTo = getAnnotation(argAnnotations, DecodeTo.class);
+            if (null != decodeTo) {
+                LOG.info("{}'s messagebody decodeTo {} and inject as param", tradeCtx.restin().getPathPattern(), argType);
+                return tradeCtx.decodeBodyAs((Class<Object>)argType).doOnNext(arg -> {
+                    LOG.debug("@DecodeTo param: {}", arg);
+                });
+            }
+        }
+        if (argType instanceof ParameterizedType){
+            //参数化类型
+            if (isObservableType(argType)) {
+                final Type gt1st = getGenericTypeOf(argType, 0);
+                if (MessageBody.class.equals(gt1st)) {
+                    return Observable.just(buildMessageBody(trade, request));
+                }
+            } else if (UntilRequestCompleted.class.equals(getParameterizedRawType(argType))) {
+                return Observable.just(buildURC(trade.inboundCompleted()));
+            }
+        } else if (argType.equals(io.netty.handler.codec.http.HttpMethod.class)) {
+            return Observable.just(request.method());
+        } else if (argType.equals(HttpRequest.class)) {
+            return Observable.just(request);
+        } else if (argType.equals(HttpTrade.class)) {
+            return Observable.just(trade);
+        } else if (argType.equals(Haltable.class)) {
+            return Observable.just(trade);
+        } else if (argType.equals(BeanHolder.class)) {
+            return Observable.just(this._beanHolder);
+        } else if (argType.equals(WriteCtrl.class)) {
+            return Observable.just(trade.writeCtrl());
+        } else if (argType.equals(AllocatorBuilder.class)) {
+            return Observable.just(tradeCtx.allocatorBuilder());
+        } else if (argType.equals(InteractBuilder.class)) {
+            return Observable.just(tradeCtx.interactBuilder());
+        } else if (argType.equals(TradeContext.class)) {
+            return Observable.just(tradeCtx);
+        } else if (argType.equals(Scheduler.class)) {
+            return Observable.just(tradeCtx.scheduler().scheduler());
+        } else if (argType.equals(ZipBuilder.class)) {
+            return Observable.just(buildZipBuilder(tradeCtx));
+        } else if (argType.equals(BeanFinder.class)) {
+            return Observable.just(this._finder);
+        } else if (argType.equals(RpcExecutor.class)) {
+            return Observable.just(buildRpcExecutor(processor, tradeCtx.interactBuilder()));
+        } else if (argType.equals(Tracing.class)) {
+            return Observable.just(buildTracing(tradeCtx, tradeCtx._span));
+        } else if (argType.equals(Branch.Builder.class)) {
+            return Observable.just(buildBranchBuilder(tradeCtx, processor));
+        } else if (argType.equals(Span.class)) {
+            return Observable.just(tradeCtx._span);
+        } else if (argType.equals(JServiceBuilder.class)) {
+            return Observable.just(buildJServiceBuilder(tradeCtx, argCtx));
+        } else {
+            for (final MethodInterceptor interceptor : interceptors) {
+                if (interceptor instanceof ArgumentBuilder) {
+                    final Object arg = ((ArgumentBuilder)interceptor).buildArg(argType);
+                    if (null != arg) {
+                        return Observable.just(arg);
+                    }
+                }
+            }
+        }
+
+        return Observable.just(null);
     }
 
     private static class ResContext {
