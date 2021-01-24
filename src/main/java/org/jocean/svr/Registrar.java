@@ -538,30 +538,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return this;
     }
 
-    static class ArgsCtx {
-        public Method processor;
-        public Type[] genericParameterTypes;
-        public Annotation[][] parameterAnnotations;
-        public HttpTrade trade;
-        public HttpRequest request;
-        public Map<String, String> pathParams;
-        public MethodInterceptor[] interceptors;
-
-        public ArgsCtx(final Method processor,
-                final Type[] genericParameterTypes,
-                final Annotation[][] parameterAnnotations,
-                final HttpTrade trade,
-                final HttpRequest request,
-                final Map<String, String> pathParams,
-                final MethodInterceptor[] interceptors) {
-            this.processor = processor;
-            this.genericParameterTypes = genericParameterTypes;
-            this.parameterAnnotations = parameterAnnotations;
-            this.trade = trade;
-            this.request = request;
-            this.pathParams = pathParams;
-            this.interceptors = interceptors;
-        }
+    interface BuildArgContext {
+        Method              processor();
+        HttpRequest         httpRequest();
+        Map<String, String> pathParams();
+        HttpTrade           trade();
+        MethodInterceptor[] interceptors();
     }
 
     public Observable<? extends Object> buildResource(
@@ -625,20 +607,39 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     //  interceptor 直接响应
                     return doPostInvoke(interceptors, copyCtxOverrideResponse(interceptorCtx, aheadObsResponse));
                 } else {
-                    final ArgsCtx argCtx = new ArgsCtx(processor,
-                            processor.getGenericParameterTypes(),
-                            processor.getParameterAnnotations(),
-                            trade,
-                            request,
-                            pair.second,
-                            interceptors.toArray(new MethodInterceptor[0]));
-                    fillServiceFields(resource, resource.getClass(), tctx, argsctx2argctx(argCtx));
+                    final BuildArgContext argctx = new BuildArgContext() {
+
+                        @Override
+                        public Method processor() {
+                            return processor;
+                        }
+
+                        @Override
+                        public HttpRequest httpRequest() {
+                            return request;
+                        }
+
+                        @Override
+                        public Map<String, String> pathParams() {
+                            return pair.second;
+                        }
+
+                        @Override
+                        public HttpTrade trade() {
+                            return trade;
+                        }
+
+                        @Override
+                        public MethodInterceptor[] interceptors() {
+                            return interceptors.toArray(new MethodInterceptor[0]);
+                        }};
+                    fillServiceFields(resource, resource.getClass(), tctx, argctx);
                     final Observable<? extends Object> obsResponse = invokeProcessor(
                             tctx,
                             request,
                             resource,
                             processor,
-                            argCtx
+                            argctx
                             );
                     return doPostInvoke(interceptors, copyCtxOverrideResponse(interceptorCtx, obsResponse));
                 }
@@ -654,9 +655,13 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final HttpRequest request,
             final Object resource,
             final Method processor,
-            final ArgsCtx argsctx
+            final BuildArgContext argctx
             ) {
-        return buildArgs(resource, tctx, argsctx).flatMap(args -> {
+        return buildArgs(
+                    processor.getGenericParameterTypes(),
+                    processor.getParameterAnnotations(),
+                    resource, tctx, argctx)
+            .flatMap(args -> {
                 Object returnValue = null;
                 try {
                     returnValue = processor.invoke(resource, args);
@@ -671,33 +676,13 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             tctx,
                             request,
                             processor,
-                            handleError(resource, tctx, argsctx2argctx(argsctx), processor, returnValue));
+                            handleError(resource, tctx, argctx, processor, returnValue));
                     if (null!=obsResponse) {
                         return obsResponse;
                     }
                 }
-            return RxNettys.response404NOTFOUND(request.protocolVersion());
-        });
-        /* change to Rx
-        try {
-            final Object returnValue = processor.invoke(resource, buildArgs(resource, tctx, argsctx));
-            if (null!=returnValue) {
-                final Observable<? extends Object> obsResponse = returnValue2ObsResponse(
-                        tctx,
-                        request,
-                        processor,
-                        returnValue);
-                if (null!=obsResponse) {
-                    return obsResponse;
-                }
-            }
-        } catch (final Exception e) {
-            LOG.warn("exception when invoke process {}, detail: {}",
-                    processor,
-                    ExceptionUtils.exception2detail(e));
-        }
-        return RxNettys.response404NOTFOUND(request.protocolVersion());
-        */
+                return RxNettys.response404NOTFOUND(request.protocolVersion());
+            });
     }
 
     private Object handleError(final Object resource, final DefaultTradeContext tctx, final BuildArgContext argctx, final Method processor, final Object returnValue) {
@@ -1331,68 +1316,23 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 .concatWith(Observable.just(LastHttpContent.EMPTY_LAST_CONTENT));
     }
 
-    private Observable<Object[]> buildArgs(final Object resource, final DefaultTradeContext tradeCtx, final ArgsCtx argCtx) {
-        /* change to Rx
-        final List<Object> args = new ArrayList<>();
-        int idx = 0;
-        for (final Type argType : argCtx.genericParameterTypes) {
-            args.add(buildArgByType(argType,
-                    resource,
-                    tradeCtx,
-                    argCtx,
-                    argCtx.parameterAnnotations[idx]));
-            idx++;
-        }
-        return args.toArray();
-        */
-        return Observable.zip(Observable.from(argCtx.genericParameterTypes),
-                            Observable.from(argCtx.parameterAnnotations),
+    private Observable<Object[]> buildArgs(
+            final Type[] genericParameterTypes,
+            final Annotation[][] parameterAnnotations,
+            final Object resource,
+            final DefaultTradeContext tradeCtx,
+            final BuildArgContext argctx) {
+        return Observable.zip(Observable.from(genericParameterTypes),
+                            Observable.from(parameterAnnotations),
                             (argType, argAnnotations) -> Pair.of(argType, argAnnotations))
                 // bug fix : flatMap 可能会导致参数序列乱序
                 .concatMap(typeAndAnnotations -> buildArgByType(typeAndAnnotations.first,
                         resource,
                         tradeCtx,
-                        argsctx2argctx(argCtx),
+                        argctx,
                         typeAndAnnotations.second))
                 .toList()
                 .map(args -> args.toArray(new Object[0]));
-    }
-
-    private BuildArgContext argsctx2argctx(final ArgsCtx argCtx) {
-        return new BuildArgContext() {
-
-            @Override
-            public Method processor() {
-                return argCtx.processor;
-            }
-
-            @Override
-            public HttpRequest httpRequest() {
-                return argCtx.request;
-            }
-
-            @Override
-            public Map<String, String> pathParams() {
-                return argCtx.pathParams;
-            }
-
-            @Override
-            public HttpTrade trade() {
-                return argCtx.trade;
-            }
-
-            @Override
-            public MethodInterceptor[] interceptors() {
-                return argCtx.interceptors;
-            }};
-    }
-
-    interface BuildArgContext {
-        Method              processor();
-        HttpRequest         httpRequest();
-        Map<String, String> pathParams();
-        HttpTrade           trade();
-        MethodInterceptor[] interceptors();
     }
 
     //  TBD: 查表实现
