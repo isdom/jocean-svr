@@ -1238,7 +1238,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 } else {
                     HttpUtil.setTransferEncodingChunked(resp, true);
                 }
-                return Observable.<Object>just(resp).concatWith(body.content()/*.map(bbs2hs())*/);
+                return Observable.<Object>just(resp).concatWith(body.content());
             } else {
                 LOG.warn("NOT support multipart body, ignore body {}", body);
                 return Observable.empty();
@@ -1253,27 +1253,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
         }));
     }
-
-    /*
-    private Func1<ByteBufSlice, HttpSlice> bbs2hs() {
-        return bbs -> {
-            final List<DisposableWrapper<? extends HttpObject>> dwhs = new ArrayList<>();
-            for (final DisposableWrapper<? extends ByteBuf> dwb : bbs.element()) {
-                dwhs.add(DisposableWrapperUtil.wrap(new DefaultHttpContent(dwb.unwrap()), dwb));
-            }
-            return new HttpSlice() {
-                @Override
-                public void step() {
-                    bbs.step();
-                }
-
-                @Override
-                public Iterable<? extends DisposableWrapper<? extends HttpObject>> element() {
-                    return dwhs;
-                }};
-        };
-    }
-    */
 
     private void fillHeaders(final Object obj, final HttpResponse resp) {
         if (obj instanceof WithHeader) {
@@ -1618,54 +1597,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
         }
     }
-
-    /*
-    @SuppressWarnings("unchecked")
-    private static Transformer<Interact, Interact> transformerByExpression(final Object owner, final String expression) {
-        try {
-            final Method method = owner.getClass().getDeclaredMethod(expression);
-            if (null != method) {
-                method.setAccessible(true);
-                final Object value = method.invoke(owner);
-                if (null != value) {
-                    return (Transformer<Interact, Interact>)value;
-                }
-            }
-        } catch (final Exception e) {
-            LOG.warn("exception when transformerByExpression for ({}) with exp ({}), detail: {}",
-                    owner, expression, ExceptionUtils.exception2detail(e));
-        }
-        return null;
-    }
-
-    private Transformer<Interact, Interact> processorOf(final Object resource, final String name) {
-        if (name.startsWith("this.") && name.endsWith("()")) {
-            return transformerByExpression(resource, name.substring(5, name.length() - 2));
-        } else {
-            return FinderUtil.processor(_finder, name);
-        }
-    }
-
-    private Transformer<Interact, Interact> union(final Transformer<Interact, Interact> org, final Transformer<Interact, Interact> tounion) {
-        if (null == tounion) {
-            return org;
-        } else {
-            return interacts -> interacts.compose(org).compose(tounion);
-        }
-    }
-
-    private Transformer<Interact, Interact> processorsOf(final Object resource, final String[] names) {
-        return obs -> {
-            for (final String name : names) {
-                final Transformer<Interact, Interact> pipe = processorOf(resource, name);
-                if (null != pipe) {
-                    obs = obs.compose(pipe);
-                }
-            }
-            return obs;
-        };
-    }
-    */
 
     private Object buildRpcFacade(final Class<?> facadeType,
             final Func1<Transformer<Interact, ? extends Object>, Observable<? extends Object>> invoker) {
