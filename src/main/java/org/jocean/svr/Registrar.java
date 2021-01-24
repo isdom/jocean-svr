@@ -72,6 +72,7 @@ import org.jocean.idiom.Haltable;
 import org.jocean.idiom.HaltableBuilder;
 import org.jocean.idiom.HaltableRelyBuilder;
 import org.jocean.idiom.Haltables;
+import org.jocean.idiom.JOArrays;
 import org.jocean.idiom.Pair;
 import org.jocean.idiom.ReflectUtils;
 import org.jocean.idiom.Regexs;
@@ -151,6 +152,7 @@ import rx.Scheduler;
 import rx.functions.Actions;
 import rx.functions.Func0;
 import rx.functions.Func1;
+import rx.functions.Func2;
 
 /**
  * @author isdom
@@ -544,6 +546,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         Map<String, String> pathParams();
         HttpTrade           trade();
         MethodInterceptor[] interceptors();
+        DefaultTradeContext tctx();
     }
 
     public Observable<? extends Object> buildResource(
@@ -572,8 +575,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         trade.traffic().inboundBytes(), trade.traffic().outboundBytes()));
 
                 span.setOperationName(operationName);
-
-                final DefaultTradeContext tctx = new DefaultTradeContext(trade, trade, tracer, span, ts, operationName, restin);
 
                 final Deque<MethodInterceptor> interceptors = new LinkedList<>();
                 final MethodInterceptor.Context interceptorCtx = new MethodInterceptor.Context() {
@@ -607,6 +608,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     //  interceptor 直接响应
                     return doPostInvoke(interceptors, copyCtxOverrideResponse(interceptorCtx, aheadObsResponse));
                 } else {
+                    final DefaultTradeContext tctx = new DefaultTradeContext(trade, trade, tracer, span, ts, operationName, restin);
+
                     final BuildArgContext argctx = new BuildArgContext() {
                         @Override
                         public Object resource() {
@@ -634,16 +637,24 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         }
 
                         @Override
+                        public DefaultTradeContext tctx() {
+                            return tctx;
+                        }
+
+                        @Override
                         public MethodInterceptor[] interceptors() {
                             return interceptors.toArray(new MethodInterceptor[0]);
                         }};
-                    fillServiceFields(resource, resource.getClass(), tctx, argctx);
+                    fillServiceFields(resource, resource.getClass(), argctx);
+                    final Func2<Type[], Annotation[][], Observable<Object[]>> buildargs =
+                            (types, annoss) -> buildArgs(types, annoss, argctx);
+
                     final Observable<? extends Object> obsResponse = invokeProcessor(
-                            tctx,
-                            request,
                             resource,
                             processor,
-                            argctx
+                            request,
+                            tctx,
+                            buildargs
                             );
                     return doPostInvoke(interceptors, copyCtxOverrideResponse(interceptorCtx, obsResponse));
                 }
@@ -655,17 +666,13 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Observable<? extends Object> invokeProcessor(
-            final DefaultTradeContext tctx,
-            final HttpRequest request,
             final Object resource,
             final Method processor,
-            final BuildArgContext argctx
+            final HttpRequest request,
+            final DefaultTradeContext tctx,
+            final Func2<Type[], Annotation[][], Observable<Object[]>> buildargs
             ) {
-        return buildArgs(
-                    processor.getGenericParameterTypes(),
-                    processor.getParameterAnnotations(),
-                    tctx,
-                    argctx)
+        return buildargs.call(processor.getGenericParameterTypes(), processor.getParameterAnnotations())
             .flatMap(args -> {
                 Object returnValue = null;
                 try {
@@ -681,7 +688,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             tctx,
                             request,
                             processor,
-                            handleError(resource, tctx, argctx, processor, returnValue));
+                            hookErrorHandlersIfNeed(returnValue, resource, processor, buildargs));
+
                     if (null!=obsResponse) {
                         return obsResponse;
                     }
@@ -691,27 +699,28 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     @SuppressWarnings("unchecked")
-    private Object handleError(final Object resource, final DefaultTradeContext tctx, final BuildArgContext argctx, final Method processor, final Object returnValue) {
+    private Object hookErrorHandlersIfNeed(final Object returnValue, final Object resource, final Method processor,
+            final Func2<Type[], Annotation[][], Observable<Object[]>> buildargs
+            ) {
         if (returnValue instanceof Observable) {
             final OnError onError = processor.getAnnotation(OnError.class);
             if (null != onError) {
-                return handleErrors((Observable<Object>)returnValue, resource, tctx, argctx, onError.value());
+                return hookErrorHandlers((Observable<Object>)returnValue, resource, onError.value(), buildargs);
             }
         }
         return returnValue;
     }
 
-    private Observable<? extends Object> handleErrors(
+    private Observable<? extends Object> hookErrorHandlers(
             final Observable<Object> returnValue,
             final Object resource,
-            final DefaultTradeContext tctx,
-            final BuildArgContext argctx,
-            final String[] handlerNames) {
+            final String[] handlerNames,
+            final Func2<Type[], Annotation[][], Observable<Object[]>> buildargs) {
         return returnValue.onErrorResumeNext(throwable -> {
             for (final String handlerName : handlerNames) {
                 try {
                     LOG.info("meet error {} , try handle by:{}", ExceptionUtils.exception2detail(throwable), handlerName);
-                    final Observable<? extends Object> converted = invokelErrorHandlerOf(handlerName, resource, tctx, argctx, throwable);
+                    final Observable<? extends Object> converted = invokeErrorHandlerOf(handlerName, resource, throwable, buildargs);
                     if (converted != null) {
                         LOG.info("error {} handled by {}", ExceptionUtils.exception2detail(throwable), handlerName);
                         return converted;
@@ -731,12 +740,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     @SuppressWarnings("unchecked")
-    private Observable<? extends Object> invokelErrorHandlerOf(
+    private Observable<? extends Object> invokeErrorHandlerOf(
             final String handlerName,
             final Object resource,
-            final DefaultTradeContext tctx,
-            final BuildArgContext argctx,
-            final Throwable throwable)
+            final Throwable throwable,
+            final Func2<Type[], Annotation[][], Observable<Object[]>> buildargs
+            )
             throws NoSuchMethodException, ClassNotFoundException {
         final HandlerInvocation invocation = filterFor(throwable, invocationOf(handlerName, resource));
         if (null == invocation) {
@@ -745,34 +754,25 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         final Type[] gpts = invocation.handler().getGenericParameterTypes();
         final Annotation[][] pas = invocation.handler().getParameterAnnotations();
 
-        return Observable.concat(Observable.just(throwable),
-                Observable.zip(Observable.from(Arrays.copyOfRange(gpts, 1, gpts.length)),
-                        Observable.from(Arrays.copyOfRange(pas, 1, pas.length)),
-                        (argType, argAnnotations) -> Pair.of(argType, argAnnotations))
-                .concatMap(t_as -> buildArgByType(t_as.first,
-                        tctx,
-                        argctx,
-                        t_as.second))
-                )
-                .toList()
-                .map(args -> args.toArray(new Object[0]))
-                .flatMap(args -> {
-                    try {
-                        final Object converted = invocation.invoke(args);
-                        if (null != converted) {
-                            if (converted instanceof Observable) {
-                                return (Observable<? extends Object>) converted;
-                            } else {
-                                return Observable.just(converted);
-                            }
+        return buildargs.call(Arrays.copyOfRange(gpts, 1, gpts.length), Arrays.copyOfRange(pas, 1, pas.length))
+            .map(args -> JOArrays.addFirst(Object[].class, args, throwable))
+            .flatMap(args -> {
+                try {
+                    final Object converted = invocation.invoke(args);
+                    if (null != converted) {
+                        if (converted instanceof Observable) {
+                            return (Observable<? extends Object>) converted;
                         } else {
-                            return Observable.error(new NullPointerException());
+                            return Observable.just(converted);
                         }
-                    } catch (final Throwable e) {
-                        // ignore this handler
-                        return Observable.error(e);
+                    } else {
+                        return Observable.error(new NullPointerException());
                     }
-                });
+                } catch (final Throwable e) {
+                    // ignore this handler
+                    return Observable.error(e);
+                }
+            });
     }
 
     private HandlerInvocation invocationOf(final String handlerName, final Object resource) throws NoSuchMethodException, ClassNotFoundException, SecurityException {
@@ -1302,23 +1302,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 .concatWith(Observable.just(LastHttpContent.EMPTY_LAST_CONTENT));
     }
 
-    private Observable<Object[]> buildArgs(
-            final Type[] genericParameterTypes,
-            final Annotation[][] parameterAnnotations,
-            final DefaultTradeContext tradeCtx,
-            final BuildArgContext argctx) {
-        return Observable.zip(Observable.from(genericParameterTypes),
-                            Observable.from(parameterAnnotations),
-                            (argType, argAnnotations) -> Pair.of(argType, argAnnotations))
-                // bug fix : flatMap 可能会导致参数序列乱序
-                .concatMap(typeAndAnnotations -> buildArgByType(typeAndAnnotations.first,
-                        tradeCtx,
-                        argctx,
-                        typeAndAnnotations.second))
-                .toList()
-                .map(args -> args.toArray(new Object[0]));
-    }
-
     private static Object getValueByExpression(final Object owner, final String expression) {
         try {
             final Field field = owner.getClass().getDeclaredField(expression);
@@ -1346,28 +1329,27 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return null;
     }
 
-    private JServiceBuilder buildJServiceBuilder(final DefaultTradeContext tradeCtx, final BuildArgContext argCtx) {
+    private JServiceBuilder buildJServiceBuilder(final BuildArgContext argctx) {
         return new JServiceBuilder() {
             @SuppressWarnings("unchecked")
             @Override
             public <S> S build(final Class<S> serviceType, final Object... args) {
-                return (S)buildJService(tradeCtx, argCtx, null, serviceType, args);
+                return (S)buildJService(argctx, null, serviceType, args);
             }
 
             @SuppressWarnings("unchecked")
             @Override
             public <S> S build(final String serviceName, final Class<S> serviceType, final Object... args) {
-                return (S)buildJService(tradeCtx, argCtx, serviceName, serviceType, args);
+                return (S)buildJService(argctx, serviceName, serviceType, args);
             }};
     }
 
     private Object buildJService(
-            final DefaultTradeContext tradeCtx,
-            final BuildArgContext argCtx,
+            final BuildArgContext argctx,
             final String serviceName,
             final Class<?> serviceType,
             final Object... args) {
-        final Func0<Object> builder = () -> createAndFillJService(serviceName, serviceType, tradeCtx, argCtx, args);
+        final Func0<Object> builder = () -> createAndFillJService(serviceName, serviceType, argctx, args);
         LOG.debug("buildJService: @JService for {}", serviceType);
         if (serviceType.isInterface() ) {
             LOG.debug("try to generate lazy init proxy for {}", serviceType);
@@ -1414,8 +1396,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private Object createAndFillJService(
             final String serviceName,
             final Class<?> serviceType,
-            final DefaultTradeContext tradeCtx,
-            final BuildArgContext argCtx,
+            final BuildArgContext argctx,
             final Object... args) {
         try {
             final Object service = (null == serviceName || serviceName.isEmpty())
@@ -1430,7 +1411,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
             // assign all fields
             if (null != service) {
-                fillServiceFields(service, serviceType, tradeCtx, replaceResource(argCtx, service));
+                fillServiceFields(service, serviceType, replaceResource(argctx, service));
             }
             return service;
         } catch (final Exception e) {
@@ -1462,24 +1443,28 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 return argctx.trade();
             }
             @Override
+            public DefaultTradeContext tctx() {
+                return argctx.tctx();
+            }
+            @Override
             public MethodInterceptor[] interceptors() {
                 return argctx.interceptors();
             }};
     }
 
-    private void fillServiceFields(final Object service,
+    private void fillServiceFields(
+            final Object service,
             final Class<?> serviceType,
-            final DefaultTradeContext tradeCtx,
             final BuildArgContext argctx) throws IllegalAccessException {
+
         final Field[] fields = ReflectUtils.getAllFieldsOfClass(service.getClass());
         for (final Field field : fields) {
             if (!Modifier.isStatic(field.getModifiers())) {
                 field.setAccessible(true);
                 if (null == field.get(service)) {
                     final Object value = buildArgByType(field.getGenericType(),
-                            tradeCtx,
-                            argctx,
-                            field.getAnnotations())
+                            field.getAnnotations(),
+                            argctx)
                             .toBlocking().single(); // TODO, change to Rx mode
                     if (null != value) {
                         field.set(service, value);
@@ -1779,18 +1764,30 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
+    private Observable<Object[]> buildArgs(
+            final Type[] genericParameterTypes,
+            final Annotation[][] parameterAnnotations,
+            final BuildArgContext argctx) {
+        return Observable.zip(Observable.from(genericParameterTypes),
+                            Observable.from(parameterAnnotations),
+                            (argType, argAnnotations) -> Pair.of(argType, argAnnotations))
+                // bug fix : flatMap 可能会导致参数序列乱序
+                .concatMap(t_as -> buildArgByType(t_as.first, t_as.second, argctx))
+                .toList().map(args -> args.toArray(new Object[0]));
+    }
+
     //  TBD: 查表实现
     private Observable<Object> buildArgByType(
-            final Type argType,
-            final DefaultTradeContext tradeCtx,
-            final BuildArgContext argCtx,
-            final Annotation[] argAnnotations) {
-        final Object resource = argCtx.resource();
-        final HttpRequest request = argCtx.httpRequest();
-        final Map<String, String> pathParams = argCtx.pathParams();
-        final HttpTrade trade = argCtx.trade();
-        final MethodInterceptor[] interceptors = argCtx.interceptors();
-        final Method processor = argCtx.processor();
+            final Type          argType,
+            final Annotation[]  argAnnotations,
+            final BuildArgContext argctx) {
+        final Object resource = argctx.resource();
+        final HttpRequest request = argctx.httpRequest();
+        final Map<String, String> pathParams = argctx.pathParams();
+        final HttpTrade trade = argctx.trade();
+        final MethodInterceptor[] interceptors = argctx.interceptors();
+        final Method processor = argctx.processor();
+        final DefaultTradeContext tctx = argctx.tctx();
 
         if (argType instanceof Class<?>) {
             if (null != getAnnotation(argAnnotations, BeanParam.class)) {
@@ -1825,25 +1822,25 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         inter2any -> {
                             final Transformer<Interact, Interact> processors = selectURI4SPI( (Class<?>)argType);
                             // union(processorsOf(resource, rpcFacade.value()), selectURI4SPI( (Class<?>)argType));
-                            final Haltable haltable = searchHaltable( ((Class<?>)argType).getSimpleName(), tradeCtx._haltable, Thread.currentThread().getStackTrace());
+                            final Haltable haltable = searchHaltable( ((Class<?>)argType).getSimpleName(), tctx._haltable, Thread.currentThread().getStackTrace());
                             RpcExecutor executor;
                             if (null == haltable) {
-                                executor = buildRpcExecutor(processor, tradeCtx.interactBuilder());
+                                executor = buildRpcExecutor(processor, tctx.interactBuilder());
                             } else {
                                 LOG.debug("interactBuilderByHaltable: {}/{}/{}", resource, argType, haltable);
-                                executor = buildRpcExecutor(processor, tradeCtx.interactBuilderByHaltable(haltable));
+                                executor = buildRpcExecutor(processor, tctx.interactBuilderByHaltable(haltable));
                             }
                             return executor.submit(interacts -> interacts.compose(processors).compose(inter2any));
                         }));
             }
             final JService jService = getAnnotation(argAnnotations, JService.class);
             if (null != jService) {
-                return Observable.just(buildJService(tradeCtx, argCtx, jService.value(), (Class<?>)argType));
+                return Observable.just(buildJService(argctx, jService.value(), (Class<?>)argType));
             }
             final DecodeTo decodeTo = getAnnotation(argAnnotations, DecodeTo.class);
             if (null != decodeTo) {
-                LOG.info("{}'s messagebody decodeTo {} and inject as param", tradeCtx.restin().getPathPattern(), argType);
-                return tradeCtx.decodeBodyAs((Class<Object>)argType).doOnNext(arg -> {
+                LOG.info("{}'s messagebody decodeTo {} and inject as param", tctx.restin().getPathPattern(), argType);
+                return tctx.decodeBodyAs((Class<Object>)argType).doOnNext(arg -> {
                     LOG.debug("@DecodeTo param: {}", arg);
                 });
             }
@@ -1871,27 +1868,27 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         } else if (argType.equals(WriteCtrl.class)) {
             return Observable.just(trade.writeCtrl());
         } else if (argType.equals(AllocatorBuilder.class)) {
-            return Observable.just(tradeCtx.allocatorBuilder());
+            return Observable.just(tctx.allocatorBuilder());
         } else if (argType.equals(InteractBuilder.class)) {
-            return Observable.just(tradeCtx.interactBuilder());
+            return Observable.just(tctx.interactBuilder());
         } else if (argType.equals(TradeContext.class)) {
-            return Observable.just(tradeCtx);
+            return Observable.just(tctx);
         } else if (argType.equals(Scheduler.class)) {
-            return Observable.just(tradeCtx.scheduler().scheduler());
+            return Observable.just(tctx.scheduler().scheduler());
         } else if (argType.equals(ZipBuilder.class)) {
-            return Observable.just(buildZipBuilder(tradeCtx));
+            return Observable.just(buildZipBuilder(tctx));
         } else if (argType.equals(BeanFinder.class)) {
             return Observable.just(this._finder);
         } else if (argType.equals(RpcExecutor.class)) {
-            return Observable.just(buildRpcExecutor(processor, tradeCtx.interactBuilder()));
+            return Observable.just(buildRpcExecutor(processor, tctx.interactBuilder()));
         } else if (argType.equals(Tracing.class)) {
-            return Observable.just(buildTracing(tradeCtx, tradeCtx._span));
+            return Observable.just(buildTracing(tctx, tctx._span));
         } else if (argType.equals(Branch.Builder.class)) {
-            return Observable.just(buildBranchBuilder(tradeCtx, processor));
+            return Observable.just(buildBranchBuilder(tctx, processor));
         } else if (argType.equals(Span.class)) {
-            return Observable.just(tradeCtx._span);
+            return Observable.just(tctx._span);
         } else if (argType.equals(JServiceBuilder.class)) {
-            return Observable.just(buildJServiceBuilder(tradeCtx, argCtx));
+            return Observable.just(buildJServiceBuilder(argctx));
         } else {
             for (final MethodInterceptor interceptor : interceptors) {
                 if (interceptor instanceof ArgumentBuilder) {
