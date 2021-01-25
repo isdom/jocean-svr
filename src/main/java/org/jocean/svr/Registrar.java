@@ -8,7 +8,6 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
@@ -27,7 +26,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
 import javax.inject.Inject;
@@ -149,7 +147,6 @@ import rx.Observable;
 import rx.Observable.Transformer;
 import rx.Scheduler;
 import rx.functions.Actions;
-import rx.functions.Func0;
 import rx.functions.Func1;
 import rx.functions.Func2;
 
@@ -644,18 +641,18 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         public MethodInterceptor[] interceptors() {
                             return interceptors.toArray(new MethodInterceptor[0]);
                         }};
-                    fillServiceFields(resource, resource.getClass(), argctx);
-                    final Func2<Type[], Annotation[][], Observable<Object[]>> buildargs =
-                            (types, annoss) -> buildArgs(types, annoss, argctx);
-
-                    final Observable<? extends Object> obsResponse = invokeProcessor(
-                            resource,
-                            processor,
-                            request,
-                            tctx,
-                            buildargs
-                            );
-                    return doPostInvoke(interceptors, copyCtxOverrideResponse(interceptorCtx, obsResponse));
+                    return fillServiceFields(resource, argctx)
+                            .doOnNext( fieldsCount -> LOG.info("process {} field(s) for {}", fieldsCount, resource))
+                            .flatMap(any -> {
+                                final Observable<? extends Object> obsResponse = invokeProcessor(
+                                        resource,
+                                        processor,
+                                        request,
+                                        tctx,
+                                        (types, annoss) -> buildArgs(types, annoss, argctx)
+                                    );
+                                return doPostInvoke(interceptors, copyCtxOverrideResponse(interceptorCtx, obsResponse));
+                            });
                 }
             }
         }
@@ -1333,16 +1330,17 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             @SuppressWarnings("unchecked")
             @Override
             public <S> S build(final Class<S> serviceType, final Object... args) {
-                return (S)buildJService(argctx, null, serviceType, args);
+                return (S)createAndFillJService(null, serviceType, argctx, args).toBlocking().single();
             }
 
             @SuppressWarnings("unchecked")
             @Override
             public <S> S build(final String serviceName, final Class<S> serviceType, final Object... args) {
-                return (S)buildJService(argctx, serviceName, serviceType, args);
+                return (S)createAndFillJService(serviceName, serviceType, argctx, args).toBlocking().single();
             }};
     }
 
+    /*
     private Object buildJService(
             final BuildArgContext argctx,
             final String serviceName,
@@ -1391,8 +1389,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 throw new RuntimeException("can't instance impl or method for " + serviceType + "." + method.getName());
             }};
     }
+    */
 
-    private Object createAndFillJService(
+    private Observable<Object> createAndFillJService(
             final String serviceName,
             final Class<?> serviceType,
             final BuildArgContext argctx,
@@ -1401,21 +1400,19 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final Object service = (null == serviceName || serviceName.isEmpty())
                                 ? this._beanHolder.getBean(serviceType, args)
                                 : this._beanHolder.getBean(serviceName, args);
-                                // getBeanFromHolder(serviceType, args);
             if (null == service) {
                 // service = ReflectUtils.newInstance(serviceType);
                 LOG.warn("can't found bean by type {}", serviceType);
-                throw new RuntimeException("can't found bean by type "+ serviceType);
+                return Observable.error(new RuntimeException("can't found bean by type "+ serviceType));
             }
 
             // assign all fields
-            if (null != service) {
-                fillServiceFields(service, serviceType, replaceResource(argctx, service));
-            }
-            return service;
+            return fillServiceFields(service, replaceResource(argctx, service))
+                    .doOnNext( fieldsCount -> LOG.info("process {} field(s) for {}", fieldsCount, service))
+                    .map(any -> service);
         } catch (final Exception e) {
             LOG.warn("exception when buildJService for type {}, detail: {}", serviceType, ExceptionUtils.exception2detail(e));
-            throw new RuntimeException(e);
+            return Observable.error(e);
         }
     }
 
@@ -1451,30 +1448,38 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }};
     }
 
-    private void fillServiceFields(
+    private Observable<Integer> fillServiceFields(
             final Object service,
-            final Class<?> serviceType,
-            final BuildArgContext argctx) throws IllegalAccessException {
-
-        final Field[] fields = ReflectUtils.getAllFieldsOfClass(service.getClass());
-        for (final Field field : fields) {
+            final BuildArgContext argctx) {
+        return Observable.from(ReflectUtils.getAllFieldsOfClass(service.getClass())).flatMap(field -> {
             if (!Modifier.isStatic(field.getModifiers())) {
                 field.setAccessible(true);
-                if (null == field.get(service)) {
-                    final Object value = buildArgByType(field.getGenericType(),
-                            field.getAnnotations(),
-                            argctx)
-                            .toBlocking().single(); // TODO, change to Rx mode
-                    if (null != value) {
-                        field.set(service, value);
+                try {
+                    if (null == field.get(service)) {
+                        return buildArgByType(field.getGenericType(),
+                                field.getAnnotations(),
+                                argctx)
+                                .map(value -> {
+                                    if (null != value) {
+                                        try {
+                                            field.set(service, value);
+                                        } catch (final IllegalAccessException e) {
+                                            throw new RuntimeException(e);
+                                        }
+                                    } else {
+                                        LOG.warn("can't found/build value for field:{}, which is unchanged.", field);
+                                    }
+                                    return 1;
+                                });
                     } else {
-                        LOG.warn("can't found/build value for field:{}, which is unchanged.", field);
+                        LOG.debug("@JService {}'s field:{} already has value, ignored.", service.getClass(), field);
                     }
-                } else {
-                    LOG.debug("@JService {}'s field:{} already has value, ignored.", serviceType, field);
+                } catch (final IllegalAccessException e) {
+                    return Observable.error(e);
                 }
             }
-        }
+            return Observable.just(1);
+        }).count();
     }
 
     private Object buildRpcFacade(final Class<?> facadeType,
@@ -1834,7 +1839,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
             final JService jService = getAnnotation(argAnnotations, JService.class);
             if (null != jService) {
-                return Observable.just(buildJService(argctx, jService.value(), (Class<?>)argType));
+                return createAndFillJService(jService.value(), (Class<?>)argType, argctx);
             }
             final DecodeTo decodeTo = getAnnotation(argAnnotations, DecodeTo.class);
             if (null != decodeTo) {
