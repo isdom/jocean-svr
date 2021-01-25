@@ -141,7 +141,6 @@ import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.codec.http.QueryStringDecoder;
-import io.opentracing.References;
 import io.opentracing.Span;
 import io.opentracing.Tracer;
 import io.opentracing.tag.Tags;
@@ -1584,37 +1583,37 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
-    private Branch.Builder buildBranchBuilder(final DefaultTradeContext tradeCtx, final Method processor) {
-        return new Branch.Builder() {
-            @Override
-            public Branch buildFollowsFrom(final String branchName) {
-                final Span span = tradeCtx._tracer.buildSpan(branchName)
-                        .addReference(References.FOLLOWS_FROM, tradeCtx._span.context()).start();
-                final Tracing tracing = buildTracing(tradeCtx, span);
-                final Scheduler scheduler = tradeCtx.scheduler().scheduler();
-                return new Branch() {
-                    @Override
-                    public Span span() {
-                        return span;
-                    }
-
-                    @Override
-                    public Tracing tracing() {
-                        return tracing;
-                    }
-
-                    @Override
-                    public RpcExecutor rpcExecutor() {
-                        return buildRpcExecutor(processor, tradeCtx.interactBuilderOutofTrade(span, 30));
-                    }
-
-                    @Override
-                    public Scheduler scheduler() {
-                        return scheduler;
-                    }};
-            }
-        };
-    }
+//    private Branch.Builder buildBranchBuilder(final DefaultTradeContext tradeCtx, final Method processor) {
+//        return new Branch.Builder() {
+//            @Override
+//            public Branch buildFollowsFrom(final String branchName) {
+//                final Span span = tradeCtx._tracer.buildSpan(branchName)
+//                        .addReference(References.FOLLOWS_FROM, tradeCtx._span.context()).start();
+//                final Tracing tracing = buildTracing(tradeCtx, span);
+//                final Scheduler scheduler = tradeCtx.scheduler().scheduler();
+//                return new Branch() {
+//                    @Override
+//                    public Span span() {
+//                        return span;
+//                    }
+//
+//                    @Override
+//                    public Tracing tracing() {
+//                        return tracing;
+//                    }
+//
+//                    @Override
+//                    public RpcExecutor rpcExecutor() {
+//                        return buildRpcExecutor(processor, tradeCtx.interactBuilderOutofTrade(span, 30));
+//                    }
+//
+//                    @Override
+//                    public Scheduler scheduler() {
+//                        return scheduler;
+//                    }};
+//            }
+//        };
+//    }
 
     private Tracing buildTracing(final DefaultTradeContext tradeCtx, final Span parentSpan) {
         return new Tracing() {
@@ -1883,8 +1882,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return Observable.just(buildRpcExecutor(processor, tctx.interactBuilder()));
         } else if (argType.equals(Tracing.class)) {
             return Observable.just(buildTracing(tctx, tctx._span));
-        } else if (argType.equals(Branch.Builder.class)) {
-            return Observable.just(buildBranchBuilder(tctx, processor));
+//        } else if (argType.equals(Branch.Builder.class)) {
+//            return Observable.just(buildBranchBuilder(tctx, processor));
         } else if (argType.equals(Span.class)) {
             return Observable.just(tctx._span);
         } else if (argType.equals(JServiceBuilder.class)) {
