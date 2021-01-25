@@ -88,6 +88,9 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
                 final Tracer tracer = ts_req_tracer_span.getAt(2);
                 final Span span = ts_req_tracer_span.getAt(3);
 
+                // log req's headers
+                span.log(Collections.singletonMap("http.req.hdrs", fullreq.message().headers().toString()));
+
                 TraceUtil.hook4serversend(trade.writeCtrl(), span);
                 TraceUtil.logoutmsg(trade.writeCtrl(), span, "http.resp", 1024);
 
