@@ -8,24 +8,28 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Proxy;
 import java.lang.reflect.Type;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
 import javax.inject.Inject;
@@ -147,6 +151,7 @@ import rx.Observable;
 import rx.Observable.Transformer;
 import rx.Scheduler;
 import rx.functions.Actions;
+import rx.functions.Func0;
 import rx.functions.Func1;
 import rx.functions.Func2;
 
@@ -536,6 +541,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     interface BuildArgContext {
+        //  返回预先计算好的参数实例
+        Object              buildinArg(final Type argType);
+
         Object              resource();
         Method              processor();
         HttpRequest         httpRequest();
@@ -606,53 +614,56 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 } else {
                     final DefaultTradeContext tctx = new DefaultTradeContext(trade, trade, tracer, span, ts, operationName, restin);
 
-                    final BuildArgContext argctx = new BuildArgContext() {
-                        @Override
-                        public Object resource() {
-                            return resource;
-                        }
+                    final Func1<Func1<Type, Object>, Observable<? extends Object>> exection = buildin -> {
+                        final BuildArgContext argctx = new BuildArgContext() {
+                            @Override
+                            public Object buildinArg(final Type argType) {
+                                return buildin.call(argType);
+                            }
+                            @Override
+                            public Object resource() {
+                                return resource;
+                            }
+                            @Override
+                            public Method processor() {
+                                return processor;
+                            }
+                            @Override
+                            public HttpRequest httpRequest() {
+                                return request;
+                            }
+                            @Override
+                            public Map<String, String> pathParams() {
+                                return pair.second;
+                            }
+                            @Override
+                            public HttpTrade trade() {
+                                return trade;
+                            }
+                            @Override
+                            public DefaultTradeContext tctx() {
+                                return tctx;
+                            }
+                            @Override
+                            public MethodInterceptor[] interceptors() {
+                                return interceptors.toArray(new MethodInterceptor[0]);
+                            }};
+                        final Observable<? extends Object> obsResponse = invokeProcessor(
+                                fillServiceFields(resource, argctx),
+                                processor,
+                                request,
+                                tctx,
+                                (types, annoss) -> buildArgs(types, annoss, argctx)
+                            );
+                        return doPostInvoke(interceptors, copyCtxOverrideResponse(interceptorCtx, obsResponse));
+                    };
 
-                        @Override
-                        public Method processor() {
-                            return processor;
-                        }
-
-                        @Override
-                        public HttpRequest httpRequest() {
-                            return request;
-                        }
-
-                        @Override
-                        public Map<String, String> pathParams() {
-                            return pair.second;
-                        }
-
-                        @Override
-                        public HttpTrade trade() {
-                            return trade;
-                        }
-
-                        @Override
-                        public DefaultTradeContext tctx() {
-                            return tctx;
-                        }
-
-                        @Override
-                        public MethodInterceptor[] interceptors() {
-                            return interceptors.toArray(new MethodInterceptor[0]);
-                        }};
-                    return fillServiceFields(resource, argctx)
-                            .doOnNext( fieldsCount -> LOG.info("process {} field(s) for {}", fieldsCount, resource))
-                            .flatMap(any -> {
-                                final Observable<? extends Object> obsResponse = invokeProcessor(
-                                        resource,
-                                        processor,
-                                        request,
-                                        tctx,
-                                        (types, annoss) -> buildArgs(types, annoss, argctx)
-                                    );
-                                return doPostInvoke(interceptors, copyCtxOverrideResponse(interceptorCtx, obsResponse));
-                            });
+                    final Observable<Func1<Type, Object>> getbuildin = getBuildins(processor.getGenericParameterTypes(), processor.getParameterAnnotations(), tctx);
+                    if (null != getbuildin) {
+                        return getbuildin.flatMap(buildin -> exection.call(buildin));
+                    } else {
+                        return exection.call(argType -> null);
+                    }
                 }
             }
         }
@@ -661,42 +672,64 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 .compose(StepableUtil.autostep2element2()).doOnNext(bbs -> bbs.dispose()).ignoreElements());
     }
 
+    private Observable<Func1<Type, Object>> getBuildins(
+            final Type[] types,
+            final Annotation[][] annotations,
+            final TradeContext tctx
+            ) {
+        int idx = 0;
+        for (final Type type : types) {
+            final DecodeTo decodeTo = getAnnotation(annotations[idx++], DecodeTo.class);
+            if (null != decodeTo) {
+                // 目前只允许 业务入口参数中 至多只有一个 @DecodeTo 注解
+                LOG.info("{}'s messagebody decodeTo {} and inject as param", tctx.restin().getPathPattern(), type);
+
+                return tctx.decodeBodyAs((Class<Object>)type)
+                    .doOnNext(arg -> LOG.debug("@DecodeTo param: {}", arg))
+                    .map(arg -> argType -> {
+                        if (argType.equals(type)) {
+                            return arg;
+                        } else {
+                            return null;
+                        }
+                    });
+            }
+        }
+        return null;
+    }
+
     private Observable<? extends Object> invokeProcessor(
             final Object resource,
             final Method processor,
             final HttpRequest request,
             final DefaultTradeContext tctx,
-            final Func2<Type[], Annotation[][], Observable<Object[]>> buildargs
+            final Func2<Type[], Annotation[][], Object[]> buildargs
             ) {
-        return buildargs.call(processor.getGenericParameterTypes(), processor.getParameterAnnotations())
-            .flatMap(args -> {
-                Object returnValue = null;
-                try {
-                    returnValue = processor.invoke(resource, args);
-                } catch (final Exception e) {
-                    LOG.warn("exception when invoke processor:{}, detail: {}",
-                            processor,
-                            ExceptionUtils.exception2detail(e));
-                    returnValue = Observable.error(e);
-                }
-                if (null!=returnValue) {
-                    final Observable<? extends Object> obsResponse = returnValue2ObsResponse(
-                            tctx,
-                            request,
-                            processor,
-                            hookErrorHandlersIfNeed(returnValue, resource, processor, buildargs));
-
-                    if (null!=obsResponse) {
-                        return obsResponse;
-                    }
-                }
-                return RxNettys.response404NOTFOUND(request.protocolVersion());
-            });
+        Object returnValue = null;
+        try {
+            returnValue = processor.invoke(resource, buildargs.call(processor.getGenericParameterTypes(), processor.getParameterAnnotations()));
+        } catch (final Exception e) {
+            LOG.warn("exception when invoke processor:{}, detail: {}",
+                    processor,
+                    ExceptionUtils.exception2detail(e));
+            returnValue = Observable.error(e);
+        }
+        if (null!=returnValue) {
+            final Observable<? extends Object> obsResponse = returnValue2ObsResponse(
+                    tctx,
+                    request,
+                    processor,
+                    hookErrorHandlersIfNeed(returnValue, resource, processor, buildargs));
+            if (null!=obsResponse) {
+                return obsResponse;
+            }
+        }
+        return RxNettys.response404NOTFOUND(request.protocolVersion());
     }
 
     @SuppressWarnings("unchecked")
     private Object hookErrorHandlersIfNeed(final Object returnValue, final Object resource, final Method processor,
-            final Func2<Type[], Annotation[][], Observable<Object[]>> buildargs
+            final Func2<Type[], Annotation[][], Object[]> buildargs
             ) {
         if (returnValue instanceof Observable) {
             final OnError onError = processor.getAnnotation(OnError.class);
@@ -711,7 +744,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final Observable<Object> returnValue,
             final Object resource,
             final String[] handlerNames,
-            final Func2<Type[], Annotation[][], Observable<Object[]>> buildargs) {
+            final Func2<Type[], Annotation[][], Object[]> buildargs) {
         return returnValue.onErrorResumeNext(throwable -> {
             for (final String handlerName : handlerNames) {
                 try {
@@ -740,35 +773,34 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final String handlerName,
             final Object resource,
             final Throwable throwable,
-            final Func2<Type[], Annotation[][], Observable<Object[]>> buildargs
+            final Func2<Type[], Annotation[][], Object[]> buildargs
             )
             throws NoSuchMethodException, ClassNotFoundException {
         final HandlerInvocation invocation = filterFor(throwable, invocationOf(handlerName, resource));
         if (null == invocation) {
             return null;
         }
+
         final Type[] gpts = invocation.handler().getGenericParameterTypes();
         final Annotation[][] pas = invocation.handler().getParameterAnnotations();
 
-        return buildargs.call(Arrays.copyOfRange(gpts, 1, gpts.length), Arrays.copyOfRange(pas, 1, pas.length))
-            .map(args -> JOArrays.addFirst(Object[].class, args, throwable))
-            .flatMap(args -> {
-                try {
-                    final Object converted = invocation.invoke(args);
-                    if (null != converted) {
-                        if (converted instanceof Observable) {
-                            return (Observable<? extends Object>) converted;
-                        } else {
-                            return Observable.just(converted);
-                        }
-                    } else {
-                        return Observable.error(new NullPointerException());
-                    }
-                } catch (final Throwable e) {
-                    // ignore this handler
-                    return Observable.error(e);
+        try {
+            final Object converted = invocation.invoke(JOArrays.addFirst(Object[].class,
+                    buildargs.call(Arrays.copyOfRange(gpts, 1, gpts.length), Arrays.copyOfRange(pas, 1, pas.length)),
+                    throwable));
+            if (null != converted) {
+                if (converted instanceof Observable) {
+                    return (Observable<? extends Object>) converted;
+                } else {
+                    return Observable.just(converted);
                 }
-            });
+            } else {
+                return Observable.error(new NullPointerException());
+            }
+        } catch (final Throwable e) {
+            // ignore this handler
+            return Observable.error(e);
+        }
     }
 
     private HandlerInvocation invocationOf(final String handlerName, final Object resource) throws NoSuchMethodException, ClassNotFoundException, SecurityException {
@@ -1330,49 +1362,47 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             @SuppressWarnings("unchecked")
             @Override
             public <S> S build(final Class<S> serviceType, final Object... args) {
-                return (S)createAndFillJService(null, serviceType, argctx, args).toBlocking().single();
+                return (S)createAndFillJService(null, serviceType, argctx, args);
             }
 
             @SuppressWarnings("unchecked")
             @Override
             public <S> S build(final String serviceName, final Class<S> serviceType, final Object... args) {
-                return (S)createAndFillJService(serviceName, serviceType, argctx, args).toBlocking().single();
+                return (S)createAndFillJService(serviceName, serviceType, argctx, args);
             }};
     }
 
-    /*
-    private Object buildJService(
-            final BuildArgContext argctx,
+    private Object buildProxiedJService(
             final String serviceName,
             final Class<?> serviceType,
+            final BuildArgContext argctx,
             final Object... args) {
         final Func0<Object> builder = () -> createAndFillJService(serviceName, serviceType, argctx, args);
-        LOG.debug("buildJService: @JService for {}", serviceType);
+        LOG.debug("buildProxiedJService: @JService for {}({})", serviceType, serviceName);
         if (serviceType.isInterface() ) {
-            LOG.debug("try to generate lazy init proxy for {}", serviceType);
+            LOG.debug("try to generate lazy init proxy for {}({})", serviceType, serviceName);
             final Object serviceProxy = Proxy.newProxyInstance(serviceType.getClassLoader(), new Class<?>[]{serviceType},
-                    proxyHandler(serviceType, builder));
-            LOG.debug("try to generate lazy init proxy for {} succeed.", serviceType);
+                    proxyHandler(serviceName, serviceType, builder));
+            LOG.debug("try to generate lazy init proxy for {}({}) succeed.", serviceType, serviceName);
             return serviceProxy;
         } else {
             return builder.call();
         }
     }
 
-    private InvocationHandler proxyHandler(final Class<?> serviceType, final Func0<Object> builder) {
+    private InvocationHandler proxyHandler(final String serviceName, final Class<?> serviceType, final Func0<Object> builder) {
         final AtomicReference<Object> implRef = new AtomicReference<Object>();
-        return new InvocationHandler() {
-            @Override
-            public Object invoke(final Object proxy, final Method method, final Object[] args) throws Throwable {
+        return (proxy, method, args) -> {
                 Object impl = implRef.get();
                 if (null == impl) {
                     synchronized(implRef) {
+                        // check -> lock -> check for effective sync
                         impl = implRef.get();
                         if (null == impl) {
-                            LOG.debug("begin to create impl for {}.", serviceType);
+                            LOG.debug("begin to create impl for {}({}).", serviceType, serviceName);
                             impl = builder.call();
                             implRef.set(impl);
-                            LOG.debug("impl for {} created.", serviceType);
+                            LOG.debug("impl for {}({}) created.", serviceType, serviceName);
                         }
                     }
                 }
@@ -1384,14 +1414,14 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         throw e.getCause();
                     }
                 } else {
-                    LOG.warn("generate impl for {} FAILED.", serviceType);
+                    LOG.warn("generate impl for {}({}) FAILED.", serviceType, serviceName);
                 }
-                throw new RuntimeException("can't instance impl or method for " + serviceType + "." + method.getName());
-            }};
+                throw new RuntimeException("can't instance impl or method for " + serviceType
+                        + "(" + (null != serviceName ? serviceName : "null") +")." + method.getName());
+            };
     }
-    */
 
-    private Observable<Object> createAndFillJService(
+    private Object createAndFillJService(
             final String serviceName,
             final Class<?> serviceType,
             final BuildArgContext argctx,
@@ -1402,22 +1432,24 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                                 : this._beanHolder.getBean(serviceName, args);
             if (null == service) {
                 // service = ReflectUtils.newInstance(serviceType);
-                LOG.warn("can't found bean by type {}", serviceType);
-                return Observable.error(new RuntimeException("can't found bean by type "+ serviceType));
+                LOG.warn("can't found bean by type {}({})", serviceType, serviceName);
+                throw new RuntimeException("can't found bean by type "+ serviceType + "(" + (null != serviceName ? serviceName : "null") + ")");
             }
 
             // assign all fields
-            return fillServiceFields(service, replaceResource(argctx, service))
-                    .doOnNext( fieldsCount -> LOG.info("process {} field(s) for {}", fieldsCount, service))
-                    .map(any -> service);
+            return fillServiceFields(service, replaceResource(argctx, service));
         } catch (final Exception e) {
-            LOG.warn("exception when buildJService for type {}, detail: {}", serviceType, ExceptionUtils.exception2detail(e));
-            return Observable.error(e);
+            LOG.warn("exception when createAndFillJService for type {}({}), detail:{}", serviceType, serviceName, ExceptionUtils.exception2detail(e));
+            throw new RuntimeException(e);
         }
     }
 
     private BuildArgContext replaceResource(final BuildArgContext argctx, final Object newResource) {
         return new BuildArgContext() {
+            @Override
+            public Object buildinArg(final Type argType) {
+                return argctx.buildinArg(argType);
+            }
             @Override
             public Object resource() {
                 return newResource;
@@ -1448,38 +1480,32 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }};
     }
 
-    private Observable<Integer> fillServiceFields(
+    private Object fillServiceFields(
             final Object service,
             final BuildArgContext argctx) {
-        return Observable.from(ReflectUtils.getAllFieldsOfClass(service.getClass())).flatMap(field -> {
+        final Field[] fields = ReflectUtils.getAllFieldsOfClass(service.getClass());
+        for (final Field field : fields) {
             if (!Modifier.isStatic(field.getModifiers())) {
-                field.setAccessible(true);
-                try {
-                    if (null == field.get(service)) {
-                        return buildArgByType(field.getGenericType(),
-                                field.getAnnotations(),
-                                argctx)
-                                .map(value -> {
-                                    if (null != value) {
-                                        try {
-                                            field.set(service, value);
-                                        } catch (final IllegalAccessException e) {
-                                            throw new RuntimeException(e);
-                                        }
-                                    } else {
-                                        LOG.warn("can't found/build value for field:{}, which is unchanged.", field);
-                                    }
-                                    return 1;
-                                });
-                    } else {
-                        LOG.debug("@JService {}'s field:{} already has value, ignored.", service.getClass(), field);
+                    field.setAccessible(true);
+                    try {
+                        if (null == field.get(service)) {
+                            final Object value = buildArgByType(field.getGenericType(),
+                                    field.getAnnotations(),
+                                    argctx);
+                            if (null != value) {
+                                field.set(service, value);
+                            } else {
+                                LOG.warn("can't found/build value for field:{}", field);
+                            }
+                        } else {
+                            LOG.debug("@JService {}'s field:{} already has value, unchanged.", service.getClass(), field);
+                        }
+                    } catch (IllegalArgumentException | IllegalAccessException e) {
+                        LOG.warn("exception when fillServiceFields for field:{}, detail:{}", field, ExceptionUtils.exception2detail(e));
                     }
-                } catch (final IllegalAccessException e) {
-                    return Observable.error(e);
-                }
-            }
-            return Observable.just(1);
-        }).count();
+             }
+        }
+        return service;
     }
 
     private Object buildRpcFacade(final Class<?> facadeType,
@@ -1768,61 +1794,68 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
-    private Observable<Object[]> buildArgs(
+    private Object[] buildArgs(
             final Type[] genericParameterTypes,
             final Annotation[][] parameterAnnotations,
             final BuildArgContext argctx) {
-        return Observable.zip(Observable.from(genericParameterTypes),
-                            Observable.from(parameterAnnotations),
-                            (argType, argAnnotations) -> Pair.of(argType, argAnnotations))
-                // bug fix : flatMap 可能会导致参数序列乱序
-                .concatMap(t_as -> buildArgByType(t_as.first, t_as.second, argctx))
-                .toList().map(args -> args.toArray(new Object[0]));
+        final List<Object> args = new ArrayList<>();
+        int idx = 0;
+        for (final Type argType : genericParameterTypes) {
+            args.add(buildArgByType(argType,
+                    parameterAnnotations[idx++],
+                    argctx));
+        }
+        return args.toArray();
     }
 
     //  TBD: 查表实现
-    private Observable<Object> buildArgByType(
+    private Object buildArgByType(
             final Type          argType,
             final Annotation[]  argAnnotations,
             final BuildArgContext argctx) {
         final Object resource = argctx.resource();
-        final HttpRequest request = argctx.httpRequest();
-        final Map<String, String> pathParams = argctx.pathParams();
-        final HttpTrade trade = argctx.trade();
-        final MethodInterceptor[] interceptors = argctx.interceptors();
         final Method processor = argctx.processor();
         final DefaultTradeContext tctx = argctx.tctx();
+        final HttpTrade trade = argctx.trade();
+        final HttpRequest request = argctx.httpRequest();
+        final Map<String, String> pathParams = argctx.pathParams();
+        final MethodInterceptor[] interceptors = argctx.interceptors();
+
+        final Object buildin = argctx.buildinArg(argType);
+        if (null != buildin) {
+            return buildin;
+        }
 
         if (argType instanceof Class<?>) {
             if (null != getAnnotation(argAnnotations, BeanParam.class)) {
-                return Observable.just(buildBeanParam(request, (Class<?>)argType));
+                return buildBeanParam(request, (Class<?>)argType);
             }
             final HeaderParam headerParam = getAnnotation(argAnnotations, HeaderParam.class);
             if (null != headerParam) {
-                return Observable.just(buildHeaderParam(request, headerParam.value(), (Class<?>)argType));
+                return buildHeaderParam(request, headerParam.value(), (Class<?>)argType);
             }
             final QueryParam queryParam = getAnnotation(argAnnotations, QueryParam.class);
             if (null != queryParam) {
-                return Observable.just(buildQueryParam(request, queryParam.value(), (Class<?>)argType));
+                return buildQueryParam(request, queryParam.value(), (Class<?>)argType);
             }
             final PathParam pathParam = getAnnotation(argAnnotations, PathParam.class);
             if (null != pathParam && null != pathParams) {
-                return Observable.just(buildPathParam(pathParams, pathParam.value(), (Class<?>)argType));
+                return buildPathParam(pathParams, pathParam.value(), (Class<?>)argType);
             }
             if (null != getAnnotation(argAnnotations, Inject.class)) {
-                return Observable.just(BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Named.class), resource, null));
+                return BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Named.class), resource, null);
             }
             if (null != getAnnotation(argAnnotations, Autowired.class)) {
-                return Observable.just(BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Qualifier.class), resource, null));
+                return BeanHolders.getBean(this._beanHolder, (Class<?>)argType, getAnnotation(argAnnotations, Qualifier.class), resource, null);
             }
             final Value valueAnno = getAnnotation(argAnnotations, Value.class);
             if (null != valueAnno) {
                 LOG.debug("try inject value from {}.{}", resource, valueAnno.value());
-                return Observable.just(getInjectValue(valueAnno.value(), resource));
+                return getInjectValue(valueAnno.value(), resource);
             }
             final RpcFacade rpcFacade = getAnnotation(argAnnotations, RpcFacade.class);
             if (null != rpcFacade) {
-                return Observable.just(buildRpcFacade((Class<?>)argType,
+                return buildRpcFacade((Class<?>)argType,
                         inter2any -> {
                             final Transformer<Interact, Interact> processors = selectURI4SPI( (Class<?>)argType);
                             // union(processorsOf(resource, rpcFacade.value()), selectURI4SPI( (Class<?>)argType));
@@ -1835,18 +1868,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                                 executor = buildRpcExecutor(processor, tctx.interactBuilderByHaltable(haltable));
                             }
                             return executor.submit(interacts -> interacts.compose(processors).compose(inter2any));
-                        }));
+                        });
             }
             final JService jService = getAnnotation(argAnnotations, JService.class);
             if (null != jService) {
-                return createAndFillJService(jService.value(), (Class<?>)argType, argctx);
-            }
-            final DecodeTo decodeTo = getAnnotation(argAnnotations, DecodeTo.class);
-            if (null != decodeTo) {
-                LOG.info("{}'s messagebody decodeTo {} and inject as param", tctx.restin().getPathPattern(), argType);
-                return tctx.decodeBodyAs((Class<Object>)argType).doOnNext(arg -> {
-                    LOG.debug("@DecodeTo param: {}", arg);
-                });
+                return buildProxiedJService(jService.value(), (Class<?>)argType, argctx);
             }
         }
         if (argType instanceof ParameterizedType){
@@ -1854,57 +1880,57 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (isObservableType(argType)) {
                 final Type gt1st = getGenericTypeOf(argType, 0);
                 if (MessageBody.class.equals(gt1st)) {
-                    return Observable.just(buildMessageBody(trade, request));
+                    return buildMessageBody(trade, request);
                 }
             } else if (UntilRequestCompleted.class.equals(getParameterizedRawType(argType))) {
-                return Observable.just(buildURC(trade.inboundCompleted()));
+                return buildURC(trade.inboundCompleted());
             }
         } else if (argType.equals(io.netty.handler.codec.http.HttpMethod.class)) {
-            return Observable.just(request.method());
+            return request.method();
         } else if (argType.equals(HttpRequest.class)) {
-            return Observable.just(request);
+            return request;
         } else if (argType.equals(HttpTrade.class)) {
-            return Observable.just(trade);
+            return trade;
         } else if (argType.equals(Haltable.class)) {
-            return Observable.just(trade);
+            return trade;
         } else if (argType.equals(BeanHolder.class)) {
-            return Observable.just(this._beanHolder);
+            return this._beanHolder;
         } else if (argType.equals(WriteCtrl.class)) {
-            return Observable.just(trade.writeCtrl());
+            return trade.writeCtrl();
         } else if (argType.equals(AllocatorBuilder.class)) {
-            return Observable.just(tctx.allocatorBuilder());
+            return tctx.allocatorBuilder();
         } else if (argType.equals(InteractBuilder.class)) {
-            return Observable.just(tctx.interactBuilder());
+            return tctx.interactBuilder();
         } else if (argType.equals(TradeContext.class)) {
-            return Observable.just(tctx);
+            return tctx;
         } else if (argType.equals(Scheduler.class)) {
-            return Observable.just(tctx.scheduler().scheduler());
+            return tctx.scheduler().scheduler();
         } else if (argType.equals(ZipBuilder.class)) {
-            return Observable.just(buildZipBuilder(tctx));
+            return buildZipBuilder(tctx);
         } else if (argType.equals(BeanFinder.class)) {
-            return Observable.just(this._finder);
+            return this._finder;
         } else if (argType.equals(RpcExecutor.class)) {
-            return Observable.just(buildRpcExecutor(processor, tctx.interactBuilder()));
+            return buildRpcExecutor(processor, tctx.interactBuilder());
         } else if (argType.equals(Tracing.class)) {
-            return Observable.just(buildTracing(tctx, tctx._span));
+            return buildTracing(tctx, tctx._span);
 //        } else if (argType.equals(Branch.Builder.class)) {
-//            return Observable.just(buildBranchBuilder(tctx, processor));
+//            return buildBranchBuilder(tctx, processor);
         } else if (argType.equals(Span.class)) {
-            return Observable.just(tctx._span);
+            return tctx._span;
         } else if (argType.equals(JServiceBuilder.class)) {
-            return Observable.just(buildJServiceBuilder(argctx));
+            return buildJServiceBuilder(argctx);
         } else {
             for (final MethodInterceptor interceptor : interceptors) {
                 if (interceptor instanceof ArgumentBuilder) {
                     final Object arg = ((ArgumentBuilder)interceptor).buildArg(argType);
                     if (null != arg) {
-                        return Observable.just(arg);
+                        return arg;
                     }
                 }
             }
         }
 
-        return Observable.just(null);
+        return null;
     }
 
     private static class ResContext {
