@@ -74,7 +74,6 @@ import org.jocean.idiom.Haltable;
 import org.jocean.idiom.HaltableBuilder;
 import org.jocean.idiom.HaltableRelyBuilder;
 import org.jocean.idiom.Haltables;
-import org.jocean.idiom.JOArrays;
 import org.jocean.idiom.Pair;
 import org.jocean.idiom.ReflectUtils;
 import org.jocean.idiom.Regexs;
@@ -99,6 +98,7 @@ import org.jocean.svr.ZipUtil.Unzipper;
 import org.jocean.svr.ZipUtil.ZipBuilder;
 import org.jocean.svr.ZipUtil.Zipper;
 import org.jocean.svr.annotation.DecodeTo;
+import org.jocean.svr.annotation.HandleError;
 import org.jocean.svr.annotation.JService;
 import org.jocean.svr.annotation.OnError;
 import org.jocean.svr.annotation.PathSample;
@@ -153,7 +153,6 @@ import rx.Scheduler;
 import rx.functions.Actions;
 import rx.functions.Func0;
 import rx.functions.Func1;
-import rx.functions.Func2;
 
 /**
  * @author isdom
@@ -653,7 +652,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                                 processor,
                                 request,
                                 tctx,
-                                (types, annoss) -> buildArgs(types, annoss, argctx)
+                                argctx
+//                                (types, annoss) -> buildArgs(types, annoss, argctx)
                             );
                         return doPostInvoke(interceptors, copyCtxOverrideResponse(interceptorCtx, obsResponse));
                     };
@@ -703,11 +703,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final Method processor,
             final HttpRequest request,
             final DefaultTradeContext tctx,
-            final Func2<Type[], Annotation[][], Object[]> buildargs
+            final BuildArgContext argctx
             ) {
         Object returnValue = null;
         try {
-            returnValue = processor.invoke(resource, buildargs.call(processor.getGenericParameterTypes(), processor.getParameterAnnotations()));
+            returnValue = processor.invoke(resource, buildArgs(processor.getGenericParameterTypes(), processor.getParameterAnnotations(), argctx));
         } catch (final Exception e) {
             LOG.warn("exception when invoke processor:{}, detail: {}",
                     processor,
@@ -719,7 +719,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     tctx,
                     request,
                     processor,
-                    hookErrorHandlersIfNeed(returnValue, resource, processor, buildargs));
+                    hookErrorHandlersIfNeed(returnValue, resource, processor, argctx));
             if (null!=obsResponse) {
                 return obsResponse;
             }
@@ -729,12 +729,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
     @SuppressWarnings("unchecked")
     private Object hookErrorHandlersIfNeed(final Object returnValue, final Object resource, final Method processor,
-            final Func2<Type[], Annotation[][], Object[]> buildargs
+            final BuildArgContext argctx
             ) {
         if (returnValue instanceof Observable) {
             final OnError onError = processor.getAnnotation(OnError.class);
             if (null != onError) {
-                return hookErrorHandlers((Observable<Object>)returnValue, resource, onError.value(), buildargs);
+                return hookErrorHandlers((Observable<Object>)returnValue, resource, onError.value(), argctx);
             }
         }
         return returnValue;
@@ -744,12 +744,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final Observable<Object> returnValue,
             final Object resource,
             final String[] handlerNames,
-            final Func2<Type[], Annotation[][], Object[]> buildargs) {
+            final BuildArgContext argctx) {
         return returnValue.onErrorResumeNext(throwable -> {
             for (final String handlerName : handlerNames) {
                 try {
                     LOG.info("meet error {} , try handle by:{}", ExceptionUtils.exception2detail(throwable), handlerName);
-                    final Observable<? extends Object> converted = invokeErrorHandlerOf(handlerName, resource, throwable, buildargs);
+                    final Observable<? extends Object> converted = invokeErrorHandlerOf(handlerName, resource, throwable, argctx);
                     if (converted != null) {
                         LOG.info("error {} handled by {}", ExceptionUtils.exception2detail(throwable), handlerName);
                         return converted;
@@ -773,7 +773,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final String handlerName,
             final Object resource,
             final Throwable throwable,
-            final Func2<Type[], Annotation[][], Object[]> buildargs
+            final BuildArgContext argctx
             )
             throws NoSuchMethodException, ClassNotFoundException {
         final HandlerInvocation invocation = filterFor(throwable, invocationOf(handlerName, resource));
@@ -781,13 +781,16 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return null;
         }
 
-        final Type[] gpts = invocation.handler().getGenericParameterTypes();
-        final Annotation[][] pas = invocation.handler().getParameterAnnotations();
-
         try {
-            final Object converted = invocation.invoke(JOArrays.addFirst(Object[].class,
-                    buildargs.call(Arrays.copyOfRange(gpts, 1, gpts.length), Arrays.copyOfRange(pas, 1, pas.length)),
-                    throwable));
+            final Object converted = invocation.invoke(
+                    buildArgs(
+                            invocation.handler().getGenericParameterTypes(),
+                            invocation.handler().getParameterAnnotations(),
+                            addBuildin(argctx,
+                                type -> type.equals(invocation.handler().getAnnotation(HandleError.class).value()) ? throwable : null
+                            )
+                        )
+                    );
             if (null != converted) {
                 if (converted instanceof Observable) {
                     return (Observable<? extends Object>) converted;
@@ -801,6 +804,43 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             // ignore this handler
             return Observable.error(e);
         }
+    }
+
+    private BuildArgContext addBuildin(final BuildArgContext argctx, final Func1<Type, Object> buildin) {
+        return new BuildArgContext() {
+            @Override
+            public Object buildinArg(final Type argType) {
+                final Object arg = argctx.buildinArg(argType);
+                return null != arg ? arg : buildin.call(argType);
+            }
+            @Override
+            public Object resource() {
+                return argctx.resource();
+            }
+            @Override
+            public Method processor() {
+                return argctx.processor();
+            }
+            @Override
+            public HttpRequest httpRequest() {
+                return argctx.httpRequest();
+            }
+            @Override
+            public Map<String, String> pathParams() {
+                return argctx.pathParams();
+            }
+            @Override
+            public HttpTrade trade() {
+                return argctx.trade();
+            }
+            @Override
+            public DefaultTradeContext tctx() {
+                return argctx.tctx();
+            }
+            @Override
+            public MethodInterceptor[] interceptors() {
+                return argctx.interceptors();
+            }};
     }
 
     private HandlerInvocation invocationOf(final String handlerName, final Object resource) throws NoSuchMethodException, ClassNotFoundException, SecurityException {
@@ -850,8 +890,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private HandlerInvocation filterFor(final Throwable throwable, final HandlerInvocation invocation) {
         if (null == invocation)
             return null;
-        final Class<?>[] ps = invocation.handler().getParameterTypes();
-        return (ps != null && ps.length >= 1 && ps[0].isAssignableFrom(throwable.getClass())) ? invocation : null;
+        final HandleError handleError = invocation.handler().getAnnotation(HandleError.class);
+        return (handleError != null && handleError.value().isAssignableFrom(throwable.getClass())) ? invocation : null;
     }
 
     @SuppressWarnings("unchecked")
