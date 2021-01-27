@@ -1858,7 +1858,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 return buildRpcFacade((Class<?>)argType,
                         inter2any -> {
                             final Transformer<Interact, Interact> processors = selectURI4SPI( (Class<?>)argType);
-                            // union(processorsOf(resource, rpcFacade.value()), selectURI4SPI( (Class<?>)argType));
                             final Haltable haltable = searchHaltable( ((Class<?>)argType).getSimpleName(), tctx._haltable, Thread.currentThread().getStackTrace());
                             RpcExecutor executor;
                             if (null == haltable) {
@@ -1913,8 +1912,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return buildRpcExecutor(processor, tctx.interactBuilder());
         } else if (argType.equals(Tracing.class)) {
             return buildTracing(tctx, tctx._span);
-//        } else if (argType.equals(Branch.Builder.class)) {
-//            return buildBranchBuilder(tctx, processor);
         } else if (argType.equals(Span.class)) {
             return tctx._span;
         } else if (argType.equals(JServiceBuilder.class)) {
