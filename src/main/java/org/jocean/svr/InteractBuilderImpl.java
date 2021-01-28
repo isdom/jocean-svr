@@ -2,6 +2,7 @@ package org.jocean.svr;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -291,7 +292,8 @@ class InteractBuilderImpl implements InteractBuilder {
                             final AtomicBoolean isSpanFinished = new AtomicBoolean(false);
                             return defineInteraction(initiator /*, entryRef*/).flatMap(MessageUtil.fullmsg2body())
                                         .compose(MessageUtil.body2bean(decoder, type))
-                                        .doOnNext(TraceUtil.setTag4bean(span, "resp.", "record.respbean.error"))
+//                                        .doOnNext(TraceUtil.setTag4bean(span, "resp.", "record.respbean.error"))
+                                        .doOnNext(bean -> span.log(Collections.singletonMap("http.resp.bean", bean)))
                                         .doOnTerminate(() -> {
                                             if (isSpanFinished.compareAndSet(false, true)) {
                                                 span.finish();
@@ -404,7 +406,8 @@ class InteractBuilderImpl implements InteractBuilder {
 
     private Observable<? extends MessageBody> tobody(final Object bean, final ContentEncoder contentEncoder, final Span span) {
         return Observable.defer(() -> {
-            TraceUtil.setTag4bean(bean, span, "req.bd.", "record.reqbean.error");
+//            TraceUtil.setTag4bean(bean, span, "req.bd.", "record.reqbean.error");
+            span.log(Collections.singletonMap("http.req.bean", bean));
 
             final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout =
                     new BufsOutputStream<>(MessageUtil.pooledAllocator(this._haltable, 8192), dwb->dwb.unwrap());

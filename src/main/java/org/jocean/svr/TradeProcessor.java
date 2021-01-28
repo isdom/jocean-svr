@@ -97,6 +97,10 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
                 trade.doOnHalt(() -> span.finish());
                 TraceUtil.addTagNotNull(span, "http.host", fullreq.message().headers().get(HttpHeaderNames.HOST));
 
+                for (final String tag : this.headerTags) {
+                    TraceUtil.addTagNotNull(span, tag, fullreq.message().headers().get(tag));
+                }
+
                 if ( this._maxContentLengthForAutoread <= 0) {
                     LOG.debug("disable autoread full request, handle raw {}.", trade);
                     handleTrade(fullreq, trade, tracer, span, ts);
@@ -158,7 +162,14 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
         }
     }
 
+    @Value("${http.hdr.tags}")
+    void setHeaderTags(final String tags) {
+        this.headerTags = tags.split(",");
+    }
+
     private static volatile Tracer noopTracer = NoopTracerFactory.create();
+
+    String[] headerTags = new String[0];
 
     @Inject
     BeanFinder _finder;

@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -105,7 +106,6 @@ import org.jocean.svr.annotation.PathSample;
 import org.jocean.svr.annotation.RpcFacade;
 import org.jocean.svr.mbean.RestinIndicator;
 import org.jocean.svr.mbean.RestinIndicatorMXBean;
-import org.jocean.svr.tracing.TraceUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -225,7 +225,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         @Override
         public <T> Observable<T> decodeBodyAs(final ContentDecoder decoder, final Class<T> type) {
             return _trade.inbound().flatMap(MessageUtil.fullmsg2body()).compose(MessageUtil.body2bean(decoder, type, Actions.empty()))
-                    .doOnNext(TraceUtil.setTag4bean(_span, "req.bd.", "record.reqbean.error"));
+//                    .doOnNext(TraceUtil.setTag4bean(_span, "req.bd.", "record.reqbean.error"))
+                    .doOnNext(bean -> _span.log(Collections.singletonMap("http.req.bean", bean)))
+                    ;
         }
 
         @Override
@@ -1185,7 +1187,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final Object content,
             final ContentEncoder encoder) {
         if (null != content) {
-            TraceUtil.setTag4bean(content, tctx._span, "resp.", "record.respbean.error");
+//            TraceUtil.setTag4bean(content, tctx._span, "resp.", "record.respbean.error");
 
             final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout = new BufsOutputStream<>(
                     tctx.allocatorBuilder().build(512),

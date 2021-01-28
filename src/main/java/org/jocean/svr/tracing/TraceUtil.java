@@ -2,18 +2,15 @@ package org.jocean.svr.tracing;
 
 import java.util.Collections;
 import java.util.Iterator;
-import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.apache.commons.beanutils.BeanUtils;
 import org.jocean.http.ByteBufSlice;
 import org.jocean.http.FullMessage;
 import org.jocean.http.MessageBody;
 import org.jocean.http.WriteCtrl;
 import org.jocean.idiom.DisposableWrapper;
 import org.jocean.idiom.DisposableWrapperUtil;
-import org.jocean.idiom.ExceptionUtils;
 import org.jocean.netty.util.BufsInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -89,24 +86,24 @@ public class TraceUtil {
             }};
     }
 
-    public static void setTag4bean(final Object bean, final Span span, final String prefix, final String logexception) {
-        try {
-            final Map<String, String> map = BeanUtils.describe(bean);
-
-            for (final Map.Entry<String, String> entry : map.entrySet()) {
-                if (!entry.getKey().equals("class")) {
-                    span.setTag(prefix + entry.getKey(), entry.getValue());
-                }
-            }
-        } catch (final Exception e) {
-            span.log(Collections.singletonMap(logexception, ExceptionUtils.exception2detail(e)));
-            LOG.warn("exception when record bean, detail: {}", ExceptionUtils.exception2detail(e));
-        }
-    }
-
-    public static Action1<Object> setTag4bean(final Span span, final String prefix, final String logexception) {
-        return bean -> setTag4bean(bean, span, prefix, logexception);
-    }
+//    public static void setTag4bean(final Object bean, final Span span, final String prefix, final String logexception) {
+//        try {
+//            final Map<String, String> map = BeanUtils.describe(bean);
+//
+//            for (final Map.Entry<String, String> entry : map.entrySet()) {
+//                if (!entry.getKey().equals("class")) {
+//                    span.setTag(prefix + entry.getKey(), entry.getValue());
+//                }
+//            }
+//        } catch (final Exception e) {
+//            span.log(Collections.singletonMap(logexception, ExceptionUtils.exception2detail(e)));
+//            LOG.warn("exception when record bean, detail: {}", ExceptionUtils.exception2detail(e));
+//        }
+//    }
+//
+//    public static Action1<Object> setTag4bean(final Span span, final String prefix, final String logexception) {
+//        return bean -> setTag4bean(bean, span, prefix, logexception);
+//    }
 
     public static void logoutmsg(final WriteCtrl writeCtrl,
             final Span span, final String logprefix, final int maxLogSize) {
