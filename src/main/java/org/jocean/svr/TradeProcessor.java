@@ -4,6 +4,7 @@
 package org.jocean.svr;
 
 import java.util.Collections;
+import java.util.concurrent.TimeUnit;
 
 import javax.inject.Inject;
 
@@ -33,6 +34,7 @@ import io.opentracing.tag.Tags;
 import rx.Observable;
 import rx.Scheduler;
 import rx.Subscriber;
+import rx.Subscription;
 import rx.schedulers.Schedulers;
 
 /**
@@ -94,7 +96,19 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
                 TraceUtil.hook4serversend(trade.writeCtrl(), span);
                 TraceUtil.logoutmsg(trade.writeCtrl(), span, "http.resp", 1024);
 
-                trade.doOnHalt(() -> span.finish());
+                final Subscription cancelTradetimeout = Observable.timer(_tradeTimeout, TimeUnit.SECONDS).subscribe(any -> {
+                    // TODO, terminate trade and record more info
+                    span.log(Collections.singletonMap("timeout", trade));
+                    span.setTag(Tags.ERROR.getKey(), true);
+                    span.finish();
+                });
+
+                trade.doOnHalt(() -> {
+                    // cancel timeout for trade
+                    cancelTradetimeout.unsubscribe();
+                    span.finish();
+                });
+
                 TraceUtil.addTagNotNull(span, "http.host", fullreq.message().headers().get(HttpHeaderNames.HOST));
 
                 for (final String tag : this.headerTags) {
@@ -173,6 +187,10 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
 
     @Inject
     BeanFinder _finder;
+
+    // 事务超时时间(秒)
+    @Value("${trade.timeoutInSeconds}")
+    long _tradeTimeout = 30;
 
     @Value("${tracing.enabled}")
     boolean _tracingEnabled = true;
