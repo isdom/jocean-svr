@@ -82,7 +82,7 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
                         .withTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_SERVER)
                         .withTag(Tags.HTTP_URL.getKey(), request.uri())
                         .withTag(Tags.HTTP_METHOD.getKey(), request.method().name())
-//                        .withTag(Tags.PEER_HOST_IPV4.getKey(), )
+//                        .withTag(Tags.PEER_HOST_IPV4.getKey(), "")
                         .start());
             }))).subscribe( ts_req_tracer_span -> {
                 final TradeScheduler ts = ts_req_tracer_span.getAt(0);
@@ -110,6 +110,12 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
                 });
 
                 TraceUtil.addTagNotNull(span, "http.host", fullreq.message().headers().get(HttpHeaderNames.HOST));
+                {
+                    final String ips = fullreq.message().headers().get("x-forwarded-for");
+                    if (null != ips) {
+                        TraceUtil.addTagNotNull(span, Tags.PEER_HOST_IPV4.getKey(), ips.split(",")[0]);
+                    }
+                }
 
                 for (final String tag : this.headerTags) {
                     TraceUtil.addTagNotNull(span, tag, fullreq.message().headers().get(tag));
