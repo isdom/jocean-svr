@@ -1656,38 +1656,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
-//    private Branch.Builder buildBranchBuilder(final DefaultTradeContext tradeCtx, final Method processor) {
-//        return new Branch.Builder() {
-//            @Override
-//            public Branch buildFollowsFrom(final String branchName) {
-//                final Span span = tradeCtx._tracer.buildSpan(branchName)
-//                        .addReference(References.FOLLOWS_FROM, tradeCtx._span.context()).start();
-//                final Tracing tracing = buildTracing(tradeCtx, span);
-//                final Scheduler scheduler = tradeCtx.scheduler().scheduler();
-//                return new Branch() {
-//                    @Override
-//                    public Span span() {
-//                        return span;
-//                    }
-//
-//                    @Override
-//                    public Tracing tracing() {
-//                        return tracing;
-//                    }
-//
-//                    @Override
-//                    public RpcExecutor rpcExecutor() {
-//                        return buildRpcExecutor(processor, tradeCtx.interactBuilderOutofTrade(span, 30));
-//                    }
-//
-//                    @Override
-//                    public Scheduler scheduler() {
-//                        return scheduler;
-//                    }};
-//            }
-//        };
-//    }
-
     private Tracing buildTracing(final DefaultTradeContext tradeCtx, final Span parentSpan) {
         return new Tracing() {
             @Override
