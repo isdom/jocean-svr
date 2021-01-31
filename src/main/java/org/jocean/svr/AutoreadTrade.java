@@ -1,5 +1,7 @@
 package org.jocean.svr;
 
+import java.util.Map;
+
 import org.jocean.http.ByteBufSlice;
 import org.jocean.http.FullMessage;
 import org.jocean.http.MessageBody;
@@ -15,6 +17,7 @@ import rx.Observable;
 import rx.Subscription;
 import rx.functions.Action0;
 import rx.functions.Action1;
+import rx.functions.Action2;
 
 class AutoreadTrade implements HttpTrade {
 
@@ -147,5 +150,15 @@ class AutoreadTrade implements HttpTrade {
     @Override
     public long startTimeMillis() {
         return _trade.startTimeMillis();
+    }
+
+    @Override
+    public void log(final Map<String, ?> fields) {
+        _trade.log(fields);
+    }
+
+    @Override
+    public void visitlogs(final Action2<Long, Map<String, ?>> logvisitor) {
+        _trade.visitlogs(logvisitor);
     }
 }

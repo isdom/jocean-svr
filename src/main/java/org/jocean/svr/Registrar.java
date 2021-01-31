@@ -655,13 +655,13 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                                 request,
                                 tctx,
                                 argctx
-//                                (types, annoss) -> buildArgs(types, annoss, argctx)
                             );
                         return doPostInvoke(interceptors, copyCtxOverrideResponse(interceptorCtx, obsResponse));
                     };
 
                     final Observable<Func1<Type, Object>> getbuildin = getBuildins(processor.getGenericParameterTypes(), processor.getParameterAnnotations(), tctx);
                     if (null != getbuildin) {
+                        trade.log(Collections.singletonMap("stage", "pre-getbuildin"));
                         return getbuildin.flatMap(buildin -> exection.call(buildin));
                     } else {
                         return exection.call(argType -> null);
@@ -711,6 +711,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         try {
             returnValue = processor.invoke(resource, buildArgs(processor.getGenericParameterTypes(), processor.getParameterAnnotations(), argctx));
         } catch (final Exception e) {
+            argctx.trade().log(Collections.singletonMap("processor-error", ExceptionUtils.exception2detail(e)));
             LOG.warn("exception when invoke processor:{}, detail: {}",
                     processor,
                     ExceptionUtils.exception2detail(e));
@@ -1815,6 +1816,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     parameterAnnotations[idx++],
                     argctx));
         }
+        argctx.trade().log(Collections.singletonMap("stage", "done-buildArgs"));
         return args.toArray();
     }
 

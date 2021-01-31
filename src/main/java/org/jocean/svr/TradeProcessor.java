@@ -98,8 +98,9 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
 
                 final Subscription cancelTradetimeout = Observable.timer(_tradeTimeout, TimeUnit.SECONDS).subscribe(any -> {
                     // TODO, terminate trade and record more info
-                    span.log(Collections.singletonMap("timeout", trade));
                     span.setTag(Tags.ERROR.getKey(), true);
+                    trade.visitlogs((timestamp, fields) -> span.log(timestamp, fields));
+                    span.log(Collections.singletonMap("timeout", trade));
                     span.finish();
                 });
 
