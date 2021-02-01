@@ -117,6 +117,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.stereotype.Controller;
 
 import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Multimap;
@@ -649,6 +650,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             public MethodInterceptor[] interceptors() {
                                 return interceptors.toArray(new MethodInterceptor[0]);
                             }};
+                        trade.log(Collections.singletonMap("stage1", "pre-invokeProcessor"));
                         final Observable<? extends Object> obsResponse = invokeProcessor(
                                 fillServiceFields(resource, argctx),
                                 processor,
@@ -659,9 +661,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         return doPostInvoke(interceptors, copyCtxOverrideResponse(interceptorCtx, obsResponse));
                     };
 
-                    final Observable<Func1<Type, Object>> getbuildin = getBuildins(processor.getGenericParameterTypes(), processor.getParameterAnnotations(), tctx);
+                    final Observable<Func1<Type, Object>> getbuildin = getBuildins(
+                            processor.getGenericParameterTypes(), processor.getParameterAnnotations(), tctx, trade);
                     if (null != getbuildin) {
-                        trade.log(Collections.singletonMap("stage", "pre-getbuildin"));
+                        trade.log(Collections.singletonMap("stage0", "pre-getbuildin"));
                         return getbuildin.flatMap(buildin -> exection.call(buildin));
                     } else {
                         return exection.call(argType -> null);
@@ -677,7 +680,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private Observable<Func1<Type, Object>> getBuildins(
             final Type[] types,
             final Annotation[][] annotations,
-            final TradeContext tctx
+            final TradeContext tctx,
+            final HttpTrade trade
             ) {
         int idx = 0;
         for (final Type type : types) {
@@ -685,8 +689,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             if (null != decodeTo) {
                 // 目前只允许 业务入口参数中 至多只有一个 @DecodeTo 注解
                 LOG.info("{}'s messagebody decodeTo {} and inject as param", tctx.restin().getPathPattern(), type);
-
+                trade.log(ImmutableMap.<String, Object>builder()
+                        .put("stage0.1", "@DecodeTo")
+                        .put("type", type)
+                        .build());
                 return tctx.decodeBodyAs((Class<Object>)type)
+                    .doOnNext(arg -> trade.log(Collections.singletonMap("stage0.2", arg)))
                     .doOnNext(arg -> LOG.debug("@DecodeTo param: {}", arg))
                     .map(arg -> argType -> {
                         if (argType.equals(type)) {
@@ -1809,6 +1817,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final Type[] genericParameterTypes,
             final Annotation[][] parameterAnnotations,
             final BuildArgContext argctx) {
+        argctx.trade().log(Collections.singletonMap("stage2", "pre-buildArgs"));
         final List<Object> args = new ArrayList<>();
         int idx = 0;
         for (final Type argType : genericParameterTypes) {
@@ -1816,7 +1825,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     parameterAnnotations[idx++],
                     argctx));
         }
-        argctx.trade().log(Collections.singletonMap("stage", "done-buildArgs"));
+        argctx.trade().log(Collections.singletonMap("stage3", "done-buildArgs"));
         return args.toArray();
     }
 
