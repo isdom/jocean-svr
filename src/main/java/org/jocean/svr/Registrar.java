@@ -216,12 +216,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     (inboundBytes, outboundBytes, tags) -> recordTraffic(inboundBytes, outboundBytes, tags));
         }
 
-        @Override
-        public void enableRepeatDecode() {
-            if (!(this._trade instanceof AutoreadTrade)) {
-                this._trade = AutoreadTrade.enableAutoread(_trade);
-            }
-        }
+//        @Override
+//        public void enableRepeatDecode() {
+//            if (!(this._trade instanceof AutoreadTrade)) {
+//                this._trade = AutoreadTrade.enableAutoread(_trade);
+//            }
+//        }
 
         @Override
         public <T> Observable<T> decodeBodyAs(final ContentDecoder decoder, final Class<T> type) {

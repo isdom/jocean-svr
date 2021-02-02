@@ -105,8 +105,11 @@ public class TraceUtil {
 //        return bean -> setTag4bean(bean, span, prefix, logexception);
 //    }
 
-    public static void logoutmsg(final WriteCtrl writeCtrl,
-            final Span span, final String logprefix, final int maxLogSize) {
+    public static void logoutmsg(
+            final WriteCtrl writeCtrl,
+            final Span span,
+            final String logprefix,
+            final int maxLogSize) {
         final StringBuilder bodysb = new StringBuilder();
         final AtomicInteger loggedSize = new AtomicInteger(0);
         final BufsInputStream<ByteBuf> bufsin = new BufsInputStream<>(buf -> buf, buf -> {});
@@ -137,9 +140,12 @@ public class TraceUtil {
         });
     }
 
-    private static void logByteBuf(final ByteBuf buf,
-            final StringBuilder sb, final BufsInputStream<ByteBuf> bufsin,
-            final AtomicInteger loggedSize, final int maxLogSize) {
+    private static void logByteBuf(
+            final ByteBuf buf,
+            final StringBuilder sb,
+            final BufsInputStream<ByteBuf> bufsin,
+            final AtomicInteger loggedSize,
+            final int maxLogSize) {
         if (loggedSize.get() < maxLogSize && buf.readableBytes() > 0) {
             final int size = Math.min(maxLogSize - loggedSize.get(), buf.readableBytes());
             bufsin.appendBuf(buf.slice(0, size));

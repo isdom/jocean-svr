@@ -110,7 +110,7 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
 
                 if ( this._maxContentLengthForAutoread <= 0) {
                     LOG.debug("disable autoread full request, handle raw {}.", trade);
-                    handleTrade(fullreq, trade, tracer, span, ts);
+                    handleTrade(fullreq, trade, null, tracer, span, ts);
                 } else {
                     tryHandleTradeWithAutoread(fullreq, trade, tracer, span, ts);
                 }
@@ -135,32 +135,42 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
             // chunked
             // output log and using raw trade
             LOG.info("chunked request, handle raw {}.", trade);
-            handleTrade(fullreq, trade, tracer, span, ts);
+            handleTrade(fullreq, trade, null, tracer, span, ts);
         } else if (!HttpUtil.isContentLengthSet(fullreq.message())) {
             LOG.debug("content-length not set, handle raw {}.", trade);
             // not set content-length and not chunked
-            handleTrade(fullreq, trade, tracer, span, ts);
+            handleTrade(fullreq, trade, null, tracer, span, ts);
         } else {
             final long contentLength = HttpUtil.getContentLength(fullreq.message());
             if (contentLength <= this._maxContentLengthForAutoread) {
                 LOG.debug("content-length is {} <= {}, enable autoread full request for {}.",
                         contentLength, this._maxContentLengthForAutoread, trade);
+
+                final StringBuilder autoreadsb = new StringBuilder();
                 // auto read all request
-                handleTrade(fullreq, AutoreadTrade.enableAutoread(trade), tracer, span, ts);
+                handleTrade(fullreq, AutoreadTrade.enableAutoread(trade, 1024, autoreadsb), autoreadsb, tracer, span, ts);
             } else {
                 // content-length > max content-length
                 LOG.debug("content-length is {} > {}, handle raw {}.",
                         contentLength, this._maxContentLengthForAutoread, trade);
-                handleTrade(fullreq, trade, tracer, span, ts);
+                handleTrade(fullreq, trade, null, tracer, span, ts);
             }
         }
     }
 
-    private void handleTrade(final FullMessage<HttpRequest> fullreq, final HttpTrade trade, final Tracer tracer, final Span span, final TradeScheduler ts) {
+    private void handleTrade(final FullMessage<HttpRequest> fullreq,
+            final HttpTrade trade,
+            final StringBuilder autoreadsb,
+            final Tracer tracer,
+            final Span span,
+            final TradeScheduler ts) {
         final Subscription cancelTradetimeout = Observable.timer(_tradeTimeout, TimeUnit.SECONDS).subscribe(any -> {
             // TODO, terminate trade and record more info
             span.setTag(Tags.ERROR.getKey(), true);
             trade.visitlogs((timestamp, fields) -> span.log(timestamp, fields));
+            if (null != autoreadsb) {
+                span.log(Collections.singletonMap("autoread", autoreadsb.toString()));
+            }
             span.log(Collections.singletonMap("timeout", trade));
             span.finish();
         });
