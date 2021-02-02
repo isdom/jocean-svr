@@ -96,20 +96,6 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
                 TraceUtil.hook4serversend(trade.writeCtrl(), span);
                 TraceUtil.logoutmsg(trade.writeCtrl(), span, "http.resp", 1024);
 
-                final Subscription cancelTradetimeout = Observable.timer(_tradeTimeout, TimeUnit.SECONDS).subscribe(any -> {
-                    // TODO, terminate trade and record more info
-                    span.setTag(Tags.ERROR.getKey(), true);
-                    trade.visitlogs((timestamp, fields) -> span.log(timestamp, fields));
-                    span.log(Collections.singletonMap("timeout", trade));
-                    span.finish();
-                });
-
-                trade.doOnHalt(() -> {
-                    // cancel timeout for trade
-                    cancelTradetimeout.unsubscribe();
-                    span.finish();
-                });
-
                 TraceUtil.addTagNotNull(span, "http.host", fullreq.message().headers().get(HttpHeaderNames.HOST));
                 {
                     final String ips = fullreq.message().headers().get("x-forwarded-for");
@@ -171,6 +157,20 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
     }
 
     private void handleTrade(final FullMessage<HttpRequest> fullreq, final HttpTrade trade, final Tracer tracer, final Span span, final TradeScheduler ts) {
+        final Subscription cancelTradetimeout = Observable.timer(_tradeTimeout, TimeUnit.SECONDS).subscribe(any -> {
+            // TODO, terminate trade and record more info
+            span.setTag(Tags.ERROR.getKey(), true);
+            trade.visitlogs((timestamp, fields) -> span.log(timestamp, fields));
+            span.log(Collections.singletonMap("timeout", trade));
+            span.finish();
+        });
+
+        trade.doOnHalt(() -> {
+            // cancel timeout for trade
+            cancelTradetimeout.unsubscribe();
+            span.finish();
+        });
+
         try {
             final Observable<? extends Object> outbound = this._registrar.buildResource(fullreq.message(), trade, tracer, span, ts, this._restin);
             trade.outbound(outbound.doOnNext(DisposableWrapperUtil.disposeOnForAny(trade)).doOnError(error -> {
