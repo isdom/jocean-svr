@@ -20,6 +20,7 @@ import com.google.common.io.ByteStreams;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpRequest;
+import io.opentracing.Span;
 import rx.Completable;
 import rx.Observable;
 import rx.Subscription;
@@ -29,18 +30,18 @@ import rx.functions.Action2;
 
 class AutoreadTrade implements HttpTrade {
 
-    public static HttpTrade enableAutoread(final HttpTrade trade, final int maxLogSize, final StringBuilder logsb) {
+    public static HttpTrade enableAutoread(final HttpTrade trade, final int maxLogSize, final StringBuilder logsb, final Span span) {
         if (trade instanceof AutoreadTrade) {
             return trade;
         } else {
-            return new AutoreadTrade(trade, maxLogSize, logsb);
+            return new AutoreadTrade(trade, maxLogSize, logsb, span);
         }
     }
 
     final HttpTrade _trade;
     final Observable<FullMessage<HttpRequest>> _autoreadInbound;
 
-    private AutoreadTrade(final HttpTrade trade, final int maxLogSize, final StringBuilder logsb) {
+    private AutoreadTrade(final HttpTrade trade, final int maxLogSize, final StringBuilder logsb, final Span span) {
         final AtomicInteger loggedSize = new AtomicInteger(0);
         final BufsInputStream<ByteBuf> bufsin = new BufsInputStream<>(buf -> buf, buf -> {});
         bufsin.markEOS();
@@ -67,6 +68,7 @@ class AutoreadTrade implements HttpTrade {
                                     } catch (final Exception e) {}
                                 }
                             } finally {
+                                span.log(Collections.singletonMap("auto.rp", logsb.length()));
                                 bbs.step();
                             }
                         }, e -> trade.log(Collections.singletonMap("autoread.error", e)));

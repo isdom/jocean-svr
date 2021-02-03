@@ -148,7 +148,7 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
 
                 final StringBuilder autoreadsb = new StringBuilder();
                 // auto read all request
-                handleTrade(fullreq, AutoreadTrade.enableAutoread(trade, 1024, autoreadsb), autoreadsb, tracer, span, ts);
+                handleTrade(fullreq, AutoreadTrade.enableAutoread(trade, 1024, autoreadsb, span), autoreadsb, tracer, span, ts);
             } else {
                 // content-length > max content-length
                 LOG.debug("content-length is {} > {}, handle raw {}.",
