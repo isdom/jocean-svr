@@ -30,18 +30,18 @@ import rx.functions.Action2;
 
 class AutoreadTrade implements HttpTrade {
 
-    public static HttpTrade enableAutoread(final HttpTrade trade, final int maxLogSize, final StringBuilder logsb, final Span span) {
+    public static HttpTrade enableAutoread(final HttpTrade trade, final int maxLogSize, final StringBuilder logsb, final Span span, final AtomicInteger stepcnt) {
         if (trade instanceof AutoreadTrade) {
             return trade;
         } else {
-            return new AutoreadTrade(trade, maxLogSize, logsb, span);
+            return new AutoreadTrade(trade, maxLogSize, logsb, span, stepcnt);
         }
     }
 
     final HttpTrade _trade;
     final Observable<FullMessage<HttpRequest>> _autoreadInbound;
 
-    private AutoreadTrade(final HttpTrade trade, final int maxLogSize, final StringBuilder logsb, final Span span) {
+    private AutoreadTrade(final HttpTrade trade, final int maxLogSize, final StringBuilder logsb, final Span span, final AtomicInteger stepcnt) {
         final AtomicInteger loggedSize = new AtomicInteger(0);
         final BufsInputStream<ByteBuf> bufsin = new BufsInputStream<>(buf -> buf, buf -> {});
         bufsin.markEOS();
@@ -69,6 +69,7 @@ class AutoreadTrade implements HttpTrade {
                                 }
                             } finally {
                                 span.log(Collections.singletonMap("auto.rp", logsb.length()));
+                                stepcnt.incrementAndGet();
                                 bbs.step();
                             }
                         }, e -> trade.log(Collections.singletonMap("autoread.error", e)));

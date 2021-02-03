@@ -5,6 +5,7 @@ package org.jocean.svr;
 
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.inject.Inject;
 
@@ -110,7 +111,7 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
 
                 if ( this._maxContentLengthForAutoread <= 0) {
                     LOG.debug("disable autoread full request, handle raw {}.", trade);
-                    handleTrade(fullreq, trade, null, tracer, span, ts);
+                    handleTrade(fullreq, trade, null, null, tracer, span, ts);
                 } else {
                     tryHandleTradeWithAutoread(fullreq, trade, tracer, span, ts);
                 }
@@ -135,11 +136,11 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
             // chunked
             // output log and using raw trade
             LOG.info("chunked request, handle raw {}.", trade);
-            handleTrade(fullreq, trade, null, tracer, span, ts);
+            handleTrade(fullreq, trade, null, null, tracer, span, ts);
         } else if (!HttpUtil.isContentLengthSet(fullreq.message())) {
             LOG.debug("content-length not set, handle raw {}.", trade);
             // not set content-length and not chunked
-            handleTrade(fullreq, trade, null, tracer, span, ts);
+            handleTrade(fullreq, trade, null, null, tracer, span, ts);
         } else {
             final long contentLength = HttpUtil.getContentLength(fullreq.message());
             if (contentLength <= this._maxContentLengthForAutoread) {
@@ -147,13 +148,14 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
                         contentLength, this._maxContentLengthForAutoread, trade);
 
                 final StringBuilder autoreadsb = new StringBuilder();
+                final AtomicInteger stepcnt = new AtomicInteger(0);
                 // auto read all request
-                handleTrade(fullreq, AutoreadTrade.enableAutoread(trade, 1024, autoreadsb, span), autoreadsb, tracer, span, ts);
+                handleTrade(fullreq, AutoreadTrade.enableAutoread(trade, 1024, autoreadsb, span, stepcnt), autoreadsb, stepcnt, tracer, span, ts);
             } else {
                 // content-length > max content-length
                 LOG.debug("content-length is {} > {}, handle raw {}.",
                         contentLength, this._maxContentLengthForAutoread, trade);
-                handleTrade(fullreq, trade, null, tracer, span, ts);
+                handleTrade(fullreq, trade, null, null, tracer, span, ts);
             }
         }
     }
@@ -161,6 +163,7 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
     private void handleTrade(final FullMessage<HttpRequest> fullreq,
             final HttpTrade trade,
             final StringBuilder autoreadsb,
+            final AtomicInteger stepcnt,
             final Tracer tracer,
             final Span span,
             final TradeScheduler ts) {
@@ -171,6 +174,9 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
             if (null != autoreadsb) {
                 span.log(Collections.singletonMap("autoread", autoreadsb.toString()));
             }
+            if (null != stepcnt) {
+                span.setTag("stepcnt", stepcnt);
+            }
             span.log(Collections.singletonMap("timeout", trade));
             span.finish();
         });
@@ -178,6 +184,9 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
         trade.doOnHalt(() -> {
             // cancel timeout for trade
             cancelTradetimeout.unsubscribe();
+            if (null != stepcnt) {
+                span.setTag("stepcnt", stepcnt);
+            }
             span.finish();
         });
 
