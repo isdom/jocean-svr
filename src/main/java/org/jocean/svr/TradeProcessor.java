@@ -95,7 +95,7 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
                 span.log(Collections.singletonMap("http.req.hdrs", fullreq.message().headers().toString()));
 
                 TraceUtil.hook4serversend(trade.writeCtrl(), span);
-                TraceUtil.logoutmsg(trade.writeCtrl(), span, "http.resp", 1024);
+                TraceUtil.logoutmsg(trade.writeCtrl(), span, "http.resp", 160);
 
                 TraceUtil.addTagNotNull(span, "http.host", fullreq.message().headers().get(HttpHeaderNames.HOST));
                 {
@@ -150,7 +150,7 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
                 final StringBuilder autoreadsb = new StringBuilder();
                 final AtomicInteger stepcnt = new AtomicInteger(0);
                 // auto read all request
-                handleTrade(fullreq, AutoreadTrade.enableAutoread(trade, 1024, autoreadsb, span, stepcnt), autoreadsb, stepcnt, tracer, span, ts);
+                handleTrade(fullreq, AutoreadTrade.enableAutoread(trade, 160, autoreadsb, span, stepcnt), autoreadsb, stepcnt, tracer, span, ts);
             } else {
                 // content-length > max content-length
                 LOG.debug("content-length is {} > {}, handle raw {}.",

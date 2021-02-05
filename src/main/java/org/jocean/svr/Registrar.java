@@ -108,6 +108,7 @@ import org.jocean.svr.mbean.RestinIndicator;
 import org.jocean.svr.mbean.RestinIndicatorMXBean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -227,8 +228,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         public <T> Observable<T> decodeBodyAs(final ContentDecoder decoder, final Class<T> type) {
             return _trade.inbound().flatMap(MessageUtil.fullmsg2body()).compose(MessageUtil.body2bean(decoder, type, Actions.empty()))
 //                    .doOnNext(TraceUtil.setTag4bean(_span, "req.bd.", "record.reqbean.error"))
-                    .doOnNext(bean -> _span.log(Collections.singletonMap("http.req.bean", bean)))
-                    ;
+                    .doOnNext(bean -> {
+                        final HashMap<String, Object> target = new HashMap<String, Object>();
+                        BeanUtils.copyProperties(bean, target);
+                        _span.log(Collections.singletonMap("http.req.bean",target));
+                    });
         }
 
         @Override
