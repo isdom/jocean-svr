@@ -23,6 +23,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 
+import com.google.common.collect.ImmutableMap;
+
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpUtil;
@@ -177,7 +179,10 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
             if (null != stepcnt) {
                 span.setTag("stepcnt", stepcnt);
             }
-            span.log(Collections.singletonMap("timeout", trade));
+            span.log(ImmutableMap.<String, Object>builder()
+                    .put("content.size", trade.inboundContentSize())
+                    .put("timeout", trade)
+                    .build());
             span.finish();
         });
 

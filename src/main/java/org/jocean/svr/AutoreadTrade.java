@@ -194,4 +194,9 @@ class AutoreadTrade implements HttpTrade {
     public void visitlogs(final Action2<Long, Map<String, ?>> logvisitor) {
         _trade.visitlogs(logvisitor);
     }
+
+    @Override
+    public int inboundContentSize() {
+        return _trade.inboundContentSize();
+    }
 }
