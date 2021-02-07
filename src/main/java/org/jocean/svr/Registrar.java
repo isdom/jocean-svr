@@ -229,9 +229,13 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return _trade.inbound().flatMap(MessageUtil.fullmsg2body()).compose(MessageUtil.body2bean(decoder, type, Actions.empty()))
 //                    .doOnNext(TraceUtil.setTag4bean(_span, "req.bd.", "record.reqbean.error"))
                     .doOnNext(bean -> {
-                        final HashMap<String, Object> target = new HashMap<String, Object>();
-                        BeanUtils.copyProperties(bean, target);
-                        _span.log(Collections.singletonMap("http.req.bean",target));
+                        if (null != bean) {
+                            final HashMap<String, Object> target = new HashMap<String, Object>();
+                            BeanUtils.copyProperties(bean, target);
+                            _span.log(Collections.singletonMap("http.req.bean", target));
+                        } else {
+                            _span.log(Collections.singletonMap("http.req.bean", "(null)"));
+                        }
                     });
         }
 
