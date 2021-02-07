@@ -199,4 +199,9 @@ class AutoreadTrade implements HttpTrade {
     public int inboundContentSize() {
         return _trade.inboundContentSize();
     }
+
+    @Override
+    public String inboundTracing() {
+        return _trade.inboundTracing();
+    }
 }

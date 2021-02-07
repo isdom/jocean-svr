@@ -181,6 +181,7 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
             }
             span.log(ImmutableMap.<String, Object>builder()
                     .put("content.size", trade.inboundContentSize())
+                    .put("inbound", trade.inboundTracing())
                     .put("timeout", trade)
                     .build());
             span.finish();
@@ -199,8 +200,12 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
             final Observable<? extends Object> outbound = this._registrar.buildResource(fullreq.message(), trade, tracer, span, ts, this._restin);
             trade.outbound(outbound.doOnNext(DisposableWrapperUtil.disposeOnForAny(trade)).doOnError(error -> {
                 span.setTag(Tags.ERROR.getKey(), true);
-                span.log(Collections.singletonMap("error.detail", ExceptionUtils.exception2detail(error)));
-            }) );
+                span.log(ImmutableMap.<String, Object>builder()
+                        .put("content.size", trade.inboundContentSize())
+                        .put("inbound", trade.inboundTracing())
+                        .put("exception", ExceptionUtils.exception2detail(error))
+                        .build());
+            }));
         } catch (final Exception e) {
             LOG.warn("exception when buildResource, detail:{}",
                     ExceptionUtils.exception2detail(e));
