@@ -193,6 +193,10 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
             if (null != stepcnt) {
                 span.setTag("stepcnt", stepcnt);
             }
+            span.log(ImmutableMap.<String, Object>builder()
+                    .put("content.size", trade.inboundContentSize())
+                    .put("inbound", trade.inboundTracing())
+                    .build());
             span.finish();
         });
 
