@@ -5,12 +5,12 @@ package org.jocean.svr;
 
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.inject.Inject;
 
 import org.jocean.http.FullMessage;
 import org.jocean.http.server.HttpServerBuilder.HttpTrade;
+import org.jocean.http.server.internal.DefaultHttpTrade;
 import org.jocean.idiom.BeanFinder;
 import org.jocean.idiom.DisposableWrapperUtil;
 import org.jocean.idiom.ExceptionUtils;
@@ -64,13 +64,13 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
 
     @Override
     public void onNext(final HttpTrade trade) {
-        trade.inbound().first().flatMap(fullreq ->
+        trade.inbound().first().flatMap(fhr ->
             getTradeScheduler().flatMap(ts ->
                 getTracer().subscribeOn(ts.scheduler()).map(tracer -> {
                     Tracer.SpanBuilder spanBuilder;
                     try {
                         final SpanContext parentSpanCtx = tracer.extract(Format.Builtin.HTTP_HEADERS,
-                                TraceUtil.message2textmap(fullreq.message()));
+                                TraceUtil.message2textmap(fhr.message()));
                         if (parentSpanCtx == null) {
                             spanBuilder = tracer.buildSpan("(unknown)");
                         } else {
@@ -79,9 +79,9 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
                     } catch (final IllegalArgumentException e) {
                         spanBuilder = tracer.buildSpan("(unknown)");
                     }
-                    final HttpRequest request = fullreq.message();
+                    final HttpRequest request = fhr.message();
 
-                    return Tuple.of(ts, fullreq, tracer, spanBuilder.withTag(Tags.COMPONENT.getKey(), "jocean-http")
+                    return Tuple.of(ts, fhr, tracer, spanBuilder.withTag(Tags.COMPONENT.getKey(), "jocean-http")
                         .withTag(Tags.SPAN_KIND.getKey(), Tags.SPAN_KIND_SERVER)
                         .withTag(Tags.HTTP_URL.getKey(), request.uri())
                         .withTag(Tags.HTTP_METHOD.getKey(), request.method().name())
@@ -111,12 +111,13 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
                     TraceUtil.addTagNotNull(span, tag, fullreq.message().headers().get(tag));
                 }
 
-                if ( this._maxContentLengthForAutoread <= 0) {
-                    LOG.debug("disable autoread full request, handle raw {}.", trade);
-                    handleTrade(fullreq, trade, null, null, tracer, span, ts);
-                } else {
-                    tryHandleTradeWithAutoread(fullreq, trade, tracer, span, ts);
-                }
+                handleTrade(fullreq, trade, tracer, span, ts);
+//                if ( this._maxContentLengthForAutoread <= 0) {
+//                    LOG.debug("disable autoread full request, handle raw {}.", trade);
+//                    handleTrade(fullreq, trade, null, null, tracer, span, ts);
+//                } else {
+//                    tryHandleTradeWithAutoread(fullreq, trade, tracer, span, ts);
+//                }
             }, e -> LOG.warn("SOURCE_CANCELED\nfor cause:[{}]", ExceptionUtils.exception2detail(e)));
     }
 
@@ -129,6 +130,41 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
                 : Observable.just(noopTracer);
     }
 
+    private boolean isWaitInboundCompleted(final FullMessage<HttpRequest> fhr) {
+        if (HttpUtil.isTransferEncodingChunked(fhr.message())) {
+            LOG.info("chunked request, handle raw {}.", fhr);
+            return false;
+        }
+        if (!HttpUtil.isContentLengthSet(fhr.message())) {
+            LOG.info("content-length not set, handle raw {}.", fhr);
+            return false;
+        }
+        final long contentLength = HttpUtil.getContentLength(fhr.message());
+        if (contentLength <= this._maxContentLengthForAutoread) {
+            LOG.info("content-length is {} <= {}, wait inbound completed for {}.",
+                    contentLength, this._maxContentLengthForAutoread, fhr);
+            return true;
+        } else {
+            LOG.info("content-length is {} > {}, handle raw {}.",
+                    contentLength, this._maxContentLengthForAutoread, fhr);
+            return false;
+        }
+    }
+
+    private Observable<HttpTrade> waitInboundCompletedIfNeed(final HttpTrade trade, final FullMessage<HttpRequest> fhr, final TradeScheduler ts) {
+        if ( this._maxContentLengthForAutoread <= 0) {
+            LOG.info("disable autoread full request, handle raw {}.", trade);
+            return Observable.just(trade);
+        } else if (!isWaitInboundCompleted(fhr)) {
+            return Observable.just(trade);
+        } else if (!(trade instanceof DefaultHttpTrade)) {
+            return Observable.just(trade);
+        } else {
+            return ((DefaultHttpTrade)trade).waitInboundCompleted().cast(HttpTrade.class).observeOn(ts.scheduler());
+        }
+    }
+
+    /*
     private void tryHandleTradeWithAutoread(final FullMessage<HttpRequest> fullreq,
             final HttpTrade trade,
             final Tracer tracer,
@@ -161,11 +197,12 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
             }
         }
     }
+    */
 
     private void handleTrade(final FullMessage<HttpRequest> fullreq,
             final HttpTrade trade,
-            final StringBuilder autoreadsb,
-            final AtomicInteger stepcnt,
+//            final StringBuilder autoreadsb,
+//            final AtomicInteger stepcnt,
             final Tracer tracer,
             final Span span,
             final TradeScheduler ts) {
@@ -173,12 +210,12 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
             // TODO, terminate trade and record more info
             span.setTag(Tags.ERROR.getKey(), true);
             trade.visitlogs((timestamp, fields) -> span.log(timestamp, fields));
-            if (null != autoreadsb) {
-                span.log(Collections.singletonMap("autoread", autoreadsb.toString()));
-            }
-            if (null != stepcnt) {
-                span.setTag("stepcnt", stepcnt);
-            }
+//            if (null != autoreadsb) {
+//                span.log(Collections.singletonMap("autoread", autoreadsb.toString()));
+//            }
+//            if (null != stepcnt) {
+//                span.setTag("stepcnt", stepcnt);
+//            }
             span.log(ImmutableMap.<String, Object>builder()
                     .put("content.size", trade.inboundContentSize())
                     .put("inbound", trade.inboundTracing())
@@ -190,9 +227,9 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
         trade.doOnHalt(() -> {
             // cancel timeout for trade
             cancelTradetimeout.unsubscribe();
-            if (null != stepcnt) {
-                span.setTag("stepcnt", stepcnt);
-            }
+//            if (null != stepcnt) {
+//                span.setTag("stepcnt", stepcnt);
+//            }
             span.log(ImmutableMap.<String, Object>builder()
                     .put("content.size", trade.inboundContentSize())
                     .put("inbound", trade.inboundTracing())
@@ -201,7 +238,14 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
         });
 
         try {
-            final Observable<? extends Object> outbound = this._registrar.buildResource(fullreq.message(), trade, tracer, span, ts, this._restin);
+            final Observable<? extends Object> outbound = waitInboundCompletedIfNeed(trade, fullreq, ts).flatMap(wicTrade ->
+                {
+                    try {
+                        return this._registrar.buildResource(fullreq.message(), wicTrade, tracer, span, ts, this._restin);
+                    } catch (final Exception e) {
+                        return Observable.error(e);
+                    }
+                });
             trade.outbound(outbound.doOnNext(DisposableWrapperUtil.disposeOnForAny(trade)).doOnError(error -> {
                 span.setTag(Tags.ERROR.getKey(), true);
                 span.log(ImmutableMap.<String, Object>builder()
