@@ -112,12 +112,6 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
                 }
 
                 handleTrade(fullreq, trade, tracer, span, ts);
-//                if ( this._maxContentLengthForAutoread <= 0) {
-//                    LOG.debug("disable autoread full request, handle raw {}.", trade);
-//                    handleTrade(fullreq, trade, null, null, tracer, span, ts);
-//                } else {
-//                    tryHandleTradeWithAutoread(fullreq, trade, tracer, span, ts);
-//                }
             }, e -> LOG.warn("SOURCE_CANCELED\nfor cause:[{}]", ExceptionUtils.exception2detail(e)));
     }
 
@@ -164,45 +158,8 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
         }
     }
 
-    /*
-    private void tryHandleTradeWithAutoread(final FullMessage<HttpRequest> fullreq,
-            final HttpTrade trade,
-            final Tracer tracer,
-            final Span span,
-            final TradeScheduler ts) {
-        if (HttpUtil.isTransferEncodingChunked(fullreq.message())) {
-            // chunked
-            // output log and using raw trade
-            LOG.info("chunked request, handle raw {}.", trade);
-            handleTrade(fullreq, trade, null, null, tracer, span, ts);
-        } else if (!HttpUtil.isContentLengthSet(fullreq.message())) {
-            LOG.debug("content-length not set, handle raw {}.", trade);
-            // not set content-length and not chunked
-            handleTrade(fullreq, trade, null, null, tracer, span, ts);
-        } else {
-            final long contentLength = HttpUtil.getContentLength(fullreq.message());
-            if (contentLength <= this._maxContentLengthForAutoread) {
-                LOG.debug("content-length is {} <= {}, enable autoread full request for {}.",
-                        contentLength, this._maxContentLengthForAutoread, trade);
-
-                final StringBuilder autoreadsb = new StringBuilder();
-                final AtomicInteger stepcnt = new AtomicInteger(0);
-                // auto read all request
-                handleTrade(fullreq, AutoreadTrade.enableAutoread(trade, 160, autoreadsb, span, stepcnt), autoreadsb, stepcnt, tracer, span, ts);
-            } else {
-                // content-length > max content-length
-                LOG.debug("content-length is {} > {}, handle raw {}.",
-                        contentLength, this._maxContentLengthForAutoread, trade);
-                handleTrade(fullreq, trade, null, null, tracer, span, ts);
-            }
-        }
-    }
-    */
-
     private void handleTrade(final FullMessage<HttpRequest> fullreq,
             final HttpTrade trade,
-//            final StringBuilder autoreadsb,
-//            final AtomicInteger stepcnt,
             final Tracer tracer,
             final Span span,
             final TradeScheduler ts) {
@@ -210,12 +167,6 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
             // TODO, terminate trade and record more info
             span.setTag(Tags.ERROR.getKey(), true);
             trade.visitlogs((timestamp, fields) -> span.log(timestamp, fields));
-//            if (null != autoreadsb) {
-//                span.log(Collections.singletonMap("autoread", autoreadsb.toString()));
-//            }
-//            if (null != stepcnt) {
-//                span.setTag("stepcnt", stepcnt);
-//            }
             span.log(ImmutableMap.<String, Object>builder()
                     .put("content.size", trade.inboundContentSize())
                     .put("inbound", trade.inboundTracing())
@@ -227,9 +178,6 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
         trade.doOnHalt(() -> {
             // cancel timeout for trade
             cancelTradetimeout.unsubscribe();
-//            if (null != stepcnt) {
-//                span.setTag("stepcnt", stepcnt);
-//            }
             span.log(ImmutableMap.<String, Object>builder()
                     .put("content.size", trade.inboundContentSize())
                     .put("inbound", trade.inboundTracing())
