@@ -124,7 +124,7 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
                 : Observable.just(noopTracer);
     }
 
-    private boolean isWaitInboundCompleted(final FullMessage<HttpRequest> fhr) {
+    private boolean canCacheFullInbound(final FullMessage<HttpRequest> fhr) {
         if (HttpUtil.isTransferEncodingChunked(fhr.message())) {
             LOG.info("chunked request, handle raw {}.", fhr);
             return false;
@@ -134,27 +134,27 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
             return false;
         }
         final long contentLength = HttpUtil.getContentLength(fhr.message());
-        if (contentLength <= this._maxContentLengthForCacheInbound) {
+        if (contentLength <= this._cacheFullInboundContentLengthLimit) {
             LOG.info("content-length is {} <= {}, wait inbound completed for {}.",
-                    contentLength, this._maxContentLengthForCacheInbound, fhr);
+                    contentLength, this._cacheFullInboundContentLengthLimit, fhr);
             return true;
         } else {
             LOG.info("content-length is {} > {}, handle raw {}.",
-                    contentLength, this._maxContentLengthForCacheInbound, fhr);
+                    contentLength, this._cacheFullInboundContentLengthLimit, fhr);
             return false;
         }
     }
 
-    private Observable<HttpTrade> waitInboundCompletedIfNeed(final HttpTrade trade, final FullMessage<HttpRequest> fhr, final TradeScheduler ts) {
-        if ( this._maxContentLengthForCacheInbound <= 0) {
+    private Observable<HttpTrade> tryCacheFullInbound(final HttpTrade trade, final FullMessage<HttpRequest> fhr, final TradeScheduler ts) {
+        if ( this._cacheFullInboundContentLengthLimit <= 0) {
             LOG.info("disable autoread full request, handle raw {}.", trade);
             return Observable.just(trade);
-        } else if (!isWaitInboundCompleted(fhr)) {
+        } else if (!canCacheFullInbound(fhr)) {
             return Observable.just(trade);
         } else if (!(trade instanceof DefaultHttpTrade)) {
             return Observable.just(trade);
         } else {
-            return ((DefaultHttpTrade)trade).waitInboundCompleted().cast(HttpTrade.class).observeOn(ts.scheduler());
+            return ((DefaultHttpTrade)trade).cacheFullInbound().cast(HttpTrade.class).observeOn(ts.scheduler());
         }
     }
 
@@ -186,7 +186,7 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
         });
 
         try {
-            final Observable<? extends Object> outbound = waitInboundCompletedIfNeed(trade, fullreq, ts).flatMap(wicTrade ->
+            final Observable<? extends Object> outbound = tryCacheFullInbound(trade, fullreq, ts).flatMap(wicTrade ->
                 {
                     try {
                         return this._registrar.buildResource(fullreq.message(), wicTrade, tracer, span, ts, this._restin);
@@ -235,7 +235,7 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
     private final Registrar _registrar;
 
     @Value("${cacheInbound.maxContentLength}")
-    int _maxContentLengthForCacheInbound = 8192;
+    int _cacheFullInboundContentLengthLimit = 8192;
 
     private final static TradeScheduler _DEFAULT_TS = new TradeScheduler() {
         @Override
