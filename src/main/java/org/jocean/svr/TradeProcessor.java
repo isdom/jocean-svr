@@ -140,19 +140,19 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
             return false;
         }
         final long contentLength = HttpUtil.getContentLength(fhr.message());
-        if (contentLength <= this._maxContentLengthForAutoread) {
+        if (contentLength <= this._maxContentLengthForCacheInbound) {
             LOG.info("content-length is {} <= {}, wait inbound completed for {}.",
-                    contentLength, this._maxContentLengthForAutoread, fhr);
+                    contentLength, this._maxContentLengthForCacheInbound, fhr);
             return true;
         } else {
             LOG.info("content-length is {} > {}, handle raw {}.",
-                    contentLength, this._maxContentLengthForAutoread, fhr);
+                    contentLength, this._maxContentLengthForCacheInbound, fhr);
             return false;
         }
     }
 
     private Observable<HttpTrade> waitInboundCompletedIfNeed(final HttpTrade trade, final FullMessage<HttpRequest> fhr, final TradeScheduler ts) {
-        if ( this._maxContentLengthForAutoread <= 0) {
+        if ( this._maxContentLengthForCacheInbound <= 0) {
             LOG.info("disable autoread full request, handle raw {}.", trade);
             return Observable.just(trade);
         } else if (!isWaitInboundCompleted(fhr)) {
@@ -286,8 +286,8 @@ public class TradeProcessor extends Subscriber<HttpTrade> implements MBeanRegist
 
     private final Registrar _registrar;
 
-    @Value("${autoread.maxContentLength}")
-    int _maxContentLengthForAutoread = 8192;
+    @Value("${cacheInbound.maxContentLength}")
+    int _maxContentLengthForCacheInbound = 8192;
 
     private final static TradeScheduler _DEFAULT_TS = new TradeScheduler() {
         @Override
