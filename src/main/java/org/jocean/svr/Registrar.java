@@ -1443,6 +1443,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private InvocationHandler proxyHandler(final String serviceName, final Class<?> serviceType, final Func0<Object> builder) {
+        LOG.info("create JService proxy object for type:{}.", serviceType);
         final AtomicReference<Object> implRef = new AtomicReference<Object>();
         return (proxy, method, args) -> {
                 Object impl = implRef.get();
