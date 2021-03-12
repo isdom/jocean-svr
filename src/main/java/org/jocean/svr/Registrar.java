@@ -37,6 +37,7 @@ import javax.inject.Inject;
 import javax.inject.Named;
 import javax.ws.rs.BeanParam;
 import javax.ws.rs.Consumes;
+import javax.ws.rs.CookieParam;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.GET;
 import javax.ws.rs.HEAD;
@@ -145,6 +146,8 @@ import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.codec.http.QueryStringDecoder;
+import io.netty.handler.codec.http.cookie.Cookie;
+import io.netty.handler.codec.http.cookie.ServerCookieDecoder;
 import io.opentracing.Span;
 import io.opentracing.Tracer;
 import io.opentracing.tag.Tags;
@@ -1779,6 +1782,21 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return Beans.fromString(request.headers().get(name), argType);
     }
 
+    private Object buildCookieParam(final HttpRequest request, final String name, final Class<?> argType) {
+        final String cookieStr = request.headers().get("Cookie");
+
+        if (cookieStr != null) {
+            // 通过 ServerCookieDecoder 将cookie字符串解码为 Cookie 对象
+            final Set<Cookie> cookies = ServerCookieDecoder.STRICT.decode(cookieStr);
+            for (final Cookie cookie : cookies) {
+                if (cookie.name().equals(name)) {
+                    return Beans.fromString(cookie.value(), argType);
+                }
+            }
+        }
+        return null;
+    }
+
     private Object buildQueryParam(final HttpRequest request, final String name, final Class<?> argType) {
         final QueryStringDecoder decoder = new QueryStringDecoder(request.uri());
 
@@ -1856,6 +1874,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final HeaderParam headerParam = getAnnotation(argAnnotations, HeaderParam.class);
             if (null != headerParam) {
                 return buildHeaderParam(request, headerParam.value(), (Class<?>)argType);
+            }
+            final CookieParam cookieParam = getAnnotation(argAnnotations, CookieParam.class);
+            if (null != cookieParam) {
+                return buildCookieParam(request, cookieParam.value(), (Class<?>)argType);
             }
             final QueryParam queryParam = getAnnotation(argAnnotations, QueryParam.class);
             if (null != queryParam) {
