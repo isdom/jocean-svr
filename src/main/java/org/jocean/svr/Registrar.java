@@ -147,7 +147,9 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.cookie.Cookie;
+import io.netty.handler.codec.http.cookie.DefaultCookie;
 import io.netty.handler.codec.http.cookie.ServerCookieDecoder;
+import io.netty.handler.codec.http.cookie.ServerCookieEncoder;
 import io.opentracing.Span;
 import io.opentracing.Tracer;
 import io.opentracing.tag.Tags;
@@ -1366,6 +1368,23 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             field, ExceptionUtils.exception2detail(e));
                 }
             }
+
+            final Field[] cookieFields = ReflectUtils.getAnnotationFieldsOf(obj.getClass(), CookieParam.class);
+                for ( final Field field : cookieFields ) {
+                    try {
+                        final Object value = field.get(obj);
+                        if ( null != value ) {
+                            final String cookiename = field.getAnnotation(CookieParam.class).value();
+                            final Cookie cookie = new DefaultCookie(cookiename, value.toString());
+                            cookie.setPath("/");
+
+                            resp.headers().set(HttpHeaderNames.SET_COOKIE, ServerCookieEncoder.STRICT.encode(cookie));
+                        }
+                    } catch (final Exception e) {
+                        LOG.warn("exception when get value from cookieparam field:[{}], detail:{}",
+                                field, ExceptionUtils.exception2detail(e));
+                    }
+                }
         }
     }
 
