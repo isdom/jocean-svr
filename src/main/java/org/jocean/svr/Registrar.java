@@ -233,6 +233,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             LOG.info("http.req.bean: {}", target);
                             _span.log(Collections.singletonMap("http.req.bean", target));
                         } else {
+                            LOG.info("http.req.bean: (null)");
                             _span.log(Collections.singletonMap("http.req.bean", "(null)"));
                         }
                     });
