@@ -363,8 +363,21 @@ class InteractBuilderImpl implements InteractBuilder {
                                             entryRef.get().exit();
                                         }
                                         */
-                                        recordDuration(operationRef.get(), System.currentTimeMillis() - startRef.get().longValue());
-                                        recordTraffic(operationRef.get(), initiator.traffic().inboundBytes(), initiator.traffic().outboundBytes());
+                                        boolean recordtime = true;
+                                        if (operationRef.get() == null) {
+                                            LOG.warn("InteractBuilderImpl's interaction terminated with null operation.");
+                                            recordtime = false;
+                                        }
+                                        if (startRef.get() == null) {
+                                            LOG.warn("InteractBuilderImpl's interaction terminated without start timestamp.");
+                                            recordtime = false;
+                                        }
+
+                                        if (recordtime) {
+                                            recordDuration(operationRef.get(), System.currentTimeMillis() - startRef.get().longValue());
+                                            recordTraffic(operationRef.get(), initiator.traffic().inboundBytes(), initiator.traffic().outboundBytes());
+                                        }
+
                                         LOG.info("call span {} finish by doOnTerminate", span);
                                     }
                                 })
