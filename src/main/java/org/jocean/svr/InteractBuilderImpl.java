@@ -343,8 +343,8 @@ class InteractBuilderImpl implements InteractBuilder {
                             checkAndFixContentLength(initiator);
 
 
-                            final AtomicReference<String> operationRef = new AtomicReference<>();
-                            final AtomicReference<Long> startRef = new AtomicReference<Long>();
+                            final AtomicReference<String> operationRef = new AtomicReference<>("(unknown)");
+                            final AtomicReference<Long> startRef = new AtomicReference<Long>(System.currentTimeMillis());
 
                             TraceUtil.logoutmsg(initiator.writeCtrl(), span, "http.req", 1024);
                             traceAndInjectRequest(initiator.writeCtrl(), tracer, span, operationRef, startRef);
@@ -363,20 +363,8 @@ class InteractBuilderImpl implements InteractBuilder {
                                             entryRef.get().exit();
                                         }
                                         */
-                                        boolean recordtime = true;
-                                        if (operationRef.get() == null) {
-                                            LOG.warn("InteractBuilderImpl's interaction terminated with null operation.");
-                                            recordtime = false;
-                                        }
-                                        if (startRef.get() == null) {
-                                            LOG.warn("InteractBuilderImpl's interaction terminated without start timestamp.");
-                                            recordtime = false;
-                                        }
-
-                                        if (recordtime) {
-                                            recordDuration(operationRef.get(), System.currentTimeMillis() - startRef.get().longValue());
-                                            recordTraffic(operationRef.get(), initiator.traffic().inboundBytes(), initiator.traffic().outboundBytes());
-                                        }
+                                        recordDuration(operationRef.get(), System.currentTimeMillis() - startRef.get().longValue());
+                                        recordTraffic(operationRef.get(), initiator.traffic().inboundBytes(), initiator.traffic().outboundBytes());
 
                                         LOG.info("call span {} finish by doOnTerminate", span);
                                     }
