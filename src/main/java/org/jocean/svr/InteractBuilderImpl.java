@@ -34,13 +34,6 @@ import org.jocean.svr.tracing.TraceUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/*
-import com.alibaba.csp.sentinel.AsyncEntry;
-import com.alibaba.csp.sentinel.SphU;
-import com.alibaba.csp.sentinel.context.Context;
-import com.alibaba.csp.sentinel.context.ContextUtil;
-*/
-
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.EmptyHttpHeaders;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -261,9 +254,8 @@ class InteractBuilderImpl implements InteractBuilder {
                 return this;
             }
 
-            private Observable<FullMessage<HttpResponse>> defineInteraction(final HttpInitiator initiator
-                    /* , final AtomicReference<AsyncEntry> entryRef */ ) {
-                return initiator.defineInteraction(_obsreqRef.get()/*.flatMap(hookSentinel(initiator, entryRef))*/)
+            private Observable<FullMessage<HttpResponse>> defineInteraction(final HttpInitiator initiator) {
+                return initiator.defineInteraction(_obsreqRef.get())
                         .doOnNext(TraceUtil.hookhttpresp(span))
                         .compose(TraceUtil.logbody(span, "http.resp", 1024));
             }
@@ -288,20 +280,14 @@ class InteractBuilderImpl implements InteractBuilder {
 
                             initiator.writeCtrl().sended().subscribe(sended -> DisposableWrapperUtil.dispose(sended));
 
-                            //final AtomicReference<AsyncEntry> entryRef = new AtomicReference<>();
                             final AtomicBoolean isSpanFinished = new AtomicBoolean(false);
-                            return defineInteraction(initiator /*, entryRef*/).flatMap(MessageUtil.fullmsg2body())
+                            return defineInteraction(initiator ).flatMap(MessageUtil.fullmsg2body())
                                         .compose(MessageUtil.body2bean(decoder, type))
 //                                        .doOnNext(TraceUtil.setTag4bean(span, "resp.", "record.respbean.error"))
                                         .doOnNext(bean -> span.log(Collections.singletonMap("http.resp.bean", bean)))
                                         .doOnTerminate(() -> {
                                             if (isSpanFinished.compareAndSet(false, true)) {
                                                 span.finish();
-                                                /*
-                                                if (null != entryRef.get()) {
-                                                    entryRef.get().exit();
-                                                }
-                                                */
                                                 recordDuration(operationRef.get(), System.currentTimeMillis() - startRef.get().longValue());
                                                 recordTraffic(operationRef.get(), initiator.traffic().inboundBytes(), initiator.traffic().outboundBytes());
                                                 LOG.debug("call span {} finish by doOnTerminate", span);
@@ -310,11 +296,6 @@ class InteractBuilderImpl implements InteractBuilder {
                                         .doOnUnsubscribe(() -> {
                                             if (isSpanFinished.compareAndSet(false, true)) {
                                                 span.finish();
-                                                /*
-                                                if (null != entryRef.get()) {
-                                                    entryRef.get().exit();
-                                                }
-                                                */
                                                 recordDuration(operationRef.get(), System.currentTimeMillis() - startRef.get().longValue());
                                                 recordTraffic(operationRef.get(), initiator.traffic().inboundBytes(), initiator.traffic().outboundBytes());
                                                 LOG.debug("call span {} finish by doOnUnsubscribe", span);
@@ -350,19 +331,13 @@ class InteractBuilderImpl implements InteractBuilder {
                             traceAndInjectRequest(initiator.writeCtrl(), tracer, span, operationRef, startRef);
                             initiator.writeCtrl().sended().subscribe(sended -> DisposableWrapperUtil.dispose(sended));
 
-                            // final AtomicReference<AsyncEntry> entryRef = new AtomicReference<>();
                             final AtomicBoolean isSpanFinished = new AtomicBoolean(false);
-                            return defineInteraction(initiator/*, entryRef*/).doOnTerminate(() -> {
+                            return defineInteraction(initiator).doOnTerminate(() -> {
                                     if (isSpanFinished.compareAndSet(false, true)) {
                                         if (null != _nameRef.get()) {
                                             operationRef.set(_nameRef.get());
                                         }
                                         span.finish();
-                                        /*
-                                        if (null != entryRef.get()) {
-                                            entryRef.get().exit();
-                                        }
-                                        */
                                         recordDuration(operationRef.get(), System.currentTimeMillis() - startRef.get().longValue());
                                         recordTraffic(operationRef.get(), initiator.traffic().inboundBytes(), initiator.traffic().outboundBytes());
 
@@ -375,11 +350,6 @@ class InteractBuilderImpl implements InteractBuilder {
                                             operationRef.set(_nameRef.get());
                                         }
                                         span.finish();
-                                        /*
-                                        if (null != entryRef.get()) {
-                                            entryRef.get().exit();
-                                        }
-                                        */
                                         recordDuration(operationRef.get(), System.currentTimeMillis() - startRef.get().longValue());
                                         recordTraffic(operationRef.get(), initiator.traffic().inboundBytes(), initiator.traffic().outboundBytes());
                                         LOG.info("call span {} finish by doOnUnsubscribe", span);
@@ -476,38 +446,6 @@ class InteractBuilderImpl implements InteractBuilder {
             }
         });
     }
-
-    /*
-    private Func1<? super Object, ? extends Observable<? extends Object>> hookSentinel(final HttpInitiator initiator
-            , final AtomicReference<AsyncEntry> entryRef) {
-        return obj -> {
-                    if (obj instanceof HttpRequest) {
-                        final QueryStringDecoder decoder = new QueryStringDecoder(((HttpRequest)obj).uri());
-
-                        final AtomicReference<Exception> exceptionRef = new AtomicReference<>(null);
-
-                        final Runnable startAsyncEntry = () -> {
-                            try {
-                                // First we call an asynchronous resource.
-                                entryRef.set(SphU.asyncEntry(decoder.path()));
-                            } catch (final Exception e) {
-                                exceptionRef.set(e);
-                            }
-                        };
-//                        if (null != _asyncContext) {
-                            ContextUtil.runOnContext(_asyncContext, startAsyncEntry);
-//                        }
-//                        else {
-//                            startAsyncEntry.run();
-//                        }
-                        if (null != exceptionRef.get()) {
-                            return Observable.error(exceptionRef.get());
-                        }
-                    }
-                    return Observable.just(obj);
-                };
-    }
-    */
 
     public static Transformer<Object, Object> addBody(final Observable<? extends MessageBody> obsbody) {
         return msg -> {
