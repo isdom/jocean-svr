@@ -78,7 +78,6 @@ class InteractBuilderImpl implements InteractBuilder {
             final Span span,
             final Observable<Tracer> getTracer,
             final Scheduler scheduler,
-            // final Context asyncContext,
             final DurationRecorder durationRecorder,
             final TrafficRecorder tafficRecorder) {
         this._haltable = haltable;
@@ -87,7 +86,6 @@ class InteractBuilderImpl implements InteractBuilder {
         this._scheduler = scheduler;
         this._durationRecorder = durationRecorder;
         this._tafficRecorder = tafficRecorder;
-        // this._asyncContext = asyncContext;
     }
 
     @Override
@@ -483,7 +481,6 @@ class InteractBuilderImpl implements InteractBuilder {
     private final Span _span;
     private final Observable<Tracer> _getTracer;
     private final Scheduler _scheduler;
-    // private final Context _asyncContext;
     private final DurationRecorder _durationRecorder;
     private final TrafficRecorder _tafficRecorder;
 }
