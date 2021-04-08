@@ -1394,19 +1394,14 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         final HttpResponse response = new DefaultHttpResponse(request.protocolVersion(), HttpResponseStatus.OK);
 
         response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain");
-
         response.headers().set(HttpHeaderNames.CACHE_CONTROL, HttpHeaderValues.NO_STORE);
         response.headers().set(HttpHeaderNames.PRAGMA, HttpHeaderValues.NO_CACHE);
 
         HttpUtil.setTransferEncodingChunked(response, true);
 
-
         return Observable.<Object>just(response)
-                .concatWith(strings.map(s -> {
-                    LOG.debug("element: {}", s);
-                    return RxNettys.wrap4release(Unpooled.wrappedBuffer(s.getBytes()));
-                }))
-                .concatWith(Observable.just(LastHttpContent.EMPTY_LAST_CONTENT));
+            .concatWith(strings.map(s -> RxNettys.wrap4release(Unpooled.wrappedBuffer(s.getBytes()))))
+            .concatWith(Observable.just(LastHttpContent.EMPTY_LAST_CONTENT));
     }
 
     private static Object getValueByExpression(final Object owner, final String expression) {
