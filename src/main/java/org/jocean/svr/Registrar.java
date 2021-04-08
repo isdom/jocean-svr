@@ -1402,7 +1402,10 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
 
         return Observable.<Object>just(response)
-                .concatWith(strings.map(s -> RxNettys.wrap4release(Unpooled.wrappedBuffer(s.getBytes()))))
+                .concatWith(strings.map(s -> {
+                    LOG.debug("element: {}", s);
+                    return RxNettys.wrap4release(Unpooled.wrappedBuffer(s.getBytes()));
+                }))
                 .concatWith(Observable.just(LastHttpContent.EMPTY_LAST_CONTENT));
     }
 
