@@ -1192,11 +1192,18 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     getEncoder(((WithContent)withBody).contentType(), mimeTypes));
         } else if (withBody instanceof WithStepable) {
             return fromStepable((WithStepable<?>)withBody, tctx);
+        } else if (withBody instanceof WithSubscriber) {
+            return fromSubscriber((WithSubscriber<?>)withBody, tctx);
         } else if (withBody instanceof WithSlice) {
             return fromSlice((WithSlice)withBody, tctx);
         } else {
             return Observable.error(new RuntimeException("unknown WithBody type:" + withBody.getClass()));
         }
+    }
+
+    private Observable<? extends MessageBody> fromSubscriber(final WithSubscriber<?> withBody, final DefaultTradeContext tctx) {
+        // TODO Auto-generated method stub
+        return null;
     }
 
     private Observable<MessageBody> fromContent(
