@@ -157,6 +157,7 @@ import rx.Completable;
 import rx.Observable;
 import rx.Observable.Transformer;
 import rx.Scheduler;
+import rx.functions.Action2;
 import rx.functions.Actions;
 import rx.functions.Func0;
 import rx.functions.Func1;
@@ -1201,9 +1202,30 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
-    private Observable<? extends MessageBody> fromSubscriber(final WithSubscriber<?> withBody, final DefaultTradeContext tctx) {
+    private Observable<? extends MessageBody> fromSubscriber(@SuppressWarnings("rawtypes") final WithSubscriber withSubscriber, final DefaultTradeContext tctx) {
         // TODO Auto-generated method stub
-        return null;
+        return fromStepable(toStepable(withSubscriber), tctx);
+    }
+
+    @SuppressWarnings("rawtypes")
+    private WithStepable toStepable(final WithSubscriber withSubscriber) {
+        return new WithStepable() {
+
+            @Override
+            public String contentType() {
+                return withSubscriber.contentType();
+            }
+
+            @Override
+            public Observable stepables() {
+//                return withSubscriber.onSubscriber(Subscriber);
+                return null;
+            }
+
+            @Override
+            public Action2 output() {
+                return withSubscriber.output();
+            }};
     }
 
     private Observable<MessageBody> fromContent(
