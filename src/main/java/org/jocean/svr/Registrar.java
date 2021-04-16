@@ -5,6 +5,7 @@ package org.jocean.svr;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
+import java.io.OutputStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
@@ -157,6 +158,7 @@ import rx.Completable;
 import rx.Observable;
 import rx.Observable.Transformer;
 import rx.Scheduler;
+import rx.Subscriber;
 import rx.functions.Action2;
 import rx.functions.Actions;
 import rx.functions.Func0;
@@ -1194,7 +1196,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         } else if (withBody instanceof WithStepable) {
             return fromStepable((WithStepable<?>)withBody, tctx);
         } else if (withBody instanceof WithSubscriber) {
-            return fromSubscriber((WithSubscriber<?>)withBody, tctx);
+            return fromSubscriber((WithSubscriber<Object>)withBody, tctx);
         } else if (withBody instanceof WithSlice) {
             return fromSlice((WithSlice)withBody, tctx);
         } else {
@@ -1202,30 +1204,55 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
-    private Observable<? extends MessageBody> fromSubscriber(@SuppressWarnings("rawtypes") final WithSubscriber withSubscriber, final DefaultTradeContext tctx) {
-        // TODO Auto-generated method stub
+    private Observable<? extends MessageBody> fromSubscriber(final WithSubscriber<Object> withSubscriber, final DefaultTradeContext tctx) {
         return fromStepable(toStepable(withSubscriber), tctx);
     }
 
-    @SuppressWarnings("rawtypes")
-    private WithStepable toStepable(final WithSubscriber withSubscriber) {
-        return new WithStepable() {
-
+    private WithStepable<Stepable<Object>> toStepable(final WithSubscriber<Object> withSubscriber) {
+        return new WithStepable<Stepable<Object>>() {
             @Override
             public String contentType() {
                 return withSubscriber.contentType();
             }
 
             @Override
-            public Observable stepables() {
-//                return withSubscriber.onSubscriber(Subscriber);
-                return null;
+            public Observable<Stepable<Object>> stepables() {
+                return Observable.unsafeCreate(subscriber -> decorateTo(withSubscriber, subscriber));
             }
 
             @Override
-            public Action2 output() {
-                return withSubscriber.output();
+            public Action2<Stepable<Object>, OutputStream> output() {
+                return (stepable, output) -> withSubscriber.output().call(stepable.element(), output);
             }};
+    }
+
+    private static void decorateTo(
+            final WithSubscriber<Object> withSubscriber,
+            final Subscriber<? super Stepable<Object>> subscriber) {
+        withSubscriber.onSubscriber(new Subscriber<Object>() {
+            @Override
+            public void onCompleted() {
+                subscriber.onCompleted();
+            }
+
+            @Override
+            public void onError(final Throwable e) {
+                subscriber.onError(e);
+            }
+
+            @Override
+            public void onNext(final Object obj) {
+                subscriber.onNext(new Stepable<Object>() {
+                    @Override
+                    public void step() {
+                        decorateTo(withSubscriber, subscriber);
+                    }
+
+                    @Override
+                    public Object element() {
+                        return obj;
+                    }});
+            }});
     }
 
     private Observable<MessageBody> fromContent(
