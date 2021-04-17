@@ -7,6 +7,6 @@ import rx.functions.Action2;
 
 public interface WithSubscriber<T> extends WithBody {
     public String contentType();
-    public void onSubscriber(final Subscriber<T> Subscriber);
+    public void onSubscriber(final Subscriber<T> subscriber);
     public Action2<T, OutputStream> output();
 }
