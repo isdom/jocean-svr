@@ -5,6 +5,7 @@ package org.jocean.svr;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
+import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
@@ -97,6 +98,7 @@ import org.jocean.rpc.annotation.RpcBuilder;
 import org.jocean.rpc.annotation.RpcScope;
 import org.jocean.rpc.annotation.SPIType;
 import org.jocean.svr.FinderUtil.CallerContext;
+import org.jocean.svr.WithStream.StreamCtrl;
 import org.jocean.svr.ZipUtil.Unzipper;
 import org.jocean.svr.ZipUtil.ZipBuilder;
 import org.jocean.svr.ZipUtil.Zipper;
@@ -1197,11 +1199,77 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return fromStepable((WithStepable<?>)withBody, tctx);
         } else if (withBody instanceof WithSubscriber) {
             return fromSubscriber((WithSubscriber<Object>)withBody, tctx);
+        } else if (withBody instanceof WithStream) {
+            return fromStream((WithStream)withBody, tctx);
         } else if (withBody instanceof WithSlice) {
             return fromSlice((WithSlice)withBody, tctx);
         } else {
             return Observable.error(new RuntimeException("unknown WithBody type:" + withBody.getClass()));
         }
+    }
+
+    private Observable<? extends MessageBody> fromStream(final WithStream withStream, final DefaultTradeContext tctx) {
+        return Observable.just(new MessageBody() {
+            @Override
+            public HttpHeaders headers() {
+                return EmptyHttpHeaders.INSTANCE;
+            }
+            @Override
+            public String contentType() {
+                return withStream.contentType();
+            }
+
+            @Override
+            public int contentLength() {
+                return -1;
+            }
+
+            @Override
+            public Observable<? extends ByteBufSlice> content() {
+                return Observable.unsafeCreate(subscriber -> decorateTo(withStream, subscriber, tctx.allocatorBuilder().build(8192)));
+            }
+        });
+    }
+
+    private static void decorateTo(
+            final WithStream withStream,
+            final Subscriber<? super ByteBufSlice> subscriber,
+            final Func0<DisposableWrapper<? extends ByteBuf>> allocator) {
+        final BufsOutputStream<DisposableWrapper<? extends ByteBuf>> bufout =
+                new BufsOutputStream<>(allocator, dwb->dwb.unwrap());
+        final List<DisposableWrapper<? extends ByteBuf>> bufs = new ArrayList<>();
+        bufout.setOutput(buf -> bufs.add(buf));
+
+        withStream.onStream(new StreamCtrl() {
+            @Override
+            public void onCompleted() {
+                subscriber.onCompleted();
+            }
+
+            @Override
+            public void onError(final Throwable e) {
+                subscriber.onError(e);
+            }
+
+            @Override
+            public void onData() {
+                try {
+                    bufout.flush();
+                } catch (final IOException e) {
+                    e.printStackTrace();
+                }
+
+                subscriber.onNext(new ByteBufSlice() {
+                    @Override
+                    public void step() {
+                        decorateTo(withStream, subscriber, allocator);
+                    }
+
+                    @Override
+                    public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
+                        return bufs;
+                    }});
+            }}, bufout);
     }
 
     private Observable<? extends MessageBody> fromSubscriber(final WithSubscriber<Object> withSubscriber, final DefaultTradeContext tctx) {
