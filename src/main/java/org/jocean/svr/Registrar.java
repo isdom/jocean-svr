@@ -98,7 +98,7 @@ import org.jocean.rpc.annotation.RpcBuilder;
 import org.jocean.rpc.annotation.RpcScope;
 import org.jocean.rpc.annotation.SPIType;
 import org.jocean.svr.FinderUtil.CallerContext;
-import org.jocean.svr.WithStream.StreamCtrl;
+import org.jocean.svr.WithStream.StreamContext;
 import org.jocean.svr.ZipUtil.Unzipper;
 import org.jocean.svr.ZipUtil.ZipBuilder;
 import org.jocean.svr.ZipUtil.Zipper;
@@ -1240,19 +1240,19 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         final List<DisposableWrapper<? extends ByteBuf>> bufs = new ArrayList<>();
         bufout.setOutput(buf -> bufs.add(buf));
 
-        withStream.onStream(new StreamCtrl() {
+        withStream.onStream(new StreamContext() {
             @Override
-            public void onCompleted() {
+            public void streamCompleted() {
                 subscriber.onCompleted();
             }
 
             @Override
-            public void onError(final Throwable e) {
+            public void streamError(final Throwable e) {
                 subscriber.onError(e);
             }
 
             @Override
-            public void onData() {
+            public void chunkReady() {
                 try {
                     bufout.flush();
                 } catch (final IOException e) {
@@ -1269,7 +1269,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     public Iterable<? extends DisposableWrapper<? extends ByteBuf>> element() {
                         return bufs;
                     }});
-            }}, bufout);
+            }
+
+            @Override
+            public OutputStream chunkOutput() {
+                return bufout;
+            }});
     }
 
     private Observable<? extends MessageBody> fromSubscriber(final WithSubscriber<Object> withSubscriber, final DefaultTradeContext tctx) {

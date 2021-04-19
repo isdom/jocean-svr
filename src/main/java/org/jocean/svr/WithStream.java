@@ -3,15 +3,17 @@ package org.jocean.svr;
 import java.io.OutputStream;
 
 public interface WithStream extends WithBody {
-    public interface StreamCtrl {
+    public interface StreamContext {
 
-        void onCompleted();
+        void streamCompleted();
 
-        void onError(Throwable e);
+        void streamError(Throwable e);
 
-        void onData();
+        void chunkReady();
+
+        OutputStream chunkOutput();
     }
 
     public String contentType();
-    public void onStream(final StreamCtrl ctrl, final OutputStream out);
+    public void onStream(final StreamContext sctx);
 }
