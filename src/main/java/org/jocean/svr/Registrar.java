@@ -5,6 +5,7 @@ package org.jocean.svr;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
+import java.io.DataOutput;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.annotation.Annotation;
@@ -1272,7 +1273,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             }
 
             @Override
-            public OutputStream chunkOutput() {
+            public OutputStream chunkOutputStream() {
+                return bufout;
+            }
+
+            @Override
+            public DataOutput chunkDataOutput() {
                 return bufout;
             }});
     }

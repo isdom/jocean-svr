@@ -1,5 +1,6 @@
 package org.jocean.svr;
 
+import java.io.DataOutput;
 import java.io.OutputStream;
 
 public interface WithStream extends WithBody {
@@ -11,7 +12,9 @@ public interface WithStream extends WithBody {
 
         void chunkReady();
 
-        OutputStream chunkOutput();
+        OutputStream chunkOutputStream();
+
+        DataOutput  chunkDataOutput();
     }
 
     public String contentType();
