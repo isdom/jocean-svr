@@ -162,7 +162,6 @@ import rx.Observable;
 import rx.Observable.Transformer;
 import rx.Scheduler;
 import rx.Subscriber;
-import rx.functions.Action2;
 import rx.functions.Actions;
 import rx.functions.Func0;
 import rx.functions.Func1;
@@ -1198,8 +1197,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     getEncoder(((WithContent)withBody).contentType(), mimeTypes));
         } else if (withBody instanceof WithStepable) {
             return fromStepable((WithStepable<?>)withBody, tctx);
-        } else if (withBody instanceof WithSubscriber) {
-            return fromSubscriber((WithSubscriber<Object>)withBody, tctx);
         } else if (withBody instanceof WithStream) {
             return fromStream((WithStream)withBody, tctx);
         } else if (withBody instanceof WithSlice) {
@@ -1280,57 +1277,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             @Override
             public DataOutput chunkDataOutput() {
                 return bufout;
-            }});
-    }
-
-    private Observable<? extends MessageBody> fromSubscriber(final WithSubscriber<Object> withSubscriber, final DefaultTradeContext tctx) {
-        return fromStepable(toStepable(withSubscriber), tctx);
-    }
-
-    private WithStepable<Stepable<Object>> toStepable(final WithSubscriber<Object> withSubscriber) {
-        return new WithStepable<Stepable<Object>>() {
-            @Override
-            public String contentType() {
-                return withSubscriber.contentType();
-            }
-
-            @Override
-            public Observable<Stepable<Object>> stepables() {
-                return Observable.unsafeCreate(subscriber -> decorateTo(withSubscriber, subscriber));
-            }
-
-            @Override
-            public Action2<Stepable<Object>, OutputStream> output() {
-                return (stepable, output) -> withSubscriber.output().call(stepable.element(), output);
-            }};
-    }
-
-    private static void decorateTo(
-            final WithSubscriber<Object> withSubscriber,
-            final Subscriber<? super Stepable<Object>> subscriber) {
-        withSubscriber.onSubscriber(new Subscriber<Object>() {
-            @Override
-            public void onCompleted() {
-                subscriber.onCompleted();
-            }
-
-            @Override
-            public void onError(final Throwable e) {
-                subscriber.onError(e);
-            }
-
-            @Override
-            public void onNext(final Object obj) {
-                subscriber.onNext(new Stepable<Object>() {
-                    @Override
-                    public void step() {
-                        decorateTo(withSubscriber, subscriber);
-                    }
-
-                    @Override
-                    public Object element() {
-                        return obj;
-                    }});
             }});
     }
 
