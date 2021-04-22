@@ -23,11 +23,9 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import rx.Observable;
 import rx.Observable.Transformer;
-import rx.Subscriber;
 import rx.functions.Action1;
 import rx.functions.Action2;
 import rx.functions.Func0;
-import rx.functions.Func2;
 
 public class ByteBufSliceUtil {
     private static final Logger LOG = LoggerFactory.getLogger(ByteBufSliceUtil.class);
@@ -265,16 +263,17 @@ public class ByteBufSliceUtil {
         }
     }
 
-    public interface StreamContext {
-        public boolean isCompleted();
-        public Observable<Iterable<DisposableWrapper<? extends ByteBuf>>> element();
-        public StreamContext next();
-    }
+//    public interface StreamContext {
+//        public boolean isCompleted();
+//        public Observable<Iterable<DisposableWrapper<? extends ByteBuf>>> element();
+//        public StreamContext next();
+//    }
+//
+//    public static Observable<ByteBufSlice> buildStream(final StreamContext ctx) {
+//        return Observable.unsafeCreate(subscriber -> stream2bbs(ctx, subscriber));
+//    }
 
-    public static Observable<ByteBufSlice> buildStream(final StreamContext ctx) {
-        return Observable.unsafeCreate(subscriber -> stream2bbs(ctx, subscriber));
-    }
-
+    /*
     private static void stream2bbs(
             final StreamContext ctx,
             final Subscriber<? super ByteBufSlice> subscriber) {
@@ -302,45 +301,46 @@ public class ByteBufSliceUtil {
             });
         }
     }
+    */
 
-    private static class RangeContext implements StreamContext {
-
-        private RangeContext(final long begin, final long end, final int maxstep,
-                final Func2<Long, Integer, Observable<Iterable<DisposableWrapper<? extends ByteBuf>>>> builder) {
-            this._begin = begin;
-            this._end = end;
-            this._step = (int)Math.min(end - begin + 1, maxstep);
-            this._maxstep = maxstep;
-            this._builder = builder;
-        }
-
-        @Override
-        public boolean isCompleted() {
-            return this._step <= 0;
-        }
-
-        @Override
-        public Observable<Iterable<DisposableWrapper<? extends ByteBuf>>> element() {
-            return this._builder.call(this._begin, this._step);
-        }
-
-        @Override
-        public StreamContext next() {
-            return new RangeContext( this._begin + this._step, this._end, this._maxstep, this._builder);
-        }
-
-        private final long _begin;
-        private final long _end;
-        private final int _step;
-        private final int _maxstep;
-        private final Func2<Long, Integer, Observable<Iterable<DisposableWrapper<? extends ByteBuf>>>> _builder;
-    }
-
-    public static StreamContext rangectx(
-            final long begin,
-            final long end,
-            final int maxstep,
-            final Func2<Long, Integer, Observable<Iterable<DisposableWrapper<? extends ByteBuf>>>> builder) {
-        return new RangeContext(begin, end, maxstep, builder);
-    }
+//    private static class RangeContext implements StreamContext {
+//
+//        private RangeContext(final long begin, final long end, final int maxstep,
+//                final Func2<Long, Integer, Observable<Iterable<DisposableWrapper<? extends ByteBuf>>>> builder) {
+//            this._begin = begin;
+//            this._end = end;
+//            this._step = (int)Math.min(end - begin + 1, maxstep);
+//            this._maxstep = maxstep;
+//            this._builder = builder;
+//        }
+//
+//        @Override
+//        public boolean isCompleted() {
+//            return this._step <= 0;
+//        }
+//
+//        @Override
+//        public Observable<Iterable<DisposableWrapper<? extends ByteBuf>>> element() {
+//            return this._builder.call(this._begin, this._step);
+//        }
+//
+//        @Override
+//        public StreamContext next() {
+//            return new RangeContext( this._begin + this._step, this._end, this._maxstep, this._builder);
+//        }
+//
+//        private final long _begin;
+//        private final long _end;
+//        private final int _step;
+//        private final int _maxstep;
+//        private final Func2<Long, Integer, Observable<Iterable<DisposableWrapper<? extends ByteBuf>>>> _builder;
+//    }
+//
+//    public static StreamContext rangectx(
+//            final long begin,
+//            final long end,
+//            final int maxstep,
+//            final Func2<Long, Integer, Observable<Iterable<DisposableWrapper<? extends ByteBuf>>>> builder) {
+//        return new RangeContext(begin, end, maxstep, builder);
+//    }
 }
