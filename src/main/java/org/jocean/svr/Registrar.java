@@ -235,7 +235,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         if (null != bean) {
                             final HashMap<String, Object> target = new HashMap<String, Object>();
                             BeanUtils.copyProperties(bean, target);
-                            LOG.info("http.req.bean: {}", target);
+                            LOG.info("http.req.bean: {}/target: {}", bean, target);
                             _span.log(Collections.singletonMap("http.req.bean", target));
                         } else {
                             LOG.info("http.req.bean: (null)");
