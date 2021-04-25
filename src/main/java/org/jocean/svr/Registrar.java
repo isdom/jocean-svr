@@ -54,6 +54,7 @@ import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
 
+import org.apache.commons.beanutils.BeanUtils;
 import org.jocean.http.ByteBufSlice;
 import org.jocean.http.ContentDecoder;
 import org.jocean.http.ContentEncoder;
@@ -113,7 +114,7 @@ import org.jocean.svr.mbean.RestinIndicator;
 import org.jocean.svr.mbean.RestinIndicatorMXBean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.BeanUtils;
+//import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -233,10 +234,13 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 //                    .doOnNext(TraceUtil.setTag4bean(_span, "req.bd.", "record.reqbean.error"))
                     .doOnNext(bean -> {
                         if (null != bean) {
-                            final HashMap<String, Object> target = new HashMap<String, Object>();
-                            BeanUtils.copyProperties(bean, target);
-                            LOG.info("http.req.bean: {}/target: {}", bean, target);
-                            _span.log(Collections.singletonMap("http.req.bean", target));
+                            try {
+                                final Map<String, String> target = BeanUtils.describe(bean);
+                                LOG.info("http.req.bean: {}/target: {}", bean, target);
+                                _span.log(Collections.singletonMap("http.req.bean", target));
+                            } catch (final Exception e) {
+                                _span.log(Collections.singletonMap("http.req.bean", e));
+                            }
                         } else {
                             LOG.info("http.req.bean: (null)");
                             _span.log(Collections.singletonMap("http.req.bean", "(null)"));
