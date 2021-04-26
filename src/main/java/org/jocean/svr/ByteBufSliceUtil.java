@@ -23,11 +23,9 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import rx.Observable;
 import rx.Observable.Transformer;
-import rx.Subscriber;
 import rx.functions.Action1;
 import rx.functions.Action2;
 import rx.functions.Func0;
-import rx.functions.Func2;
 
 public class ByteBufSliceUtil {
     private static final Logger LOG = LoggerFactory.getLogger(ByteBufSliceUtil.class);
@@ -265,6 +263,7 @@ public class ByteBufSliceUtil {
         }
     }
 
+    /*
     public interface StreamContext {
         public boolean isCompleted();
         public Observable<Iterable<DisposableWrapper<? extends ByteBuf>>> element();
@@ -343,4 +342,5 @@ public class ByteBufSliceUtil {
             final Func2<Long, Integer, Observable<Iterable<DisposableWrapper<? extends ByteBuf>>>> builder) {
         return new RangeContext(begin, end, maxstep, builder);
     }
+    */
 }
