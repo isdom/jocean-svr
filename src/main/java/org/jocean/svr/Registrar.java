@@ -1654,6 +1654,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                                     argctx);
                             if (null != value) {
                                 field.set(service, value);
+                                LOG.debug("fillServiceFields: set {}'s field({}): {}", service, field, value);
                             } else {
                                 LOG.warn("can't found/build value for field:{}", field);
                             }
