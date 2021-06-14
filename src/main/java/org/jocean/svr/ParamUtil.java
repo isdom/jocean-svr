@@ -39,11 +39,7 @@ public class ParamUtil {
     }
 
     public static Action1<HttpRequest> injectQueryParams(final Object bean) {
-        return new Action1<HttpRequest>() {
-            @Override
-            public void call(final HttpRequest request) {
-                request2QueryParams(request, bean);
-            }};
+        return request -> request2QueryParams(request, bean);
     }
 
     public static void request2QueryParams(final HttpRequest request, final Object bean) {
@@ -75,11 +71,7 @@ public class ParamUtil {
     }
 
     public static Action1<HttpRequest> injectHeaderParams(final Object bean) {
-        return new Action1<HttpRequest>() {
-            @Override
-            public void call(final HttpRequest request) {
-                request2HeaderParams(request, bean);
-            }};
+        return request -> request2HeaderParams(request, bean);
     }
 
     public static void request2HeaderParams(final HttpRequest request, final Object bean) {
@@ -131,9 +123,7 @@ public class ParamUtil {
     }
 
     public static <T> Func1<Func0<FullHttpRequest>, T> decodeXmlContentAs(final Class<T> type) {
-        return new Func1<Func0<FullHttpRequest>, T>() {
-            @Override
-            public T call(final Func0<FullHttpRequest> getfhr) {
+        return getfhr -> {
                 final FullHttpRequest fhr = getfhr.call();
                 if (null != fhr) {
                     try {
@@ -143,7 +133,7 @@ public class ParamUtil {
                     }
                 }
                 return null;
-            }};
+            };
     }
 
     public static <T> T parseContentAsXml(final ByteBuf buf, final Class<T> type) {
@@ -167,9 +157,7 @@ public class ParamUtil {
     }
 
     public static <T> Func1<Func0<FullHttpRequest>, T> decodeJsonContentAs(final Class<T> type) {
-        return new Func1<Func0<FullHttpRequest>, T>() {
-            @Override
-            public T call(final Func0<FullHttpRequest> getfhr) {
+        return getfhr -> {
                 final FullHttpRequest fhr = getfhr.call();
                 if (null != fhr) {
                     try {
@@ -179,7 +167,7 @@ public class ParamUtil {
                     }
                 }
                 return null;
-            }};
+            };
     }
 
     public static <T> T parseContentAsJson(final ByteBuf buf, final Class<T> type) {
