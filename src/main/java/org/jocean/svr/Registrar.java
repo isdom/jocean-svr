@@ -2095,7 +2095,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return null;
         }
         final Class<?> beanType = ReflectUtils.getRawType(requireType);
-        LOG.warn("create @JFinder success for requiredType : {}", beanType);
+        LOG.debug("create @JFinder success for requiredType : {}", beanType);
         return obj -> _beanHolder.getBean(obj.toString(), beanType);
     }
 
