@@ -34,6 +34,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 import javax.inject.Inject;
@@ -106,6 +107,7 @@ import org.jocean.svr.ZipUtil.ZipBuilder;
 import org.jocean.svr.ZipUtil.Zipper;
 import org.jocean.svr.annotation.DecodeTo;
 import org.jocean.svr.annotation.HandleError;
+import org.jocean.svr.annotation.JFinder;
 import org.jocean.svr.annotation.JService;
 import org.jocean.svr.annotation.OnError;
 import org.jocean.svr.annotation.PathSample;
@@ -1972,6 +1974,12 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             return buildin;
         }
 
+        final JFinder jFinder = getAnnotation(argAnnotations, JFinder.class);
+        if (null != jFinder && Function.class.isAssignableFrom(ReflectUtils.getRawType(argType))) {
+            LOG.debug("create @JFinder: {}/{}", resource, argType);
+            return buildJFinder(argType, argctx);
+        }
+
         if (argType instanceof Class<?>) {
             if (null != getAnnotation(argAnnotations, BeanParam.class)) {
                 return buildBeanParam(request, (Class<?>)argType);
@@ -2078,6 +2086,17 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
 
         return null;
+    }
+
+    private Function<Object, Object> buildJFinder(final Type argType, final BuildArgContext argctx) {
+        final Type requireType = ReflectUtils.getParameterizedTypeArgument(argType, 1);
+        if (null == requireType) {
+            LOG.warn("create @JFinder failed for non-ParameterizedType : {}", argType);
+            return null;
+        }
+        final Class<?> beanType = ReflectUtils.getRawType(requireType);
+        LOG.warn("create @JFinder success for requiredType : {}", beanType);
+        return obj -> _beanHolder.getBean(obj.toString(), beanType);
     }
 
     private static class ResContext {
