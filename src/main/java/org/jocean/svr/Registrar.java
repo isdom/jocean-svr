@@ -1561,7 +1561,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         // check -> lock -> check for effective sync
                         impl = implRef.get();
                         if (null == impl) {
-                            LOG.debug("begin to create impl for {}({}).", serviceType, serviceName);
+                            LOG.debug("begin to create impl for {}({}) bcsof invoke method({}).", serviceType, serviceName, method);
                             impl = builder.call();
                             implRef.set(impl);
                             LOG.debug("impl for {}({}) created.", serviceType, serviceName);
