@@ -1581,7 +1581,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             if (LOG.isDebugEnabled()) {
                                 LOG.debug("begin to create impl for {}({}) bcsof invoke method({}) call from {}.",
                                         serviceType, serviceName, method,
-                                        dumpCallStack(Thread.currentThread().getStackTrace(), 1));
+                                        dumpCallStack(Thread.currentThread().getStackTrace(), 2));
                             }
                             impl = builder.call();
                             implRef.set(impl);
