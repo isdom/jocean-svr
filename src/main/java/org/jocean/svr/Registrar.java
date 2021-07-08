@@ -1551,6 +1551,23 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
     }
 
+    public static String dumpCallStack(final StackTraceElement[] callStacks, int skipDepth) {
+        final StringBuilder sb = new StringBuilder();
+
+        for ( final StackTraceElement cs : callStacks) {
+            if ( skipDepth > 0 ) {
+                skipDepth--;
+                continue;
+            }
+            sb.append('\r');
+            sb.append('\n');
+            sb.append("\tat ");
+            sb.append(cs);
+        }
+
+        return sb.toString();
+    }
+
     private InvocationHandler proxyHandler(final String serviceName, final Class<?> serviceType, final Func0<Object> builder) {
         LOG.info("create JService proxy object for type:{}.", serviceType);
         final AtomicReference<Object> implRef = new AtomicReference<Object>();
@@ -1561,7 +1578,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         // check -> lock -> check for effective sync
                         impl = implRef.get();
                         if (null == impl) {
-                            LOG.debug("begin to create impl for {}({}) bcsof invoke method({}).", serviceType, serviceName, method);
+                            if (LOG.isDebugEnabled()) {
+                                LOG.debug("begin to create impl for {}({}) bcsof invoke method({}) call from {}.",
+                                        serviceType, serviceName, method,
+                                        dumpCallStack(Thread.currentThread().getStackTrace(), 1));
+                            }
                             impl = builder.call();
                             implRef.set(impl);
                             LOG.debug("impl for {}({}) created.", serviceType, serviceName);
