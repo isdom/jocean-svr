@@ -1578,6 +1578,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                         // check -> lock -> check for effective sync
                         impl = implRef.get();
                         if (null == impl) {
+                            if (method.getName().equals("toString") && method.getReturnType().equals(String.class) && method.getParameterCount() == 0) {
+                                return "ProxyInstance for (" + serviceType + ") and impl !NOT! created yet!";
+                            }
                             if (LOG.isDebugEnabled()) {
                                 LOG.debug("begin to create impl for {}({}) bcsof invoke method({}) call from {}.",
                                         serviceType, serviceName, method,
