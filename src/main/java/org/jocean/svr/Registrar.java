@@ -123,6 +123,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Controller;
 
 import com.google.common.collect.ArrayListMultimap;
@@ -1622,8 +1623,16 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 throw new RuntimeException("can't found bean by type "+ serviceType + "(" + (null != serviceName ? serviceName : "null") + ")");
             }
 
-            // assign all fields
-            return fillServiceFields(service, replaceResource(argctx, service));
+            final Scope ctxScope = service.getClass().getAnnotation(Scope.class);
+            if (ctxScope != null && ctxScope.value().equals("prototype")) {
+                LOG.debug("{} anno with @Scope(\"prototype\"), try to fillServiceFields", service.getClass());
+                // assign all fields
+                return fillServiceFields(service, replaceResource(argctx, service));
+            } else {
+                LOG.debug("{} !NOT! anno with @Scope(\"prototype\"), skip fillServiceFields", service.getClass());
+                return service;
+            }
+
         } catch (final Exception e) {
             LOG.warn("exception when createAndFillJService for type {}({}), detail:{}", serviceType, serviceName, ExceptionUtils.exception2detail(e));
             throw new RuntimeException(e);
