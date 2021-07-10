@@ -1625,11 +1625,11 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
             final Scope ctxScope = service.getClass().getAnnotation(Scope.class);
             if (ctxScope != null && ctxScope.value().equals("prototype")) {
-                LOG.debug("{} anno with @Scope(\"prototype\"), try to fillServiceFields", service.getClass());
+                LOG.debug("fillServiceFields for @Scope(\"prototype\")/({})", service.getClass());
                 // assign all fields
                 return fillServiceFields(service, replaceResource(argctx, service));
             } else {
-                LOG.debug("{} !NOT! anno with @Scope(\"prototype\"), skip fillServiceFields", service.getClass());
+                LOG.debug("!SKIP! fillServiceFields, !NOT FOUND! @Scope(\"prototype\")/({}), ", service.getClass());
                 return service;
             }
 
