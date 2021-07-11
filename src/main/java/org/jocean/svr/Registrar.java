@@ -2122,6 +2122,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Function<Object, Object> buildJFinder(final Type argType, final BuildArgContext argctx) {
+        // TBD:
+        // 根据 传入参数类型是 String 还是 Class<?> 来判断执行 createService(name) or createService(type)
         final Type requireType = ReflectUtils.getParameterizedTypeArgument(argType, 1);
         if (null == requireType) {
             LOG.warn("create @JFinder failed for non-ParameterizedType : {}", argType);
@@ -2129,7 +2131,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
         final Class<?> beanType = ReflectUtils.getRawType(requireType);
         LOG.debug("create @JFinder success for requiredType : {}", beanType);
-        return obj -> _beanHolder.getBean(obj.toString(), beanType);
+        return obj -> buildProxiedJService(null, beanType, argctx);
+//        _beanHolder.getBean(obj.toString(), beanType, beanType);
     }
 
     private static class ResContext {
