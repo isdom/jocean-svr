@@ -2131,8 +2131,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
         final Class<?> beanType = ReflectUtils.getRawType(requireType);
         LOG.debug("create @JFinder success for requiredType : {}", beanType);
-        return obj -> buildProxiedJService(null, beanType, argctx);
-//        _beanHolder.getBean(obj.toString(), beanType, beanType);
+        return obj -> buildProxiedJService(obj.toString(), beanType, argctx);  // _beanHolder.getBean(obj.toString(), beanType);
     }
 
     private static class ResContext {
