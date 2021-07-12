@@ -2124,14 +2124,21 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private Function<Object, Object> buildJFinder(final Type argType, final BuildArgContext argctx) {
         // TBD:
         // 根据 传入参数类型是 String 还是 Class<?> 来判断执行 createService(name) or createService(type)
+        final Type keyType = ReflectUtils.getParameterizedTypeArgument(argType, 0);
         final Type requireType = ReflectUtils.getParameterizedTypeArgument(argType, 1);
         if (null == requireType) {
             LOG.warn("create @JFinder failed for non-ParameterizedType : {}", argType);
             return null;
         }
         final Class<?> beanType = ReflectUtils.getRawType(requireType);
-        LOG.debug("create @JFinder success for requiredType : {}", beanType);
-        return obj -> buildProxiedJService(obj.toString(), beanType, argctx);  // _beanHolder.getBean(obj.toString(), beanType);
+        LOG.debug("create @JFinder success for keyType: {} and requiredType : {}", keyType, beanType);
+        if (keyType.equals(Class.class)) {
+            return obj -> buildProxiedJService(null, (Class<?>)obj, argctx);
+        } else if (keyType.equals(String.class)) {
+            return obj -> buildProxiedJService((String)obj, beanType, argctx);
+        } else {
+            return obj -> { throw new RuntimeException("@JFinder !NOT! support key Type (" + keyType + ")"); };
+        }
     }
 
     private static class ResContext {
