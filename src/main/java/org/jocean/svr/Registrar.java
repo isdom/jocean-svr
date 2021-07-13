@@ -34,6 +34,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
@@ -2008,9 +2009,16 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         }
 
         final JFinder jFinder = getAnnotation(argAnnotations, JFinder.class);
-        if (null != jFinder && Function.class.isAssignableFrom(ReflectUtils.getRawType(argType))) {
-            LOG.debug("create @JFinder: {}/{}", resource, argType);
-            return buildJFinder(argType, argctx);
+        if (null != jFinder) {
+            if (Function.class.isAssignableFrom(ReflectUtils.getRawType(argType))) {
+                LOG.debug("create @JFinder: {}/{}", resource, argType);
+                return buildJFinderAsFunction(argType, argctx);
+            } else if (BiFunction.class.isAssignableFrom(ReflectUtils.getRawType(argType))) {
+                LOG.debug("create @JFinder: {}/{}", resource, argType);
+                return buildJFinderAsBiFunction(argType, argctx);
+            } else {
+                // TBD
+            }
         }
 
         if (argType instanceof Class<?>) {
@@ -2121,7 +2129,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         return null;
     }
 
-    private Function<Object, Object> buildJFinder(final Type argType, final BuildArgContext argctx) {
+    private Function<Object, Object> buildJFinderAsFunction(final Type argType, final BuildArgContext argctx) {
         // TBD:
         // 根据 传入参数类型是 String 还是 Class<?> 来判断执行 createService(name) or createService(type)
         final Type keyType = ReflectUtils.getParameterizedTypeArgument(argType, 0);
@@ -2133,11 +2141,41 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         final Class<?> beanType = ReflectUtils.getRawType(requireType);
         LOG.debug("create @JFinder success for keyType: {} and requiredType : {}", keyType, beanType);
         if (keyType.equals(Class.class)) {
-            return obj -> buildProxiedJService(null, (Class<?>)obj, argctx);
+            return key -> buildProxiedJService(null, (Class<?>)key, argctx);
         } else if (keyType.equals(String.class)) {
-            return obj -> buildProxiedJService((String)obj, beanType, argctx);
+            return key -> buildProxiedJService((String)key, beanType, argctx);
         } else {
-            return obj -> { throw new RuntimeException("@JFinder !NOT! support key Type (" + keyType + ")"); };
+            return key -> { throw new RuntimeException("@JFinder !NOT! support key Type (" + keyType + ")"); };
+        }
+    }
+
+    private BiFunction<Object, Object, Object> buildJFinderAsBiFunction(final Type argType, final BuildArgContext argctx) {
+        final Type keyType = ReflectUtils.getParameterizedTypeArgument(argType, 0);
+        final Type argsType = ReflectUtils.getParameterizedTypeArgument(argType, 1);
+        final Type requireType = ReflectUtils.getParameterizedTypeArgument(argType, 2);
+
+        if (null == requireType) {
+            LOG.warn("create @JFinder failed for non-ParameterizedType : {}", argType);
+            return null;
+        }
+        final Class<?> beanType = ReflectUtils.getRawType(requireType);
+        LOG.debug("create @JFinder success for keyType: {} and requiredType : {}", keyType, beanType);
+        if (keyType.equals(Class.class)) {
+            return (key, objs) -> buildProxiedJService(null, (Class<?>)key, argctx, asArgs(argsType, objs));
+        } else if (keyType.equals(String.class)) {
+            return (key, objs) -> buildProxiedJService((String)key, beanType, argctx, asArgs(argsType, objs));
+        } else {
+            return (key, objs) -> { throw new RuntimeException("@JFinder !NOT! support key Type (" + keyType + ")"); };
+        }
+    }
+
+    private static Object[] asArgs(final Type argsType, final Object objs) {
+        if ( ((Class<?>)argsType).isArray()) {
+            return (Object[])objs;
+        }
+        else {
+            // only one arg
+            return new Object[]{objs};
         }
     }
 
