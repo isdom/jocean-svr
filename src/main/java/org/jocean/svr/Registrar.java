@@ -2132,7 +2132,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     private Function<Object, Object> buildJFinderAsFunction(final Type argType, final BuildArgContext argctx) {
         // TBD:
         // 根据 传入参数类型是 String 还是 Class<?> 来判断执行 createService(name) or createService(type)
-        final Type keyType = ReflectUtils.getParameterizedTypeArgument(argType, 0);
+        final Class<?> keyType = ReflectUtils.getRawType(ReflectUtils.getParameterizedTypeArgument(argType, 0));
         final Type requireType = ReflectUtils.getParameterizedTypeArgument(argType, 1);
         if (null == requireType) {
             LOG.warn("create @JFinder failed for non-ParameterizedType : {}", argType);
@@ -2150,7 +2150,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private BiFunction<Object, Object, Object> buildJFinderAsBiFunction(final Type argType, final BuildArgContext argctx) {
-        final Type keyType = ReflectUtils.getParameterizedTypeArgument(argType, 0);
+        final Class<?> keyType = ReflectUtils.getRawType(ReflectUtils.getParameterizedTypeArgument(argType, 0));
         final Type argsType = ReflectUtils.getParameterizedTypeArgument(argType, 1);
         final Type requireType = ReflectUtils.getParameterizedTypeArgument(argType, 2);
 
