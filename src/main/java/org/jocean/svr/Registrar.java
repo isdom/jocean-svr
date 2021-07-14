@@ -2141,7 +2141,13 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         final Class<?> beanType = ReflectUtils.getRawType(requireType);
         LOG.debug("create @JFinder success for keyType: {} and requiredType : {}", keyType, beanType);
         if (keyType.equals(Class.class)) {
-            return key -> buildProxiedJService(null, (Class<?>)key, argctx);
+            return key -> {
+                final Class<?> serviceType =  (Class<?>)key;
+                if (!beanType.isAssignableFrom(serviceType)) {
+                    throw new RuntimeException("@JFinder's serviceType (" + serviceType + ") is neither same as nor derived from beanType  (" + beanType + ")");
+                }
+                return buildProxiedJService(null, serviceType, argctx);
+            };
         } else if (keyType.equals(String.class)) {
             return key -> buildProxiedJService((String)key, beanType, argctx);
         } else {
