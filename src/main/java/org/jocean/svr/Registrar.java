@@ -1712,10 +1712,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         } else {
             // wrapper of RpcBuilder(s)
             return Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class<?>[] { facadeType },
-                    new InvocationHandler() {
-                        @Override
-                        public Object invoke(final Object proxy, final Method method, final Object[] args)
-                                throws Throwable {
+                    (proxy, method, args) -> {
                             // TBD: hook for hashCode && equals && etc
                             if (method.getName().equals("toString") && method.getReturnType().equals(String.class)) {
                                 return "RpcFacade for (" + facadeType + ")";
@@ -1730,8 +1727,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             } else {
                                 return null;
                             }
-                        }
-                    });
+                        });
         }
     }
 
@@ -2130,8 +2126,6 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
     }
 
     private Function<Object, Object> buildJFinderAsFunction(final Type argType, final BuildArgContext argctx) {
-        // TBD:
-        // 根据 传入参数类型是 String 还是 Class<?> 来判断执行 createService(name) or createService(type)
         final Class<?> keyType = ReflectUtils.getRawType(ReflectUtils.getParameterizedTypeArgument(argType, 0));
         final Type requireType = ReflectUtils.getParameterizedTypeArgument(argType, 1);
         if (null == requireType) {
@@ -2171,9 +2165,19 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         final Class<?> beanType = ReflectUtils.getRawType(requireType);
         LOG.debug("create @JFinder success for keyType: {} and requiredType : {}", keyType, beanType);
         if (keyType.equals(Class.class)) {
-            return (key, objs) -> buildProxiedJService(null, (Class<?>)key, argctx, asArgs(argsType, objs));
+            return (key, objs) -> {
+                final Class<?> serviceType =  (Class<?>)key;
+                if (!beanType.isAssignableFrom(serviceType)) {
+                    throw new RuntimeException("@JFinder's serviceType (" + serviceType + ") is neither same as nor derived from beanType  (" + beanType + ")");
+                }
+                LOG.debug("@JFinder: serviceType({}) while beanType({})", serviceType, beanType);
+                return buildProxiedJService(null, serviceType, argctx, asArgs(argsType, objs));
+            };
         } else if (keyType.equals(String.class)) {
-            return (key, objs) -> buildProxiedJService((String)key, beanType, argctx, asArgs(argsType, objs));
+            return (key, objs) -> {
+                LOG.debug("@JFinder: serviceName({}) while beanType({})", key, beanType);
+                return buildProxiedJService((String)key, beanType, argctx, asArgs(argsType, objs));
+            };
         } else {
             return (key, objs) -> { throw new RuntimeException("@JFinder !NOT! support key Type (" + keyType + ")"); };
         }
