@@ -2013,7 +2013,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                 LOG.debug("create @JFinder: {}/{}", resource, argType);
                 return buildJFinderAsBiFunction(argType, argctx);
             } else {
-                // TBD
+                throw new RuntimeException("@JFinder !NOT! support beanType (" + argType + ")");
             }
         }
 
