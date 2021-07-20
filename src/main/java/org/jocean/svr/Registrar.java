@@ -36,6 +36,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
 import javax.inject.Inject;
@@ -2012,6 +2013,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             } else if (BiFunction.class.isAssignableFrom(ReflectUtils.getRawType(argType))) {
                 LOG.debug("create @JFinder: {}/{}", resource, argType);
                 return buildJFinderAsBiFunction(argType, argctx);
+            } else if (Supplier.class.isAssignableFrom(ReflectUtils.getRawType(argType))) {
+                LOG.debug("create @JFinder: {}/{}", resource, argType);
+                return buildJFinderAsSupplier(argType, argctx);
             } else {
                 throw new RuntimeException("@JFinder !NOT! support beanType (" + argType + ")");
             }
@@ -2130,7 +2134,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
         final Type requireType = ReflectUtils.getParameterizedTypeArgument(argType, 1);
         if (null == requireType) {
             LOG.warn("create @JFinder failed for non-ParameterizedType : {}", argType);
-            return null;
+            return key -> { throw new RuntimeException("@JFinder !NOT! support non-ParameterizedType (" + argType + ")"); };
         }
         final Class<?> beanType = ReflectUtils.getRawType(requireType);
         LOG.debug("create @JFinder success for keyType: {} and requiredType : {}", keyType, beanType);
@@ -2160,7 +2164,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
 
         if (null == requireType) {
             LOG.warn("create @JFinder failed for non-ParameterizedType : {}", argType);
-            return null;
+            return (key, objs) -> { throw new RuntimeException("@JFinder !NOT! support non-ParameterizedType (" + argType + ")"); };
         }
         final Class<?> beanType = ReflectUtils.getRawType(requireType);
         LOG.debug("create @JFinder success for keyType: {} and requiredType : {}", keyType, beanType);
@@ -2191,6 +2195,20 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             // only one arg
             return new Object[]{objs};
         }
+    }
+
+    private Supplier<Object> buildJFinderAsSupplier(final Type argType, final BuildArgContext argctx) {
+        final Type requireType = ReflectUtils.getParameterizedTypeArgument(argType, 0);
+        if (null == requireType) {
+            LOG.warn("create @JFinder failed for non-ParameterizedType : {}", argType);
+            return () -> { throw new RuntimeException("@JFinder !NOT! support non-ParameterizedType (" + argType + ")"); };
+        }
+        final Class<?> beanType = ReflectUtils.getRawType(requireType);
+        LOG.debug("create @JFinder success for requiredType : {}", beanType);
+        return () -> {
+            LOG.debug("@JFinder: get instance for beanType({})", beanType);
+            return buildProxiedJService(null, beanType, argctx);
+        };
     }
 
     private static class ResContext {
