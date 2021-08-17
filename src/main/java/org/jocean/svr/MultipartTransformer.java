@@ -542,6 +542,7 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
                         _value = valueStr + ' ' + trimmedLine;
                     } else {
                         if (_name != null) {
+                            LOG.info("parseHeaders: {}/{}", _name, _value);
                             headers.add(_name, _value);
                         }
                         splitHeader(line);
@@ -556,6 +557,7 @@ public class MultipartTransformer implements Transformer<ByteBufSlice, MessageBo
 
             // Add the last header.
             if (_name != null) {
+                LOG.info("parseHeaders last name: {}/{}", _name, _value);
                 headers.add(_name, _value);
             }
             // reset _name and _value fields
