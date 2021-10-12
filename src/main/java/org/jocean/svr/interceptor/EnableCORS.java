@@ -2,6 +2,8 @@ package org.jocean.svr.interceptor;
 
 import org.jocean.idiom.StepableUtil;
 import org.jocean.svr.MethodInterceptor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -15,6 +17,8 @@ import rx.Observable;
 
 public class EnableCORS implements MethodInterceptor {
 
+    private static final Logger LOG = LoggerFactory.getLogger(EnableCORS.class);
+
     @Override
     public Observable<? extends Object> preInvoke(final Context ctx) {
         if (ctx.request().method().equals(HttpMethod.OPTIONS)) {
@@ -24,7 +28,14 @@ public class EnableCORS implements MethodInterceptor {
                     ctx.request().headers().get(HttpHeaderNames.ACCESS_CONTROL_REQUEST_METHOD);
             final String origin =
                     ctx.request().headers().get(HttpHeaderNames.ORIGIN);
+
+            LOG.debug("intercept for CORS: handle OPTIONS with {}:{}, {}:{}, {}:{}",
+                    HttpHeaderNames.ACCESS_CONTROL_REQUEST_HEADERS, headers,
+                    HttpHeaderNames.ACCESS_CONTROL_REQUEST_METHOD, methods,
+                    HttpHeaderNames.ORIGIN, origin);
+
             if (null != headers || null != methods || null != origin) {
+                LOG.debug("intercept for CORS: handle {}'s OPTIONS automatic", ctx.request().uri());
                 final DefaultFullHttpResponse corsresp =
                         new DefaultFullHttpResponse(ctx.request().protocolVersion(),
                                 HttpResponseStatus.ACCEPTED, Unpooled.EMPTY_BUFFER);
@@ -42,6 +53,8 @@ public class EnableCORS implements MethodInterceptor {
                 return Observable.<HttpObject>just(corsresp).delaySubscription(
                         ctx.obsRequest().flatMap(fullmsg -> fullmsg.body()).flatMap(body -> body.content())
                         .compose(StepableUtil.autostep2element2()).doOnNext(bbs -> bbs.dispose()).ignoreElements());
+            } else {
+                LOG.debug("intercept for CORS: missing CORS headers, ignore {}'s OPTIONS", ctx.request().uri());
             }
         }
         return null;

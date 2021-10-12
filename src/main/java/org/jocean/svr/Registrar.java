@@ -492,10 +492,8 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                     hmtype.getAnnotation(javax.ws.rs.HttpMethod.class);
             final ResContext resctx = new ResContext(resourceCls, m);
             this._pathMatchers.put(rsHttpMethod.value(), Pair.of(pathMatcher, resctx));
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("register Method {} for !Parametered! Path {} with matcher {} & resctx {}",
-                        rsHttpMethod.value(), methodPath, pathMatcher, resctx);
-            }
+            LOG.debug("register Method {} for !Parametered! Path {} with matcher {} & resctx {}",
+                    rsHttpMethod.value(), methodPath, pathMatcher, resctx);
             return 1;
         } else {
             return 0;
@@ -513,9 +511,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             // NO HttpMethod annotation exist
             // register with only path
             this._resCtxs.put(path, new ResContext(resourceCls, method));
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("register Path {}", path);
-            }
+            LOG.debug("register Path {}", path);
         }
     }
 
@@ -527,9 +523,7 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
             final javax.ws.rs.HttpMethod rsHttpMethod =
                     hmtype.getAnnotation(javax.ws.rs.HttpMethod.class);
             this._resCtxs.put(rsHttpMethod.value() + ":" + methodPath, new ResContext(resourceCls, m));
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("register Method {}/Path {}", rsHttpMethod.value(), methodPath);
-            }
+            LOG.debug("register Method {}/Path {}", rsHttpMethod.value(), methodPath);
             return 1;
         } else {
             return 0;
@@ -1584,11 +1578,9 @@ public class Registrar implements BeanHolderAware, MBeanRegisterAware {
                             if (method.getName().equals("toString") && method.getReturnType().equals(String.class) && method.getParameterCount() == 0) {
                                 return "ProxyInstance for (" + serviceType + ") and impl !NOT! created yet!";
                             }
-                            if (LOG.isDebugEnabled()) {
-                                LOG.debug("begin to create impl for {}({}) bcsof invoke method({}) call from {}.",
-                                        serviceType, serviceName, method,
-                                        dumpCallStack(Thread.currentThread().getStackTrace(), 2));
-                            }
+                            LOG.debug("begin to create impl for {}({}) bcsof invoke method({}) call from {}.",
+                                    serviceType, serviceName, method,
+                                    dumpCallStack(Thread.currentThread().getStackTrace(), 2));
                             impl = builder.call();
                             implRef.set(impl);
                             LOG.debug("impl for {}({}) created.", serviceType, serviceName);
