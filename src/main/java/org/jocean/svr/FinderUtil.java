@@ -18,7 +18,8 @@ import rx.Observable.Transformer;
 import rx.functions.Action1;
 import rx.functions.Func1;
 
-class FinderUtil {
+// revert FinderUtil visible level to public for xbeacon
+public class FinderUtil {
     private static final Logger LOG = LoggerFactory.getLogger(FinderUtil.class);
 
     private FinderUtil() {
