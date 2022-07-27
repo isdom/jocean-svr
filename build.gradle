@@ -28,7 +28,7 @@ dependencies {
     compile "io.opentracing:opentracing-util:${opentracingVersion}"
     compile 'org.jocean:jocean-opentracing-jdbc:0.0.1-SNAPSHOT'
     
-    compile 'commons-beanutils:commons-beanutils:1.9.3'
+    compile 'commons-beanutils:commons-beanutils:1.9.4'
     
     // compile 'com.netflix.hystrix:hystrix-core:1.5.12'
     // compile 'com.netflix.hystrix:hystrix-serialization:1.5.12'
