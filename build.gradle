@@ -30,7 +30,6 @@ dependencies {
     
     compile 'commons-beanutils:commons-beanutils:1.9.4'
     
-    // compile 'com.netflix.hystrix:hystrix-core:1.5.12'
     // compile 'com.netflix.hystrix:hystrix-serialization:1.5.12'
     // compile 'io.github.resilience4j:resilience4j-timelimiter:1.7.1'
     
