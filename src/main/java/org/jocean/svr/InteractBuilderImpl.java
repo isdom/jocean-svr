@@ -101,6 +101,7 @@ class InteractBuilderImpl implements InteractBuilder {
 
         final AtomicReference<Action1<Object>> _onsendingRef = new AtomicReference<>();
         final AtomicReference<Action1<HttpInitiator>> _oninitiatorRef = new AtomicReference<>();
+        final AtomicReference<Transformer<Object, Object>> _reqTransRef = new AtomicReference<>( req -> req);
 
         final AtomicReference<URI> _uriRef = new AtomicReference<>();
         final AtomicReference<String> _nameRef = new AtomicReference<>();
@@ -278,7 +279,7 @@ class InteractBuilderImpl implements InteractBuilder {
             }
 
             private Observable<FullMessage<HttpResponse>> defineInteraction(final HttpInitiator initiator) {
-                return initiator.defineInteraction(_obsreqRef.get())
+                return initiator.defineInteraction(_obsreqRef.get().compose(_reqTransRef.get()))
                         .doOnNext(TraceUtil.hookhttpresp(span))
                         .compose(TraceUtil.logbody(span, "http.resp", 1024));
             }
@@ -389,6 +390,13 @@ class InteractBuilderImpl implements InteractBuilder {
                 if (null != _oninitiatorRef.get()) {
                     _oninitiatorRef.get().call(initiator);
                 }
+            }
+
+            @Override
+            public Interact reqtransformer(final Transformer<Object, Object> transformer) {
+                final Transformer<Object, Object> prev = _reqTransRef.get();
+                _reqTransRef.set(req -> req.compose(prev).compose(transformer) );
+                return this;
             }
         };
     }
