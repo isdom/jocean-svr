@@ -28,11 +28,10 @@ dependencies {
     compile "io.opentracing:opentracing-util:${opentracingVersion}"
     compile 'org.jocean:jocean-opentracing-jdbc:0.0.1-SNAPSHOT'
     
-    compile 'commons-beanutils:commons-beanutils:1.9.3'
+    compile 'commons-beanutils:commons-beanutils:1.9.4'
     
-    // compile 'com.netflix.hystrix:hystrix-core:1.5.12'
     // compile 'com.netflix.hystrix:hystrix-serialization:1.5.12'
-    // compile 'io.github.resilience4j:resilience4j-timelimiter:0.17.0'
+    // compile 'io.github.resilience4j:resilience4j-timelimiter:1.7.1'
     
     compile 'io.micrometer:micrometer-core:1.9.0'
     // compile "com.alibaba.csp:sentinel-core:${sentinelVersion}"
@@ -46,18 +45,14 @@ dependencies {
     compile('org.jocean:jocean-j2se:0.0.4-SNAPSHOT') { transitive = false }
     compile 'org.jocean:jocean-redis:0.0.1-SNAPSHOT'
     
-    compile 'net.lingala.zip4j:zip4j:1.3.2'
+    compile 'net.lingala.zip4j:zip4j:1.3.3'
 
     compile "io.netty:netty-all:${nettyVersion}"
     
     // for wsin.xml 's WebSocketFrameHandler
-    compile 'ch.qos.logback:logback-core:1.2.10'
+    compile 'ch.qos.logback:logback-core:1.2.11'
     
     testCompile 'ch.qos.logback:logback-classic:1.2.11'
 
-    // Declare the dependency for your favourite test framework you want to use in your tests.
-    // TestNG is also supported by the Gradle Test task. Just change the
-    // testCompile dependency to testCompile 'org.testng:testng:6.8.1' and add
-    // 'test.useTestNG()' to your build script.
     testCompile 'junit:junit:4.13.2'
 }
