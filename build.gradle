@@ -35,7 +35,7 @@ dependencies {
     
     compile 'io.micrometer:micrometer-core:1.9.0'
     // compile "com.alibaba.csp:sentinel-core:${sentinelVersion}"
-    compile 'io.prometheus:simpleclient_common:0.15.0'
+    compile 'io.prometheus:simpleclient_common:0.16.0'
     
     compile 'javax.ws.rs:javax.ws.rs-api:2.1'
     
