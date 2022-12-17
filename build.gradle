@@ -50,9 +50,9 @@ dependencies {
     compile "io.netty:netty-all:${nettyVersion}"
     
     // for wsin.xml 's WebSocketFrameHandler
-    compile 'ch.qos.logback:logback-core:1.2.11'
+    compile 'ch.qos.logback:logback-core:1.3.5'
     
-    testCompile 'ch.qos.logback:logback-classic:1.2.11'
+    testCompile 'ch.qos.logback:logback-classic:1.3.5'
 
     testCompile 'junit:junit:4.13.2'
 }
