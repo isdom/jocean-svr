@@ -34,7 +34,6 @@ dependencies {
     // compile 'io.github.resilience4j:resilience4j-timelimiter:1.7.1'
     
     compile 'io.micrometer:micrometer-core:1.10.2'
-    // compile "com.alibaba.csp:sentinel-core:${sentinelVersion}"
     compile 'io.prometheus:simpleclient_common:0.16.0'
     
     compile 'javax.ws.rs:javax.ws.rs-api:2.1'
