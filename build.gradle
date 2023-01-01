@@ -31,7 +31,7 @@ dependencies {
     compile 'commons-beanutils:commons-beanutils:1.9.4'
     
     // compile 'com.netflix.hystrix:hystrix-serialization:1.5.12'
-    // compile 'io.github.resilience4j:resilience4j-timelimiter:1.7.1'
+    // compile 'io.github.resilience4j:resilience4j-timelimiter:2.0.2'
     
     compile 'io.micrometer:micrometer-core:1.10.2'
     compile 'io.prometheus:simpleclient_common:0.16.0'
