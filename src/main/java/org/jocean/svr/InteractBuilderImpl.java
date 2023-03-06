@@ -2,6 +2,7 @@ package org.jocean.svr;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.security.cert.X509Certificate;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -9,6 +10,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 import javax.ws.rs.Path;
 
 import org.jocean.http.ByteBufSlice;
@@ -45,6 +48,7 @@ import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.QueryStringDecoder;
+import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.opentracing.Span;
 import io.opentracing.Tracer;
@@ -60,13 +64,27 @@ class InteractBuilderImpl implements InteractBuilder {
     private static final Logger LOG = LoggerFactory.getLogger(InteractBuilderImpl.class);
 
     private static final Feature F_SSL;
+    private static final TrustManager TRUST_ALL_CERT_TM;
     static {
         F_SSL = defaultSslFeature();
+        TRUST_ALL_CERT_TM = new X509TrustManager() {
+            public X509Certificate[] getAcceptedIssuers() {
+                return null;
+            }
+
+            public void checkClientTrusted(X509Certificate[] certs, String authType) {
+            }
+
+            public void checkServerTrusted(X509Certificate[] certs, String authType) {
+            }
+        };
+
     }
 
     private static Feature defaultSslFeature() {
         try {
-            return new Feature.ENABLE_SSL(SslContextBuilder.forClient().build());
+        	final SslContext ctx = SslContextBuilder.forClient().trustManager(TRUST_ALL_CERT_TM).build();
+            return new Feature.ENABLE_SSL(ctx);
         } catch (final Exception e) {
             LOG.error("exception init default ssl feature, detail: {}", ExceptionUtils.exception2detail(e));
             return null;
