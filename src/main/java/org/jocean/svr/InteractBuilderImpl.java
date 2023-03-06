@@ -66,7 +66,6 @@ class InteractBuilderImpl implements InteractBuilder {
     private static final Feature F_SSL;
     private static final TrustManager TRUST_ALL_CERT_TM;
     static {
-        F_SSL = defaultSslFeature();
         TRUST_ALL_CERT_TM = new X509TrustManager() {
             public X509Certificate[] getAcceptedIssuers() {
                 return null;
@@ -78,7 +77,7 @@ class InteractBuilderImpl implements InteractBuilder {
             public void checkServerTrusted(X509Certificate[] certs, String authType) {
             }
         };
-
+        F_SSL = defaultSslFeature();
     }
 
     private static Feature defaultSslFeature() {
